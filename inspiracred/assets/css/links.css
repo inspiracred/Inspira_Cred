@@ -1,7 +1,9 @@
 :root {
   --blue: #0b2d72;
-  --blue-soft: rgba(0, 74, 175, 0.06);
-  --orange: #f58220;
+  --blue-action: #374dab;
+  --blue-soft: rgba(55, 77, 171, 0.08);
+  --orange: #f97316;
+  --orange-brand: #f58220;
   --orange-soft: rgba(245, 130, 32, 0.08);
   --text-muted: #6b7280;
   --border: #e5e7eb;
@@ -39,11 +41,11 @@ body::before {
   position: fixed;
   inset: 0;
   z-index: 0;
-  background-image: url("../img/background.png");
-  background-position: center bottom;
+  background-image: url("../img/link-bio-background.png");
+  background-position: top center;
   background-repeat: no-repeat;
   background-size: max(390px, 100vw) auto;
-  opacity: 0.27;
+  opacity: 0.29;
   pointer-events: none;
 }
 
@@ -51,14 +53,14 @@ body::before {
   position: relative;
   z-index: 1;
   width: min(100%, 390px);
-  min-height: 884px;
+  min-height: 987px;
   background: transparent;
 }
 
 .content {
   position: relative;
   z-index: 1;
-  min-height: 884px;
+  min-height: 987px;
 }
 
 .header {
@@ -66,27 +68,27 @@ body::before {
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  padding: 24px 24px 20px;
+  padding: 56px 24px 20px;
   text-align: center;
 }
 
 .logo-box {
-  width: 56px;
-  height: 56px;
+  width: 122px;
+  height: 122px;
   display: grid;
   place-items: center;
-  border: 1px solid var(--border);
-  border-radius: 16px;
+  padding: 4px;
+  border: 2px solid rgba(107, 114, 128, 0.14);
+  border-radius: 999px;
   background: #fff;
 }
 
-.logo-box img {
-  width: 19px;
-  height: 40px;
+.logo-lockup {
+  width: 100.03px;
+  height: 38.65px;
   display: block;
 }
 
-.brand-name,
 .brand-subtitle,
 .handle,
 .section-title,
@@ -102,20 +104,13 @@ body::before {
 
 .brand-text {
   display: grid;
-  gap: 4px;
   width: 100%;
-}
-
-.brand-name {
-  font-size: 18px;
-  line-height: 1.22;
-  font-weight: 800;
 }
 
 .brand-subtitle {
   color: var(--text-muted);
   font-size: 13px;
-  line-height: 1.23;
+  line-height: 1.25;
   font-weight: 400;
 }
 
@@ -132,7 +127,7 @@ body::before {
 
 .cta {
   width: 100%;
-  min-height: 86px;
+  min-height: 84px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -141,30 +136,56 @@ body::before {
   border: 0;
   border-radius: 16px;
   color: #fff;
-  background: var(--blue);
+  background: var(--orange);
   box-shadow: 0 10px 12px rgba(0, 0, 0, 0.08);
   font: inherit;
   text-align: left;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.cta:hover,
+.cta:focus-visible,
+.product-card:hover,
+.product-card:focus-visible,
+.link-item:hover,
+.link-item:focus-visible {
+  transform: translateY(-1px);
+}
+
+.cta:focus-visible,
+.product-card:focus-visible,
+.link-item:focus-visible {
+  outline: 3px solid rgba(245, 130, 32, 0.35);
+  outline-offset: 3px;
 }
 
 .cta-title {
+  display: block;
   font-size: 22px;
   line-height: 1.2;
   font-weight: 800;
 }
 
 .cta-subtitle {
-  margin-top: 4px;
+  display: block;
+  margin-top: 2px;
   color: rgba(255, 255, 255, 0.8);
   font-size: 13px;
-  line-height: 1.23;
+  line-height: 1.25;
   font-weight: 500;
 }
 
-.cta img {
-  width: 24px;
-  height: 24px;
+.cta-icon {
+  width: 44px;
+  height: 44px;
   flex: 0 0 auto;
+  display: block;
+}
+
+.cta-icon img {
+  width: 44px;
+  height: 44px;
+  display: block;
 }
 
 .products {
@@ -188,7 +209,7 @@ body::before {
 }
 
 .product-card {
-  min-height: 144px;
+  min-height: 182px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -199,19 +220,6 @@ body::before {
   background: #fff;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
   transition: transform 160ms ease, box-shadow 160ms ease;
-}
-
-.product-card:hover,
-.product-card:focus-visible,
-.link-item:hover,
-.link-item:focus-visible {
-  transform: translateY(-1px);
-}
-
-.product-card:focus-visible,
-.link-item:focus-visible {
-  outline: 3px solid rgba(245, 130, 32, 0.35);
-  outline-offset: 3px;
 }
 
 .card-top {
@@ -238,7 +246,7 @@ body::before {
   width: 4px;
   height: 20px;
   border-radius: 2px;
-  background: var(--orange);
+  background: var(--orange-brand);
 }
 
 .card-text {
@@ -254,9 +262,31 @@ body::before {
 
 .card-copy {
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.4;
   font-weight: 400;
+}
+
+.product-action {
+  width: 100%;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--orange-brand);
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 600;
+}
+
+.product-action img {
+  width: 4px;
+  height: 7px;
+  display: block;
 }
 
 .links {
@@ -269,7 +299,7 @@ body::before {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 11px 0;
+  padding: 14px 0;
   border-bottom: 1px solid var(--border);
   transition: transform 160ms ease;
 }
@@ -287,13 +317,35 @@ body::before {
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  border-radius: 16px;
-  background: var(--blue-soft);
+  border-radius: 999px;
+  background: #fff;
 }
 
 .link-icon img {
   width: 16px;
   height: 16px;
+  display: block;
+}
+
+.brand-icon img {
+  width: 10px;
+  height: 22px;
+}
+
+.whatsapp-icon,
+.linkedin-icon {
+  background: transparent;
+}
+
+.whatsapp-icon img,
+.linkedin-icon img {
+  width: 32px;
+  height: 32px;
+}
+
+.verified-icon img {
+  width: 16px;
+  height: 13.18px;
 }
 
 .link-text {
@@ -319,9 +371,16 @@ body::before {
 }
 
 .chevron {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   flex: 0 0 auto;
+  display: block;
+}
+
+.chevron img {
+  width: 20px;
+  height: 20px;
+  display: block;
 }
 
 .footer {
@@ -334,28 +393,11 @@ body::before {
 }
 
 .home-indicator {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 34px;
-  display: grid;
-  place-items: center;
-}
-
-.home-indicator span {
-  width: 134px;
-  height: 5px;
-  border-radius: 999px;
-  background: rgba(11, 45, 114, 0.25);
+  display: none;
 }
 
 @media (min-width: 720px) {
   body {
     align-items: center;
-  }
-
-  .page {
-    min-height: 884px;
   }
 }

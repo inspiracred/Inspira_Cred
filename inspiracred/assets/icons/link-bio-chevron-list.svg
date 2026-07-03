@@ -1,0 +1,6 @@
+<svg preserveAspectRatio="none" width="100%" height="100%" overflow="visible" style="display: block;" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="chevron-right">
+<path d="M0 10C0 4.47715 4.47715 0 10 0V0C15.5228 0 20 4.47715 20 10V10C20 15.5228 15.5228 20 10 20V20C4.47715 20 0 15.5228 0 10V10Z" fill="var(--fill-0, #374DAB)"/>
+<path id="Vector" d="M8 14L12 10L8 6" stroke="var(--stroke-0, #F7F7F7)" stroke-width="2" stroke-linecap="round"/>
+</g>
+</svg>
