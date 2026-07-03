@@ -5,539 +5,332 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Links oficiais da InspiraCred: crédito com garantia de imóvel, veículo, WhatsApp e redes sociais."
+      content="Simule crédito com garantia de imóvel com a InspiraCred. Resultado rápido, atendimento especializado e processo seguro."
     />
-    <title>InspiraCred | Link na bio</title>
+    <title>InspiraCred | Simulação Home Equity</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@700;800&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <style>
-      :root {
-        --blue: #0b2d72;
-        --blue-soft: rgba(0, 74, 175, 0.06);
-        --orange: #f58220;
-        --orange-soft: rgba(245, 130, 32, 0.08);
-        --text-muted: #6b7280;
-        --border: #e5e7eb;
-        --page: #f7f7f7;
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      html {
-        min-height: 100%;
-        background: var(--page);
-      }
-
-      body {
-        position: relative;
-        min-height: 100vh;
-        margin: 0;
-        display: flex;
-        justify-content: center;
-        color: var(--blue);
-        background: var(--page);
-        font-family: "Montserrat", Arial, sans-serif;
-        overflow-x: hidden;
-      }
-
-      a {
-        color: inherit;
-        text-decoration: none;
-      }
-
-      body::before {
-        content: "";
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        background-image: url("assets/background.png");
-        background-position: center bottom;
-        background-repeat: no-repeat;
-        background-size: max(390px, 100vw) auto;
-        opacity: 0.27;
-        pointer-events: none;
-      }
-
-      .page {
-        position: relative;
-        z-index: 1;
-        width: min(100%, 390px);
-        min-height: 884px;
-        background: transparent;
-      }
-
-      .content {
-        position: relative;
-        z-index: 1;
-        min-height: 884px;
-      }
-
-      .header {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 12px;
-        padding: 24px 24px 20px;
-        text-align: center;
-      }
-
-      .logo-box {
-        width: 56px;
-        height: 56px;
-        display: grid;
-        place-items: center;
-        border: 1px solid var(--border);
-        border-radius: 16px;
-        background: #fff;
-      }
-
-      .logo-box img {
-        width: 19px;
-        height: 40px;
-        display: block;
-      }
-
-      .brand-name,
-      .brand-subtitle,
-      .handle,
-      .section-title,
-      .cta-title,
-      .cta-subtitle,
-      .card-title,
-      .card-copy,
-      .link-title,
-      .link-copy,
-      .footer {
-        margin: 0;
-      }
-
-      .brand-text {
-        display: grid;
-        gap: 4px;
-        width: 100%;
-      }
-
-      .brand-name {
-        font-size: 18px;
-        line-height: 1.22;
-        font-weight: 800;
-      }
-
-      .brand-subtitle {
-        color: var(--text-muted);
-        font-size: 13px;
-        line-height: 1.23;
-        font-weight: 400;
-      }
-
-      .handle {
-        color: var(--text-muted);
-        font-size: 12px;
-        line-height: 1.25;
-        font-weight: 500;
-      }
-
-      .cta-wrap {
-        padding: 0 24px 24px;
-      }
-
-      .cta {
-        width: 100%;
-        min-height: 86px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 14px;
-        padding: 20px;
-        border: 0;
-        border-radius: 16px;
-        color: #fff;
-        background: var(--blue);
-        box-shadow: 0 10px 12px rgba(0, 0, 0, 0.08);
-        font: inherit;
-        text-align: left;
-      }
-
-      .cta-title {
-        font-size: 22px;
-        line-height: 1.2;
-        font-weight: 800;
-      }
-
-      .cta-subtitle {
-        margin-top: 4px;
-        color: rgba(255, 255, 255, 0.8);
-        font-size: 13px;
-        line-height: 1.23;
-        font-weight: 500;
-      }
-
-      .cta img {
-        width: 24px;
-        height: 24px;
-        flex: 0 0 auto;
-      }
-
-      .products {
-        padding: 0 24px 24px;
-      }
-
-      .section-title {
-        color: var(--text-muted);
-        font-size: 11px;
-        line-height: 1.27;
-        font-weight: 700;
-        letter-spacing: 0.22px;
-        text-transform: uppercase;
-      }
-
-      .product-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
-        margin-top: 12px;
-      }
-
-      .product-card {
-        min-height: 144px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        gap: 12px;
-        padding: 16px;
-        border: 1px solid var(--border);
-        border-radius: 16px;
-        background: #fff;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-        transition: transform 160ms ease, box-shadow 160ms ease;
-      }
-
-      .product-card:hover,
-      .product-card:focus-visible,
-      .link-item:hover,
-      .link-item:focus-visible {
-        transform: translateY(-1px);
-      }
-
-      .product-card:focus-visible,
-      .link-item:focus-visible {
-        outline: 3px solid rgba(245, 130, 32, 0.35);
-        outline-offset: 3px;
-      }
-
-      .card-top {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-
-      .product-icon {
-        width: 40px;
-        height: 40px;
-        display: grid;
-        place-items: center;
-        border-radius: 12px;
-        background: var(--orange-soft);
-      }
-
-      .product-icon img {
-        width: 20px;
-        height: 20px;
-      }
-
-      .accent {
-        width: 4px;
-        height: 20px;
-        border-radius: 2px;
-        background: var(--orange);
-      }
-
-      .card-text {
-        display: grid;
-        gap: 4px;
-      }
-
-      .card-title {
-        font-size: 16px;
-        line-height: 1.22;
-        font-weight: 700;
-      }
-
-      .card-copy {
-        color: var(--text-muted);
-        font-size: 12.5px;
-        line-height: 1.4;
-        font-weight: 400;
-      }
-
-      .links {
-        padding: 0 24px 24px;
-      }
-
-      .link-item {
-        min-height: 64px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        padding: 11px 0;
-        border-bottom: 1px solid var(--border);
-        transition: transform 160ms ease;
-      }
-
-      .link-left {
-        min-width: 0;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-
-      .link-icon {
-        width: 32px;
-        height: 32px;
-        flex: 0 0 auto;
-        display: grid;
-        place-items: center;
-        border-radius: 16px;
-        background: var(--blue-soft);
-      }
-
-      .link-icon img {
-        width: 16px;
-        height: 16px;
-      }
-
-      .link-text {
-        min-width: 0;
-        display: grid;
-        gap: 2px;
-      }
-
-      .link-title {
-        font-size: 15px;
-        line-height: 1.22;
-        font-weight: 600;
-      }
-
-      .link-copy {
-        overflow: hidden;
-        color: var(--text-muted);
-        font-size: 13px;
-        line-height: 1.23;
-        font-weight: 400;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .chevron {
-        width: 16px;
-        height: 16px;
-        flex: 0 0 auto;
-      }
-
-      .footer {
-        padding: 0 24px 40px;
-        color: var(--text-muted);
-        font-size: 12px;
-        line-height: 1.25;
-        font-weight: 500;
-        text-align: center;
-      }
-
-      .home-indicator {
-        position: absolute;
-        right: 0;
-        bottom: 0;
-        left: 0;
-        height: 34px;
-        display: grid;
-        place-items: center;
-      }
-
-      .home-indicator span {
-        width: 134px;
-        height: 5px;
-        border-radius: 999px;
-        background: rgba(11, 45, 114, 0.25);
-      }
-
-      @media (min-width: 720px) {
-        body {
-          align-items: center;
-        }
-
-        .page {
-          min-height: 884px;
-        }
-      }
-    </style>
+    <link rel="stylesheet" href="assets/css/main.css" />
   </head>
-  <body>
-    <main class="page" aria-label="Links oficiais da InspiraCred">
-      <div class="content">
-        <header class="header">
-          <div class="logo-box" aria-hidden="true">
-            <img src="assets/logo.svg" alt="" />
+  </head>
+  <body class="loading">
+    <main class="page">
+      <section class="hero" aria-label="Simulação de crédito com garantia de imóvel">
+        <nav class="nav" aria-label="Navegação principal">
+          <a href="links/" aria-label="Voltar para a link na bio">
+            <img class="logo" src="assets/img/landing-logo-ref.png" alt="InspiraCred" />
+          </a>
+          <div class="nav-links">
+            <a href="#produtos">Produtos</a>
+            <a href="#simulador">Como funciona</a>
+            <a href="#duvidas">Dúvidas</a>
+            <a class="button pill-button" href="#simulador">Simular agora</a>
           </div>
-          <div class="brand-text">
-            <h1 class="brand-name">InspiraCred</h1>
-            <p class="brand-subtitle">Crédito com garantia de imóvel</p>
-          </div>
-          <p class="handle">@inspiracred</p>
-        </header>
-
-        <section class="cta-wrap" aria-label="Simulação de crédito">
-          <a class="cta" href="simulacao.html">
-            <span>
-              <span class="cta-title">Simule seu Crédito</span>
-              <span class="cta-subtitle">Grátis, sem compromisso</span>
-            </span>
-            <img src="assets/chevron-main.svg" alt="" />
-          </a>
-        </section>
-
-        <section class="products" aria-labelledby="products-title">
-          <h2 class="section-title" id="products-title">Nossos Produtos</h2>
-          <div class="product-grid">
-            <a
-              class="product-card"
-              href="simulacao.html"
-              aria-label="Home Equity, crédito com garantia de imóvel"
-            >
-              <span class="card-top">
-                <span class="product-icon" aria-hidden="true">
-                  <img src="assets/home.svg" alt="" />
-                </span>
-                <span class="accent" aria-hidden="true"></span>
-              </span>
-              <span class="card-text">
-                <span class="card-title">Home Equity</span>
-                <span class="card-copy">Crédito com<br />Garantia de Imóvel</span>
-              </span>
-            </a>
-
-            <a
-              class="product-card"
-              href="https://app.creditas.com/auto-refi/solicitacao/informacoes-pessoais?utm_medium=affiliates&amp;utm_source=ISE217792&amp;utm_campaign=[ar]-crm&amp;utm_term=always-on&amp;utm_content=lp"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Auto, crédito com garantia de veículo"
-            >
-              <span class="card-top">
-                <span class="product-icon" aria-hidden="true">
-                  <img src="assets/car.svg" alt="" />
-                </span>
-                <span class="accent" aria-hidden="true"></span>
-              </span>
-              <span class="card-text">
-                <span class="card-title">Auto</span>
-                <span class="card-copy">Crédito com<br />Garantia de Veículo</span>
-              </span>
-            </a>
-          </div>
-        </section>
-
-        <nav class="links" aria-label="Links InspiraCred">
-          <a
-            class="link-item"
-            href="https://wa.me/5521977340731?text=Ol%C3%A1,%20vim%20do%20Instagram"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <span class="link-left">
-              <span class="link-icon" aria-hidden="true">
-                <img src="assets/message-circle.svg" alt="" />
-              </span>
-              <span class="link-text">
-                <span class="link-title">WhatsApp</span>
-                <span class="link-copy">Fale com a gente</span>
-              </span>
-            </span>
-            <img class="chevron" src="assets/chevron-right.svg" alt="" />
-          </a>
-
-          <a
-            class="link-item"
-            href="https://inspiracred.com.br/"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <span class="link-left">
-              <span class="link-icon" aria-hidden="true">
-                <img src="assets/globe.svg" alt="" />
-              </span>
-              <span class="link-text">
-                <span class="link-title">Site Oficial</span>
-                <span class="link-copy">inspiracred.com.br</span>
-              </span>
-            </span>
-            <img class="chevron" src="assets/chevron-right.svg" alt="" />
-          </a>
-
-          <a
-            class="link-item"
-            href="https://www.reclameaqui.com.br/empresa/inspira-solucoes-e-negocios-ltda/"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <span class="link-left">
-              <span class="link-icon" aria-hidden="true">
-                <img src="assets/shield-check.svg" alt="" />
-              </span>
-              <span class="link-text">
-                <span class="link-title">Empresa Verificada</span>
-                <span class="link-copy">Reclame Aqui</span>
-              </span>
-            </span>
-            <img class="chevron" src="assets/chevron-right.svg" alt="" />
-          </a>
-
-          <a
-            class="link-item"
-            href="https://www.instagram.com/inspiracred/"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <span class="link-left">
-              <span class="link-icon" aria-hidden="true">
-                <img src="assets/instagram.svg" alt="" />
-              </span>
-              <span class="link-text">
-                <span class="link-title">Instagram</span>
-                <span class="link-copy">@inspiracred</span>
-              </span>
-            </span>
-            <img class="chevron" src="assets/chevron-right.svg" alt="" />
-          </a>
-
-          <a
-            class="link-item"
-            href="https://www.linkedin.com/company/inspiracred/"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <span class="link-left">
-              <span class="link-icon" aria-hidden="true">
-                <img src="assets/linkedin.svg" alt="" />
-              </span>
-              <span class="link-text">
-                <span class="link-title">LinkedIn</span>
-                <span class="link-copy">Acompanhe novidades</span>
-              </span>
-            </span>
-            <img class="chevron" src="assets/chevron-right.svg" alt="" />
-          </a>
         </nav>
 
-        <p class="footer">inspiracred.com.br</p>
-      </div>
-      <div class="home-indicator" aria-hidden="true"><span></span></div>
+        <div class="hero-center">
+          <div class="hero-copy">
+            <div data-reveal="1">
+              <h1 class="hero-title">
+                Descubra quanto você pode liberar com seu imóvel
+                <span>em menos de 30 segundos</span>
+              </h1>
+            </div>
+            <p class="hero-subtitle" data-reveal="2">
+              Simule agora e veja as condições disponíveis para o seu perfil com as melhores taxas do mercado.
+            </p>
+            <div class="hero-actions" data-reveal="3">
+              <a class="button button-large" href="#simulador">Simular agora</a>
+              <div class="trust-badges" aria-label="Selos de confiança">
+                <span class="badge">Sem consulta ao SPC/Serasa</span>
+                <span class="badge">100% gratuito</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section simulation" id="simulador">
+        <div class="shell simulation-grid">
+          <div data-reveal>
+            <h2 class="eyebrow-title">Simulação rápida</h2>
+            <p class="section-copy">Simule sua parcela agora / Sem compromisso. Resultado na hora.</p>
+            <div class="feature-list" aria-label="Benefícios da simulação">
+              <div class="feature-item">
+                <img src="assets/icons/landing-check-online.svg" alt="" />
+                <span>Processo 100% online e seguro</span>
+              </div>
+              <div class="feature-item">
+                <img src="assets/icons/landing-check-rates.svg" alt="" />
+                <span>As menores taxas de juros do Brasil</span>
+              </div>
+              <div class="feature-item">
+                <img src="assets/icons/landing-check-bank.svg" alt="" />
+                <span>Aprovado pelo Banco Central</span>
+              </div>
+            </div>
+          </div>
+
+          <form class="form-card" id="simulation-form" data-reveal>
+            <div class="field">
+              <label>Tipo de imóvel</label>
+              <div class="segmented" role="radiogroup" aria-label="Tipo de imóvel">
+                <button class="seg-option is-active" type="button" data-value="Casa" aria-pressed="true">Casa</button>
+                <button class="seg-option" type="button" data-value="Apartamento" aria-pressed="false">Apartamento</button>
+                <button class="seg-option" type="button" data-value="Comercial" aria-pressed="false">Comercial</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="property-value">Valor do imóvel</label>
+              <input class="input money" id="property-value" name="propertyValue" value="R$ 500.000,00" inputmode="numeric" />
+            </div>
+
+            <div class="toggle-row">
+              <span class="inline-label">Seu imóvel está quitado?</span>
+              <div class="toggle" role="radiogroup" aria-label="Seu imóvel está quitado?">
+                <button class="toggle-option is-active" type="button" data-toggle="paid" data-value="Sim" aria-pressed="true">Sim</button>
+                <button class="toggle-option" type="button" data-toggle="paid" data-value="Não" aria-pressed="false">Não</button>
+              </div>
+            </div>
+
+            <div class="toggle-row">
+              <span class="inline-label">Documentação regularizada?</span>
+              <div class="toggle" role="radiogroup" aria-label="Documentação regularizada?">
+                <button class="toggle-option is-active" type="button" data-toggle="docs" data-value="Sim" aria-pressed="true">Sim</button>
+                <button class="toggle-option" type="button" data-toggle="docs" data-value="Não" aria-pressed="false">Não</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="credit-value">Valor desejado</label>
+              <input class="input money" id="credit-value" name="creditValue" value="R$ 200.000,00" inputmode="numeric" />
+            </div>
+
+            <button class="button button-full" type="submit">Ver minha simulação</button>
+            <p class="message" id="form-message">Vamos abrir o WhatsApp com os dados da sua simulação.</p>
+          </form>
+        </div>
+      </section>
+
+      <section class="section testimonials" id="produtos">
+        <div class="shell">
+          <div class="center-title" data-reveal>
+            <h2 class="section-title">Quem já fez, aprova</h2>
+            <p class="section-copy">Clientes que transformaram seu imóvel em oportunidade.</p>
+          </div>
+          <div class="testimonial-grid">
+            <article class="testimonial-card" data-reveal>
+              <div class="testimonial-head">
+                <div class="avatar">R</div>
+                <div class="person">
+                  <strong>Raquel Silva</strong>
+                  <span>Porto Alegre-RS</span>
+                </div>
+                <div class="stars" aria-label="5 estrelas">
+                  <img src="assets/img/landing-star.png" alt="" /><img src="assets/img/landing-star.png" alt="" /><img src="assets/img/landing-star.png" alt="" /><img src="assets/img/landing-star.png" alt="" /><img src="assets/img/landing-star.png" alt="" />
+                </div>
+              </div>
+              <p class="quote">"Olá, a minha experiência com a InspiraCred está sendo satisfatória. Tive um retorno muito rápido!"</p>
+            </article>
+            <article class="testimonial-card" data-reveal>
+              <div class="testimonial-head">
+                <div class="avatar">R</div>
+                <div class="person">
+                  <strong>Regina Couto</strong>
+                  <span>Niterói-RJ</span>
+                </div>
+                <div class="stars" aria-label="5 estrelas">
+                  <img src="assets/img/landing-star.png" alt="" /><img src="assets/img/landing-star.png" alt="" /><img src="assets/img/landing-star.png" alt="" /><img src="assets/img/landing-star.png" alt="" /><img src="assets/img/landing-star.png" alt="" />
+                </div>
+              </div>
+              <p class="quote">"A InspiraCred é uma empresa com atendimento bem humanizado e especializado. Recomendo."</p>
+            </article>
+            <article class="testimonial-card" data-reveal>
+              <div class="testimonial-head">
+                <div class="avatar">E</div>
+                <div class="person">
+                  <strong>Eliana Paula</strong>
+                  <span>Belo Horizonte-MG</span>
+                </div>
+                <div class="stars" aria-label="5 estrelas">
+                  <img src="assets/img/landing-star.png" alt="" /><img src="assets/img/landing-star.png" alt="" /><img src="assets/img/landing-star.png" alt="" /><img src="assets/img/landing-star.png" alt="" /><img src="assets/img/landing-star.png" alt="" />
+                </div>
+              </div>
+              <p class="quote">"Excelente atendimento com agilidade e assessoria especializada para o meu perfil."</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section benefits" id="duvidas">
+        <div class="shell">
+          <div class="center-title" data-reveal>
+            <h2 class="section-title">Fale agora com um especialista</h2>
+            <div class="section-rule"></div>
+          </div>
+          <div class="benefit-grid">
+            <article class="benefit" data-reveal>
+              <div class="benefit-icon"><img src="assets/icons/landing-benefit-profile.svg" alt="" /></div>
+              <div>
+                <h3>Análise personalizada do seu perfil</h3>
+                <p>Seu caso é avaliado por um especialista antes de qualquer proposta formal ser enviada.</p>
+              </div>
+            </article>
+            <article class="benefit" data-reveal>
+              <div class="benefit-icon"><img src="assets/icons/landing-benefit-conditions.svg" alt="" /></div>
+              <div>
+                <h3>Acesso às melhores condições</h3>
+                <p>Comparamos diversas instituições financeiras para encontrar as taxas que cabem no seu bolso.</p>
+              </div>
+            </article>
+            <article class="benefit" data-reveal>
+              <div class="benefit-icon"><img src="assets/icons/landing-benefit-secure.svg" alt="" /></div>
+              <div>
+                <h3>Processo seguro e regulamentado</h3>
+                <p>Operações realizadas com instituições financeiras autorizadas pelo Banco Central do Brasil.</p>
+              </div>
+            </article>
+          </div>
+          <div class="benefit-action" data-reveal>
+            <a class="button pill-button" href="https://wa.me/5521977340731?text=Ol%C3%A1,%20vim%20da%20simula%C3%A7%C3%A3o%20da%20InspiraCred%20e%20quero%20falar%20com%20um%20especialista." target="_blank" rel="noopener noreferrer">Falar com especialista</a>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <div class="footer-top">
+          <div class="footer-brand">
+            <img class="logo" src="assets/img/landing-logo-ref.png" alt="InspiraCred" />
+            <div class="company">
+              <strong>INSPIRA SOLUÇÕES E NEGÓCIOS LTDA</strong>
+              <span>CNPJ: 49.247.378/0001-83 | Niterói/RJ</span>
+            </div>
+            <div class="seals">
+              <img src="assets/img/landing-seal-reclame.png" alt="Empresa verificada no Reclame Aqui" />
+              <img src="assets/img/landing-seal-aneps.png" alt="Selo ANEPS" />
+            </div>
+          </div>
+
+          <div class="footer-columns">
+            <div class="footer-col">
+              <h3>Contato</h3>
+              <ul class="contact-list">
+                <li class="contact-item"><img src="assets/icons/landing-map.svg" alt="" /> R. Mem de Sá, 19 - Icaraí, Niterói - RJ</li>
+                <li class="contact-item"><img src="assets/icons/landing-mail.svg" alt="" /> contato@inspiracred.com.br</li>
+                <li class="contact-item"><img src="assets/icons/landing-phone.svg" alt="" /> (21) 97734-0731</li>
+              </ul>
+            </div>
+            <div class="footer-col company-menu">
+              <h3>Empresa</h3>
+              <ul class="company-links">
+                <li>Sobre nós</li>
+                <li>Carreiras</li>
+                <li>Blog</li>
+                <li>Imprensa</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer-bottom">
+          <div class="footer-legal">
+            <p class="disclaimer">
+              InspiraCred não é uma instituição financeira e não realiza operações de crédito diretamente. Atuamos como correspondente bancário para facilitar o acesso ao crédito de forma segura e transparente junto aos nossos parceiros homologados.
+            </p>
+            <div class="legal-links">
+              <a href="ref/fe3ad243-8f41-4056-939b-fe087b3244cc~/pages/politica-de-privacidade.html">Política de Privacidade</a>
+              <a href="ref/fe3ad243-8f41-4056-939b-fe087b3244cc~/pages/termos-de-uso.html">Termos de Uso</a>
+            </div>
+          </div>
+        </div>
+      </footer>
     </main>
+
+    <script>
+      const state = {
+        propertyType: "Casa",
+        paid: "Sim",
+        docs: "Sim"
+      };
+
+      const formatCurrency = (value) => {
+        const digits = value.replace(/\D/g, "");
+        const cents = Number(digits || "0") / 100;
+        return cents.toLocaleString("pt-BR", {
+          style: "currency",
+          currency: "BRL"
+        });
+      };
+
+      window.addEventListener("load", () => {
+        document.body.classList.remove("loading");
+      });
+
+      document.querySelectorAll("[data-reveal]").forEach((element) => {
+        if (element.closest(".hero")) return;
+        const observer = new IntersectionObserver(
+          ([entry]) => {
+            if (entry.isIntersecting) {
+              element.classList.add("is-visible");
+              observer.disconnect();
+            }
+          },
+          { threshold: 0.18 }
+        );
+        observer.observe(element);
+      });
+
+      document.querySelectorAll(".money").forEach((input) => {
+        input.addEventListener("input", () => {
+          input.value = formatCurrency(input.value);
+        });
+      });
+
+      document.querySelectorAll(".seg-option").forEach((button) => {
+        button.addEventListener("click", () => {
+          document.querySelectorAll(".seg-option").forEach((item) => {
+            item.classList.remove("is-active");
+            item.setAttribute("aria-pressed", "false");
+          });
+          button.classList.add("is-active");
+          button.setAttribute("aria-pressed", "true");
+          state.propertyType = button.dataset.value;
+        });
+      });
+
+      document.querySelectorAll(".toggle-option").forEach((button) => {
+        button.addEventListener("click", () => {
+          const group = button.dataset.toggle;
+          document.querySelectorAll(`.toggle-option[data-toggle="${group}"]`).forEach((item) => {
+            item.classList.remove("is-active");
+            item.setAttribute("aria-pressed", "false");
+          });
+          button.classList.add("is-active");
+          button.setAttribute("aria-pressed", "true");
+          state[group] = button.dataset.value;
+        });
+      });
+
+      document.getElementById("simulation-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const propertyValue = document.getElementById("property-value").value;
+        const creditValue = document.getElementById("credit-value").value;
+        const message = [
+          "Olá, vim da página de simulação da InspiraCred.",
+          `Tipo de imóvel: ${state.propertyType}`,
+          `Valor do imóvel: ${propertyValue}`,
+          `Imóvel quitado: ${state.paid}`,
+          `Documentação regularizada: ${state.docs}`,
+          `Valor desejado: ${creditValue}`
+        ].join("\n");
+        document.getElementById("form-message").classList.add("is-visible");
+        window.open(`https://wa.me/5521977340731?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+      });
+    </script>
   </body>
 </html>

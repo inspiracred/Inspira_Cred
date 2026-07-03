@@ -1,0 +1,11 @@
+# Robots.txt - InspiraCred
+
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://inspiracred.com.br/sitemap.xml
+
+# Restrições (se necessário)
+# Disallow: /temp/
+# Disallow: /private/
