@@ -327,6 +327,10 @@ input {
   gap: 8px;
 }
 
+.field.is-hidden {
+  display: none;
+}
+
 .field label,
 .inline-label {
   color: var(--text);
@@ -372,6 +376,11 @@ input {
   font-size: 16px;
 }
 
+.input.is-invalid {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+}
+
 .toggle-row {
   display: flex;
   align-items: center;
@@ -410,6 +419,14 @@ input {
 
 .message.is-visible {
   display: block;
+}
+
+.message.is-error {
+  color: #b91c1c;
+}
+
+.message.is-success {
+  color: #166534;
 }
 
 .testimonials {

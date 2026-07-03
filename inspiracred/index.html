@@ -115,6 +115,11 @@
               </div>
             </div>
 
+            <div class="field is-hidden" id="debt-field" aria-hidden="true">
+              <label for="debt-value">Saldo devedor aproximado</label>
+              <input class="input money" id="debt-value" name="debtValue" placeholder="R$ 0,00" inputmode="numeric" />
+            </div>
+
             <div class="toggle-row">
               <span class="inline-label">Documentação regularizada?</span>
               <div class="toggle" role="radiogroup" aria-label="Documentação regularizada?">
@@ -275,6 +280,20 @@
         docs: "Sim"
       };
 
+      const MIN_PROPERTY_VALUE = 300000;
+      const MIN_CREDIT_VALUE = 100000;
+      const TERM_MONTHS = 180;
+      const INTERNAL_RATE = 0.01;
+      const DISPLAY_RATE = 0.0109;
+      const PROPERTY_CREDIT_LIMITS = {
+        Casa: 0.5,
+        Apartamento: 0.6,
+        Comercial: 0.4
+      };
+      const formMessage = document.getElementById("form-message");
+      let hasStartedSimulation = false;
+      let hasCompletedSimulation = false;
+
       const formatCurrency = (value) => {
         const digits = value.replace(/\D/g, "");
         const cents = Number(digits || "0") / 100;
@@ -282,6 +301,151 @@
           style: "currency",
           currency: "BRL"
         });
+      };
+
+      const parseCurrency = (value) => {
+        const digits = value.replace(/\D/g, "");
+        return digits ? Number(digits) / 100 : 0;
+      };
+
+      const toCurrency = (value) => {
+        return value.toLocaleString("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        });
+      };
+
+      const calculateInstallment = (amount, monthlyRate) => {
+        if (amount <= 0) return 0;
+        const factor = Math.pow(1 + monthlyRate, TERM_MONTHS);
+        return amount * (monthlyRate * factor) / (factor - 1);
+      };
+
+      const showMessage = (text, type = "info") => {
+        formMessage.textContent = text;
+        formMessage.classList.remove("is-error", "is-success");
+        formMessage.classList.add("is-visible");
+        if (type === "error") formMessage.classList.add("is-error");
+        if (type === "success") formMessage.classList.add("is-success");
+      };
+
+      const clearMessage = () => {
+        formMessage.classList.remove("is-visible", "is-error", "is-success");
+      };
+
+      const setInvalid = (input, invalid) => {
+        input.classList.toggle("is-invalid", invalid);
+        input.setAttribute("aria-invalid", String(invalid));
+      };
+
+      const trackStart = () => {
+        if (hasStartedSimulation) return;
+        hasStartedSimulation = true;
+        try {
+          window.dataLayer = window.dataLayer || [];
+          window.dataLayer.push({ event: "inicio_simulacao" });
+        } catch {}
+        try {
+          if (typeof window.fbq === "function") {
+            window.fbq("track", "ViewContent");
+          }
+        } catch {}
+      };
+
+      const trackComplete = (propertyValue, creditValue) => {
+        if (hasCompletedSimulation) return;
+        hasCompletedSimulation = true;
+        try {
+          window.dataLayer = window.dataLayer || [];
+          window.dataLayer.push({
+            event: "simulacao_concluida",
+            valor_credito: creditValue,
+            valor_imovel: propertyValue,
+            tipo_imovel: state.propertyType.toLowerCase()
+          });
+        } catch {}
+        try {
+          if (typeof window.fbq === "function") {
+            window.fbq("trackCustom", "simulacao_concluida", {
+              valor_credito: creditValue,
+              valor_imovel: propertyValue,
+              tipo_imovel: state.propertyType.toLowerCase()
+            });
+          }
+        } catch {}
+      };
+
+      const syncDebtField = () => {
+        const debtField = document.getElementById("debt-field");
+        const debtInput = document.getElementById("debt-value");
+        const isVisible = state.paid === "Não";
+        debtField.classList.toggle("is-hidden", !isVisible);
+        debtField.setAttribute("aria-hidden", String(!isVisible));
+        if (!isVisible) {
+          debtInput.value = "";
+          setInvalid(debtInput, false);
+        }
+      };
+
+      const validateSimulation = () => {
+        const propertyInput = document.getElementById("property-value");
+        const creditInput = document.getElementById("credit-value");
+        const debtInput = document.getElementById("debt-value");
+        const propertyValue = parseCurrency(propertyInput.value);
+        const creditValue = parseCurrency(creditInput.value);
+        const debtValue = parseCurrency(debtInput.value);
+        const creditLimit = PROPERTY_CREDIT_LIMITS[state.propertyType] || 0.6;
+        let message = "";
+
+        setInvalid(propertyInput, false);
+        setInvalid(creditInput, false);
+        setInvalid(debtInput, false);
+
+        if (!propertyInput.value.trim() || propertyValue <= 0) {
+          message = "Informe o valor do imóvel.";
+          setInvalid(propertyInput, true);
+        } else if (propertyValue < MIN_PROPERTY_VALUE) {
+          message = "Trabalhamos com imóveis a partir de R$ 300 mil.";
+          setInvalid(propertyInput, true);
+        } else if (!creditInput.value.trim() || creditValue <= 0) {
+          message = "Informe o valor desejado.";
+          setInvalid(creditInput, true);
+        } else if (creditValue < MIN_CREDIT_VALUE) {
+          message = "Crédito mínimo: R$ 100 mil.";
+          setInvalid(creditInput, true);
+        } else if (creditValue > propertyValue * creditLimit) {
+          message = `Crédito máximo para esse imóvel: ${Math.round(creditLimit * 100)}% do valor de avaliação.`;
+          setInvalid(creditInput, true);
+        }
+
+        if (message) {
+          return { valid: false, message, propertyValue, creditValue, debtValue };
+        }
+
+        if (state.docs === "Não") {
+          return {
+            valid: false,
+            message: "Infelizmente, não conseguimos atender seu perfil no momento. É necessário que a documentação do imóvel esteja regularizada para contratar essa modalidade de crédito.",
+            propertyValue,
+            creditValue,
+            debtValue
+          };
+        }
+
+        if (state.paid === "Não" && propertyValue > 0 && debtValue > propertyValue * 0.5) {
+          setInvalid(debtInput, true);
+          return {
+            valid: false,
+            message: "Infelizmente, não conseguimos atender seu perfil no momento. O saldo devedor do seu imóvel está acima do limite permitido para essa modalidade de crédito.",
+            propertyValue,
+            creditValue,
+            debtValue
+          };
+        }
+
+        return { valid: true, propertyValue, creditValue, debtValue };
       };
 
       window.addEventListener("load", () => {
@@ -304,12 +468,17 @@
 
       document.querySelectorAll(".money").forEach((input) => {
         input.addEventListener("input", () => {
+          trackStart();
+          clearMessage();
+          setInvalid(input, false);
           input.value = formatCurrency(input.value);
         });
       });
 
       document.querySelectorAll(".seg-option").forEach((button) => {
         button.addEventListener("click", () => {
+          trackStart();
+          clearMessage();
           document.querySelectorAll(".seg-option").forEach((item) => {
             item.classList.remove("is-active");
             item.setAttribute("aria-pressed", "false");
@@ -322,6 +491,8 @@
 
       document.querySelectorAll(".toggle-option").forEach((button) => {
         button.addEventListener("click", () => {
+          trackStart();
+          clearMessage();
           const group = button.dataset.toggle;
           document.querySelectorAll(`.toggle-option[data-toggle="${group}"]`).forEach((item) => {
             item.classList.remove("is-active");
@@ -330,22 +501,39 @@
           button.classList.add("is-active");
           button.setAttribute("aria-pressed", "true");
           state[group] = button.dataset.value;
+          if (group === "paid") syncDebtField();
         });
       });
 
       document.getElementById("simulation-form").addEventListener("submit", (event) => {
         event.preventDefault();
+        trackStart();
+        const result = validateSimulation();
+        if (!result.valid) {
+          showMessage(result.message, "error");
+          return;
+        }
         const propertyValue = document.getElementById("property-value").value;
         const creditValue = document.getElementById("credit-value").value;
+        const debtValue = document.getElementById("debt-value").value || "R$ 0,00";
+        const maxPotential = result.propertyValue * (PROPERTY_CREDIT_LIMITS[state.propertyType] || 0.6);
+        const displayInstallment = calculateInstallment(result.creditValue, DISPLAY_RATE);
+        const incomeMinimum = calculateInstallment(result.creditValue, INTERNAL_RATE) * 3;
         const message = [
-          "Olá, vim da página de simulação da InspiraCred.",
+          "Olá, acabei de fazer uma simulação no site da InspiraCred e gostaria de falar com um consultor sobre meu crédito com garantia de imóvel.",
           `Tipo de imóvel: ${state.propertyType}`,
           `Valor do imóvel: ${propertyValue}`,
           `Imóvel quitado: ${state.paid}`,
+          state.paid === "Não" ? `Saldo devedor aproximado: ${debtValue}` : null,
           `Documentação regularizada: ${state.docs}`,
-          `Valor desejado: ${creditValue}`
-        ].join("\n");
-        document.getElementById("form-message").classList.add("is-visible");
+          `Valor desejado: ${creditValue}`,
+          `Prazo simulado: ${TERM_MONTHS} meses`,
+          `Parcela a partir de: ${toCurrency(displayInstallment)}/mês`,
+          `Renda familiar recomendada: ${toCurrency(incomeMinimum)}`,
+          `Potencial de liberação pelo imóvel: até ${toCurrency(maxPotential)}`
+        ].filter(Boolean).join("\n");
+        trackComplete(result.propertyValue, result.creditValue);
+        showMessage(`Simulação concluída: parcelas a partir de ${toCurrency(displayInstallment)}/mês em ${TERM_MONTHS} meses. Renda familiar recomendada: ${toCurrency(incomeMinimum)}. Vamos abrir o WhatsApp com os dados.`, "success");
         window.open(`https://wa.me/5521977340731?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
       });
     </script>
