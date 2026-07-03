@@ -57,7 +57,7 @@ input {
   display: flex;
   flex-direction: column;
   color: #fff;
-  background: var(--blue);
+  background: var(--blue-dark);
   isolation: isolate;
   overflow: hidden;
 }
@@ -79,9 +79,9 @@ input {
   background:
     linear-gradient(
       180deg,
-      rgba(5, 20, 56, 0.5) 0%,
-      rgba(11, 45, 114, 0.8) 48%,
-      rgba(11, 45, 114, 0.96) 100%
+      rgba(5, 20, 56, 0.42) 0%,
+      rgba(8, 34, 84, 0.76) 52%,
+      rgba(6, 26, 66, 0.98) 100%
     );
 }
 
@@ -90,7 +90,7 @@ input {
   inset: 0;
   z-index: -2;
   overflow: hidden;
-  background: var(--blue);
+  background: var(--blue-dark);
 }
 
 .hero-slide {
@@ -98,23 +98,23 @@ input {
   inset: 0;
   display: block;
   opacity: 0;
-  animation: heroSlide 24s linear infinite;
+  animation: heroCrossfade 32s ease-in-out infinite both;
 }
 
 .hero-slide-1 {
-  opacity: 1;
+  animation-delay: -2.56s;
 }
 
 .hero-slide-2 {
-  animation-delay: 6s;
+  animation-delay: 5.44s;
 }
 
 .hero-slide-3 {
-  animation-delay: 12s;
+  animation-delay: 13.44s;
 }
 
 .hero-slide-4 {
-  animation-delay: 18s;
+  animation-delay: 21.44s;
 }
 
 .hero-slide img {
@@ -123,7 +123,7 @@ input {
   display: block;
   object-fit: cover;
   object-position: center;
-  animation: heroPulse 6s ease-in-out infinite;
+  animation: heroPulse 8s ease-in-out infinite;
   transform-origin: center;
 }
 
@@ -722,17 +722,17 @@ input {
   }
 }
 
-@keyframes heroSlide {
-  0%,
-  22% {
-    opacity: 1;
-  }
-  25%,
-  97% {
+@keyframes heroCrossfade {
+  0% {
     opacity: 0;
   }
-  100% {
+  8%,
+  25% {
     opacity: 1;
+  }
+  33%,
+  100% {
+    opacity: 0;
   }
 }
 
@@ -741,11 +741,8 @@ input {
   100% {
     transform: scale(1.02) translateY(0);
   }
-  48% {
-    transform: scale(1.08) translateY(-8px);
-  }
-  86% {
-    transform: scale(1.02) translateY(0);
+  50% {
+    transform: scale(1.045) translateY(-4px);
   }
 }
 
