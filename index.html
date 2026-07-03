@@ -164,10 +164,6 @@
         text-align: left;
       }
 
-      .cta[aria-disabled="true"] {
-        cursor: default;
-      }
-
       .cta-title {
         font-size: 22px;
         line-height: 1.2;
@@ -397,13 +393,13 @@
         </header>
 
         <section class="cta-wrap" aria-label="Simulação de crédito">
-          <button class="cta" type="button" aria-disabled="true">
+          <a class="cta" href="simulacao.html">
             <span>
               <span class="cta-title">Simule seu Crédito</span>
               <span class="cta-subtitle">Grátis, sem compromisso</span>
             </span>
             <img src="assets/chevron-main.svg" alt="" />
-          </button>
+          </a>
         </section>
 
         <section class="products" aria-labelledby="products-title">
@@ -411,9 +407,7 @@
           <div class="product-grid">
             <a
               class="product-card"
-              href="https://simulacao.inspiracred.com.br/"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="simulacao.html"
               aria-label="Home Equity, crédito com garantia de imóvel"
             >
               <span class="card-top">

@@ -1,0 +1,1351 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Simule crédito com garantia de imóvel com a InspiraCred. Resultado rápido, atendimento especializado e processo seguro."
+    />
+    <title>InspiraCred | Simulação Home Equity</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@700;800&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --blue: #0b2d72;
+        --blue-dark: #061a42;
+        --orange: #f97316;
+        --orange-soft: #fdeee5;
+        --surface: #f7f7f7;
+        --text: #111827;
+        --muted: #4b5563;
+        --border: #e5e7eb;
+        --shadow: 0 12px 20px rgba(0, 0, 0, 0.03);
+        --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+        background: var(--surface);
+      }
+
+      body {
+        margin: 0;
+        color: var(--text);
+        background: var(--surface);
+        font-family: "Inter", Arial, sans-serif;
+      }
+
+      body.loading * {
+        transition: none !important;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      .page {
+        min-height: 100vh;
+        overflow: hidden;
+      }
+
+      .shell {
+        width: min(100% - 40px, 1200px);
+        margin: 0 auto;
+      }
+
+      .hero {
+        position: relative;
+        height: 760px;
+        display: flex;
+        flex-direction: column;
+        color: #fff;
+        background: var(--blue);
+        isolation: isolate;
+      }
+
+      .hero::before,
+      .hero::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -2;
+      }
+
+      .hero::before {
+        background-image: url("assets/landing-hero-desktop.png");
+        background-position: center;
+        background-size: cover;
+        animation: heroDrift 18s ease-in-out infinite alternate;
+      }
+
+      .hero::after {
+        z-index: -1;
+        background:
+          linear-gradient(
+            180deg,
+            rgba(5, 20, 56, 0.5) 0%,
+            rgba(11, 45, 114, 0.8) 48%,
+            rgba(11, 45, 114, 0.96) 100%
+          );
+      }
+
+      .nav {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 32px;
+        padding: 32px 80px;
+      }
+
+      .logo {
+        width: 100px;
+        height: auto;
+        display: block;
+      }
+
+      .nav-links {
+        display: flex;
+        align-items: center;
+        gap: 40px;
+        color: #fff;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .hero-center {
+        flex: 1;
+        display: grid;
+        place-items: center;
+        padding: 48px 80px 96px;
+        text-align: center;
+      }
+
+      .hero-copy {
+        width: min(100%, 820px);
+        display: grid;
+        justify-items: center;
+        gap: 40px;
+      }
+
+      .hero-title {
+        margin: 0;
+        font-family: "Instrument Sans", "Inter", sans-serif;
+        font-size: clamp(40px, 5vw, 64px);
+        line-height: 1.05;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .hero-title span {
+        display: block;
+        margin-top: 24px;
+        color: var(--orange);
+        font-size: clamp(22px, 2.8vw, 32px);
+        line-height: 1.15;
+      }
+
+      .hero-subtitle {
+        width: min(100%, 526px);
+        margin: 0;
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 20px;
+        line-height: 1.5;
+      }
+
+      .hero-actions {
+        display: grid;
+        justify-items: center;
+        gap: 24px;
+      }
+
+      .button {
+        min-height: 56px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 0;
+        border-radius: 12px;
+        background: var(--orange);
+        color: #fff;
+        cursor: pointer;
+        font-weight: 700;
+        box-shadow: 0 8px 12px rgba(249, 115, 22, 0.2);
+        transition: transform 220ms var(--ease), filter 220ms var(--ease), box-shadow 220ms var(--ease);
+      }
+
+      .button:hover,
+      .button:focus-visible {
+        transform: translateY(-2px);
+        filter: brightness(1.04);
+        box-shadow: 0 14px 22px rgba(249, 115, 22, 0.24);
+      }
+
+      .button:focus-visible,
+      .pill-button:focus-visible,
+      .seg-option:focus-visible,
+      .toggle-option:focus-visible,
+      .input:focus-visible {
+        outline: 3px solid rgba(249, 115, 22, 0.35);
+        outline-offset: 3px;
+      }
+
+      .button-large {
+        width: 320px;
+        font-size: 20px;
+      }
+
+      .button-full {
+        width: 100%;
+        font-size: 16px;
+      }
+
+      .pill-button {
+        height: 48px;
+        padding: 0 32px;
+        border-radius: 12px;
+        font-size: 16px;
+      }
+
+      .trust-badges {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 12px;
+      }
+
+      .badge {
+        padding: 8px 16px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.1);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .section {
+        padding: 120px 0;
+      }
+
+      .simulation {
+        background: var(--surface);
+      }
+
+      .simulation-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 520px;
+        gap: 80px;
+        align-items: start;
+      }
+
+      .eyebrow-title,
+      .section-title {
+        margin: 0;
+        color: var(--blue);
+        font-family: "Instrument Sans", "Inter", sans-serif;
+        font-size: 40px;
+        line-height: 1.1;
+        font-weight: 800;
+      }
+
+      .section-copy {
+        margin: 16px 0 0;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.6;
+      }
+
+      .feature-list {
+        display: grid;
+        gap: 20px;
+        margin-top: 44px;
+      }
+
+      .feature-item {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .feature-item img {
+        width: 32px;
+        height: 32px;
+      }
+
+      .form-card {
+        display: grid;
+        gap: 32px;
+        padding: 40px;
+        border-radius: 24px;
+        background: #fff;
+        box-shadow: var(--shadow);
+      }
+
+      .field {
+        display: grid;
+        gap: 8px;
+      }
+
+      .field label,
+      .inline-label {
+        color: var(--text);
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .segmented {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        height: 52px;
+        padding: 4px;
+        border-radius: 8px;
+        background: #f3f4f6;
+      }
+
+      .seg-option,
+      .toggle-option {
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: color 180ms var(--ease), background 180ms var(--ease), box-shadow 180ms var(--ease);
+      }
+
+      .seg-option.is-active {
+        color: var(--blue);
+        background: #fff;
+        box-shadow: 0 2px 2px rgba(0, 0, 0, 0.05);
+      }
+
+      .input {
+        width: 100%;
+        height: 52px;
+        padding: 0 16px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #fff;
+        color: var(--text);
+        font-size: 16px;
+      }
+
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .toggle {
+        width: 120px;
+        height: 40px;
+        flex: 0 0 auto;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        padding: 4px;
+        border-radius: 999px;
+        background: #f3f4f6;
+      }
+
+      .toggle-option {
+        border-radius: 999px;
+        font-size: 13px;
+      }
+
+      .toggle-option.is-active {
+        color: #fff;
+        background: var(--blue);
+      }
+
+      .message {
+        display: none;
+        margin: -8px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .message.is-visible {
+        display: block;
+      }
+
+      .testimonials {
+        background: #fff;
+      }
+
+      .center-title {
+        text-align: center;
+      }
+
+      .testimonial-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 32px;
+        margin-top: 64px;
+      }
+
+      .testimonial-card {
+        display: grid;
+        gap: 24px;
+        padding: 32px;
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        background: #fff;
+      }
+
+      .testimonial-head {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .avatar {
+        width: 48px;
+        height: 48px;
+        flex: 0 0 auto;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--blue);
+        color: #fff;
+        font-family: "Instrument Sans", "Inter", sans-serif;
+        font-size: 20px;
+        font-weight: 800;
+      }
+
+      .person {
+        min-width: 0;
+        flex: 1;
+      }
+
+      .person strong,
+      .person span {
+        display: block;
+      }
+
+      .person strong {
+        font-size: 16px;
+      }
+
+      .person span {
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .stars {
+        display: flex;
+        gap: 2px;
+      }
+
+      .stars img {
+        width: 14px;
+        height: 14px;
+        object-fit: contain;
+      }
+
+      .quote {
+        margin: 0;
+        color: var(--muted);
+        font-size: 16px;
+        font-style: italic;
+        line-height: 1.6;
+      }
+
+      .benefits {
+        background: var(--surface);
+      }
+
+      .section-rule {
+        width: 80px;
+        height: 4px;
+        margin: 16px auto 0;
+        border-radius: 999px;
+        background: var(--orange);
+      }
+
+      .benefit-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 40px;
+        margin-top: 64px;
+      }
+
+      .benefit {
+        display: grid;
+        gap: 24px;
+        padding: 24px;
+      }
+
+      .benefit-icon {
+        width: 56px;
+        height: 56px;
+        display: grid;
+        place-items: center;
+        border-radius: 28px;
+        background: var(--orange-soft);
+      }
+
+      .benefit-icon img {
+        width: 32px;
+        height: 32px;
+      }
+
+      .benefit h3 {
+        margin: 0;
+        font-size: 20px;
+        line-height: 1.25;
+      }
+
+      .benefit p {
+        margin: 12px 0 0;
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.5;
+      }
+
+      .benefit-action {
+        margin-top: 56px;
+        text-align: center;
+      }
+
+      .footer {
+        padding: 100px 80px 60px;
+        background: var(--blue-dark);
+        color: #fff;
+      }
+
+      .footer-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 80px;
+      }
+
+      .footer-brand {
+        width: 400px;
+        display: grid;
+        gap: 32px;
+      }
+
+      .company {
+        display: grid;
+        gap: 8px;
+        font-size: 14px;
+      }
+
+      .company span,
+      .footer-link,
+      .contact-item,
+      .disclaimer {
+        color: rgba(255, 255, 255, 0.7);
+      }
+
+      .seals {
+        display: flex;
+        gap: 16px;
+      }
+
+      .seals img {
+        width: 115px;
+        height: 36px;
+        object-fit: contain;
+        border-radius: 8px;
+      }
+
+      .footer-columns {
+        display: flex;
+        gap: 80px;
+      }
+
+      .footer-col {
+        display: grid;
+        align-content: start;
+        gap: 24px;
+        min-width: 200px;
+      }
+
+      .footer-col h3 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .contact-list,
+      .company-links {
+        display: grid;
+        gap: 16px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .contact-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 14px;
+      }
+
+      .contact-item img {
+        width: 18px;
+        height: 18px;
+      }
+
+      .company-links {
+        gap: 12px;
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 14px;
+      }
+
+      .footer-bottom {
+        display: grid;
+        gap: 32px;
+        margin-top: 80px;
+        padding-top: 32px;
+        border-top: 1px solid rgba(255, 255, 255, 0.14);
+      }
+
+      .footer-legal {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 32px;
+      }
+
+      .disclaimer {
+        width: min(100%, 800px);
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.5;
+        color: rgba(255, 255, 255, 0.3);
+      }
+
+      .legal-links {
+        display: flex;
+        gap: 24px;
+        white-space: nowrap;
+        font-size: 14px;
+        font-weight: 600;
+        text-decoration: underline;
+      }
+
+      [data-reveal] {
+        opacity: 0;
+        transform: translateY(28px);
+        transition: opacity 700ms var(--ease), transform 700ms var(--ease);
+      }
+
+      [data-reveal].is-visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .hero [data-reveal] {
+        animation: introUp 800ms var(--ease) forwards;
+      }
+
+      .hero [data-reveal="2"] {
+        animation-delay: 120ms;
+      }
+
+      .hero [data-reveal="3"] {
+        animation-delay: 240ms;
+      }
+
+      @keyframes introUp {
+        from {
+          opacity: 0;
+          transform: translateY(30px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes heroDrift {
+        from {
+          transform: scale(1.02);
+        }
+        to {
+          transform: scale(1.08) translateY(-8px);
+        }
+      }
+
+      @media (max-width: 1023px) {
+        .shell {
+          width: min(100% - 128px, 640px);
+        }
+
+        .hero {
+          height: 680px;
+        }
+
+        .hero::before {
+          background-position: center;
+        }
+
+        .nav {
+          padding: 24px 64px;
+        }
+
+        .nav-links a:not(.button) {
+          display: none;
+        }
+
+        .pill-button {
+          height: 40px;
+          padding: 0 20px;
+          border: 1px solid #fff;
+          border-radius: 999px;
+          background: transparent;
+          box-shadow: none;
+          font-size: 14px;
+        }
+
+        .hero-center {
+          padding: 64px;
+        }
+
+        .hero-copy {
+          gap: 32px;
+        }
+
+        .hero-title {
+          font-size: 48px;
+          line-height: 1.1;
+        }
+
+        .hero-title span {
+          margin-top: 8px;
+          font-size: 28px;
+        }
+
+        .hero-subtitle {
+          width: min(100%, 502px);
+          font-size: 18px;
+        }
+
+        .section {
+          padding: 80px 0;
+        }
+
+        .simulation-grid {
+          grid-template-columns: 1fr;
+          gap: 48px;
+          justify-items: center;
+          text-align: center;
+        }
+
+        .feature-list {
+          display: none;
+        }
+
+        .form-card {
+          width: min(100%, 560px);
+        }
+
+        .testimonial-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 24px;
+          margin-top: 48px;
+        }
+
+        .testimonial-card {
+          padding: 24px;
+          border-radius: 16px;
+        }
+
+        .benefit-grid {
+          gap: 32px;
+        }
+
+        .benefit {
+          padding: 0;
+        }
+
+        .footer {
+          padding: 80px 64px 40px;
+        }
+
+        .footer-top {
+          gap: 40px;
+        }
+
+        .footer-brand {
+          width: 320px;
+        }
+
+        .footer-columns {
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 32px;
+          text-align: right;
+        }
+
+        .footer-col.company-menu {
+          display: none;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .shell {
+          width: calc(100% - 40px);
+        }
+
+        .hero {
+          height: 640px;
+        }
+
+        .hero::before {
+          background-position: center top;
+        }
+
+        .nav {
+          padding: 24px;
+        }
+
+        .nav-links {
+          display: none;
+        }
+
+        .hero-center {
+          place-items: end start;
+          padding: 24px 24px 64px;
+          text-align: left;
+        }
+
+        .hero-copy {
+          justify-items: start;
+          gap: 24px;
+        }
+
+        .hero-title {
+          font-size: 40px;
+        }
+
+        .hero-title span {
+          font-size: 22px;
+        }
+
+        .hero-subtitle {
+          font-size: 16px;
+        }
+
+        .hero-actions,
+        .button-large {
+          width: 100%;
+        }
+
+        .trust-badges {
+          justify-content: flex-start;
+          gap: 8px;
+        }
+
+        .badge {
+          padding: 6px 10px;
+          color: rgba(255, 255, 255, 0.8);
+          font-size: 11px;
+        }
+
+        .section {
+          padding: 64px 0;
+        }
+
+        .simulation {
+          padding-top: 40px;
+        }
+
+        .simulation-grid {
+          gap: 32px;
+          justify-items: stretch;
+          text-align: left;
+        }
+
+        .eyebrow-title,
+        .section-title {
+          font-size: 28px;
+        }
+
+        .section-copy {
+          margin-top: 8px;
+          font-size: 15px;
+          line-height: 1.5;
+        }
+
+        .form-card {
+          gap: 24px;
+          padding: 24px;
+          border-radius: 16px;
+        }
+
+        .seg-option {
+          font-size: 11px;
+        }
+
+        .toggle {
+          width: 110px;
+          height: 36px;
+          padding: 3px;
+        }
+
+        .toggle-option {
+          font-size: 12px;
+        }
+
+        .center-title {
+          text-align: left;
+        }
+
+        .testimonial-grid {
+          grid-template-columns: 1fr;
+          gap: 16px;
+          margin-top: 32px;
+        }
+
+        .testimonial-card {
+          gap: 16px;
+          padding: 20px;
+        }
+
+        .quote {
+          font-size: 14px;
+          line-height: 1.5;
+        }
+
+        .benefits {
+          padding: 80px 0;
+        }
+
+        .section-rule {
+          width: 60px;
+          margin-right: auto;
+          margin-left: 0;
+        }
+
+        .benefit-grid {
+          grid-template-columns: 1fr;
+          gap: 40px;
+          margin-top: 48px;
+        }
+
+        .benefit {
+          grid-template-columns: 40px 1fr;
+          gap: 16px;
+        }
+
+        .benefit-icon {
+          width: 40px;
+          height: 40px;
+          border-radius: 20px;
+        }
+
+        .benefit-icon img {
+          width: 20px;
+          height: 20px;
+        }
+
+        .benefit h3 {
+          font-size: 16px;
+        }
+
+        .benefit p {
+          margin-top: 4px;
+          font-size: 14px;
+        }
+
+        .benefit-action .button {
+          width: 100%;
+        }
+
+        .footer {
+          padding: 64px 24px 40px;
+        }
+
+        .footer-top,
+        .footer-legal {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .footer-brand,
+        .footer-col {
+          width: 100%;
+        }
+
+        .footer-columns {
+          align-items: flex-start;
+          text-align: left;
+        }
+
+        .seals {
+          flex-wrap: wrap;
+        }
+
+        .footer-bottom {
+          margin-top: 48px;
+          gap: 24px;
+        }
+
+        .legal-links {
+          gap: 16px;
+          font-size: 12px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
+
+        [data-reveal] {
+          opacity: 1;
+          transform: none;
+        }
+      }
+    </style>
+  </head>
+  <body class="loading">
+    <main class="page">
+      <section class="hero" aria-label="Simulação de crédito com garantia de imóvel">
+        <nav class="nav" aria-label="Navegação principal">
+          <a href="index.html" aria-label="Voltar para a link na bio">
+            <img class="logo" src="assets/landing-logo-ref.png" alt="InspiraCred" />
+          </a>
+          <div class="nav-links">
+            <a href="#produtos">Produtos</a>
+            <a href="#simulador">Como funciona</a>
+            <a href="#duvidas">Dúvidas</a>
+            <a class="button pill-button" href="#simulador">Simular agora</a>
+          </div>
+        </nav>
+
+        <div class="hero-center">
+          <div class="hero-copy">
+            <div data-reveal="1">
+              <h1 class="hero-title">
+                Descubra quanto você pode liberar com seu imóvel
+                <span>em menos de 30 segundos</span>
+              </h1>
+            </div>
+            <p class="hero-subtitle" data-reveal="2">
+              Simule agora e veja as condições disponíveis para o seu perfil com as melhores taxas do mercado.
+            </p>
+            <div class="hero-actions" data-reveal="3">
+              <a class="button button-large" href="#simulador">Simular agora</a>
+              <div class="trust-badges" aria-label="Selos de confiança">
+                <span class="badge">Sem consulta ao SPC/Serasa</span>
+                <span class="badge">100% gratuito</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section simulation" id="simulador">
+        <div class="shell simulation-grid">
+          <div data-reveal>
+            <h2 class="eyebrow-title">Simulação rápida</h2>
+            <p class="section-copy">Simule sua parcela agora / Sem compromisso. Resultado na hora.</p>
+            <div class="feature-list" aria-label="Benefícios da simulação">
+              <div class="feature-item">
+                <img src="assets/landing-check-online.svg" alt="" />
+                <span>Processo 100% online e seguro</span>
+              </div>
+              <div class="feature-item">
+                <img src="assets/landing-check-rates.svg" alt="" />
+                <span>As menores taxas de juros do Brasil</span>
+              </div>
+              <div class="feature-item">
+                <img src="assets/landing-check-bank.svg" alt="" />
+                <span>Aprovado pelo Banco Central</span>
+              </div>
+            </div>
+          </div>
+
+          <form class="form-card" id="simulation-form" data-reveal>
+            <div class="field">
+              <label>Tipo de imóvel</label>
+              <div class="segmented" role="radiogroup" aria-label="Tipo de imóvel">
+                <button class="seg-option is-active" type="button" data-value="Casa" aria-pressed="true">Casa</button>
+                <button class="seg-option" type="button" data-value="Apartamento" aria-pressed="false">Apartamento</button>
+                <button class="seg-option" type="button" data-value="Comercial" aria-pressed="false">Comercial</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="property-value">Valor do imóvel</label>
+              <input class="input money" id="property-value" name="propertyValue" value="R$ 500.000,00" inputmode="numeric" />
+            </div>
+
+            <div class="toggle-row">
+              <span class="inline-label">Seu imóvel está quitado?</span>
+              <div class="toggle" role="radiogroup" aria-label="Seu imóvel está quitado?">
+                <button class="toggle-option is-active" type="button" data-toggle="paid" data-value="Sim" aria-pressed="true">Sim</button>
+                <button class="toggle-option" type="button" data-toggle="paid" data-value="Não" aria-pressed="false">Não</button>
+              </div>
+            </div>
+
+            <div class="toggle-row">
+              <span class="inline-label">Documentação regularizada?</span>
+              <div class="toggle" role="radiogroup" aria-label="Documentação regularizada?">
+                <button class="toggle-option is-active" type="button" data-toggle="docs" data-value="Sim" aria-pressed="true">Sim</button>
+                <button class="toggle-option" type="button" data-toggle="docs" data-value="Não" aria-pressed="false">Não</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="credit-value">Valor desejado</label>
+              <input class="input money" id="credit-value" name="creditValue" value="R$ 200.000,00" inputmode="numeric" />
+            </div>
+
+            <button class="button button-full" type="submit">Ver minha simulação</button>
+            <p class="message" id="form-message">Vamos abrir o WhatsApp com os dados da sua simulação.</p>
+          </form>
+        </div>
+      </section>
+
+      <section class="section testimonials" id="produtos">
+        <div class="shell">
+          <div class="center-title" data-reveal>
+            <h2 class="section-title">Quem já fez, aprova</h2>
+            <p class="section-copy">Clientes que transformaram seu imóvel em oportunidade.</p>
+          </div>
+          <div class="testimonial-grid">
+            <article class="testimonial-card" data-reveal>
+              <div class="testimonial-head">
+                <div class="avatar">R</div>
+                <div class="person">
+                  <strong>Raquel Silva</strong>
+                  <span>Porto Alegre-RS</span>
+                </div>
+                <div class="stars" aria-label="5 estrelas">
+                  <img src="assets/landing-star.png" alt="" /><img src="assets/landing-star.png" alt="" /><img src="assets/landing-star.png" alt="" /><img src="assets/landing-star.png" alt="" /><img src="assets/landing-star.png" alt="" />
+                </div>
+              </div>
+              <p class="quote">"Olá, a minha experiência com a InspiraCred está sendo satisfatória. Tive um retorno muito rápido!"</p>
+            </article>
+            <article class="testimonial-card" data-reveal>
+              <div class="testimonial-head">
+                <div class="avatar">R</div>
+                <div class="person">
+                  <strong>Regina Couto</strong>
+                  <span>Niterói-RJ</span>
+                </div>
+                <div class="stars" aria-label="5 estrelas">
+                  <img src="assets/landing-star.png" alt="" /><img src="assets/landing-star.png" alt="" /><img src="assets/landing-star.png" alt="" /><img src="assets/landing-star.png" alt="" /><img src="assets/landing-star.png" alt="" />
+                </div>
+              </div>
+              <p class="quote">"A InspiraCred é uma empresa com atendimento bem humanizado e especializado. Recomendo."</p>
+            </article>
+            <article class="testimonial-card" data-reveal>
+              <div class="testimonial-head">
+                <div class="avatar">E</div>
+                <div class="person">
+                  <strong>Eliana Paula</strong>
+                  <span>Belo Horizonte-MG</span>
+                </div>
+                <div class="stars" aria-label="5 estrelas">
+                  <img src="assets/landing-star.png" alt="" /><img src="assets/landing-star.png" alt="" /><img src="assets/landing-star.png" alt="" /><img src="assets/landing-star.png" alt="" /><img src="assets/landing-star.png" alt="" />
+                </div>
+              </div>
+              <p class="quote">"Excelente atendimento com agilidade e assessoria especializada para o meu perfil."</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section benefits" id="duvidas">
+        <div class="shell">
+          <div class="center-title" data-reveal>
+            <h2 class="section-title">Fale agora com um especialista</h2>
+            <div class="section-rule"></div>
+          </div>
+          <div class="benefit-grid">
+            <article class="benefit" data-reveal>
+              <div class="benefit-icon"><img src="assets/landing-benefit-profile.svg" alt="" /></div>
+              <div>
+                <h3>Análise personalizada do seu perfil</h3>
+                <p>Seu caso é avaliado por um especialista antes de qualquer proposta formal ser enviada.</p>
+              </div>
+            </article>
+            <article class="benefit" data-reveal>
+              <div class="benefit-icon"><img src="assets/landing-benefit-conditions.svg" alt="" /></div>
+              <div>
+                <h3>Acesso às melhores condições</h3>
+                <p>Comparamos diversas instituições financeiras para encontrar as taxas que cabem no seu bolso.</p>
+              </div>
+            </article>
+            <article class="benefit" data-reveal>
+              <div class="benefit-icon"><img src="assets/landing-benefit-secure.svg" alt="" /></div>
+              <div>
+                <h3>Processo seguro e regulamentado</h3>
+                <p>Operações realizadas com instituições financeiras autorizadas pelo Banco Central do Brasil.</p>
+              </div>
+            </article>
+          </div>
+          <div class="benefit-action" data-reveal>
+            <a class="button pill-button" href="https://wa.me/5521977340731?text=Ol%C3%A1,%20vim%20da%20simula%C3%A7%C3%A3o%20da%20InspiraCred%20e%20quero%20falar%20com%20um%20especialista." target="_blank" rel="noopener noreferrer">Falar com especialista</a>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <div class="footer-top">
+          <div class="footer-brand">
+            <img class="logo" src="assets/landing-logo-ref.png" alt="InspiraCred" />
+            <div class="company">
+              <strong>INSPIRA SOLUÇÕES E NEGÓCIOS LTDA</strong>
+              <span>CNPJ: 49.247.378/0001-83 | Niterói/RJ</span>
+            </div>
+            <div class="seals">
+              <img src="assets/landing-seal-reclame.png" alt="Empresa verificada no Reclame Aqui" />
+              <img src="assets/landing-seal-aneps.png" alt="Selo ANEPS" />
+            </div>
+          </div>
+
+          <div class="footer-columns">
+            <div class="footer-col">
+              <h3>Contato</h3>
+              <ul class="contact-list">
+                <li class="contact-item"><img src="assets/landing-map.svg" alt="" /> R. Mem de Sá, 19 - Icaraí, Niterói - RJ</li>
+                <li class="contact-item"><img src="assets/landing-mail.svg" alt="" /> contato@inspiracred.com.br</li>
+                <li class="contact-item"><img src="assets/landing-phone.svg" alt="" /> (21) 97734-0731</li>
+              </ul>
+            </div>
+            <div class="footer-col company-menu">
+              <h3>Empresa</h3>
+              <ul class="company-links">
+                <li>Sobre nós</li>
+                <li>Carreiras</li>
+                <li>Blog</li>
+                <li>Imprensa</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer-bottom">
+          <div class="footer-legal">
+            <p class="disclaimer">
+              InspiraCred não é uma instituição financeira e não realiza operações de crédito diretamente. Atuamos como correspondente bancário para facilitar o acesso ao crédito de forma segura e transparente junto aos nossos parceiros homologados.
+            </p>
+            <div class="legal-links">
+              <a href="ref/fe3ad243-8f41-4056-939b-fe087b3244cc~/pages/politica-de-privacidade.html">Política de Privacidade</a>
+              <a href="ref/fe3ad243-8f41-4056-939b-fe087b3244cc~/pages/termos-de-uso.html">Termos de Uso</a>
+            </div>
+          </div>
+        </div>
+      </footer>
+    </main>
+
+    <script>
+      const state = {
+        propertyType: "Casa",
+        paid: "Sim",
+        docs: "Sim"
+      };
+
+      const formatCurrency = (value) => {
+        const digits = value.replace(/\D/g, "");
+        const cents = Number(digits || "0") / 100;
+        return cents.toLocaleString("pt-BR", {
+          style: "currency",
+          currency: "BRL"
+        });
+      };
+
+      window.addEventListener("load", () => {
+        document.body.classList.remove("loading");
+      });
+
+      document.querySelectorAll("[data-reveal]").forEach((element) => {
+        if (element.closest(".hero")) return;
+        const observer = new IntersectionObserver(
+          ([entry]) => {
+            if (entry.isIntersecting) {
+              element.classList.add("is-visible");
+              observer.disconnect();
+            }
+          },
+          { threshold: 0.18 }
+        );
+        observer.observe(element);
+      });
+
+      document.querySelectorAll(".money").forEach((input) => {
+        input.addEventListener("input", () => {
+          input.value = formatCurrency(input.value);
+        });
+      });
+
+      document.querySelectorAll(".seg-option").forEach((button) => {
+        button.addEventListener("click", () => {
+          document.querySelectorAll(".seg-option").forEach((item) => {
+            item.classList.remove("is-active");
+            item.setAttribute("aria-pressed", "false");
+          });
+          button.classList.add("is-active");
+          button.setAttribute("aria-pressed", "true");
+          state.propertyType = button.dataset.value;
+        });
+      });
+
+      document.querySelectorAll(".toggle-option").forEach((button) => {
+        button.addEventListener("click", () => {
+          const group = button.dataset.toggle;
+          document.querySelectorAll(`.toggle-option[data-toggle="${group}"]`).forEach((item) => {
+            item.classList.remove("is-active");
+            item.setAttribute("aria-pressed", "false");
+          });
+          button.classList.add("is-active");
+          button.setAttribute("aria-pressed", "true");
+          state[group] = button.dataset.value;
+        });
+      });
+
+      document.getElementById("simulation-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const propertyValue = document.getElementById("property-value").value;
+        const creditValue = document.getElementById("credit-value").value;
+        const message = [
+          "Olá, vim da página de simulação da InspiraCred.",
+          `Tipo de imóvel: ${state.propertyType}`,
+          `Valor do imóvel: ${propertyValue}`,
+          `Imóvel quitado: ${state.paid}`,
+          `Documentação regularizada: ${state.docs}`,
+          `Valor desejado: ${creditValue}`
+        ].join("\n");
+        document.getElementById("form-message").classList.add("is-visible");
+        window.open(`https://wa.me/5521977340731?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+      });
+    </script>
+  </body>
+</html>
