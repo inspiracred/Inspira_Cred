@@ -59,6 +59,7 @@ input {
   color: #fff;
   background: var(--blue);
   isolation: isolate;
+  overflow: hidden;
 }
 
 .hero::before,
@@ -70,10 +71,7 @@ input {
 }
 
 .hero::before {
-  background-image: url("../img/landing-hero-desktop.png");
-  background-position: center;
-  background-size: cover;
-  animation: heroDrift 18s ease-in-out infinite alternate;
+  display: none;
 }
 
 .hero::after {
@@ -85,6 +83,48 @@ input {
       rgba(11, 45, 114, 0.8) 48%,
       rgba(11, 45, 114, 0.96) 100%
     );
+}
+
+.hero-slides {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  overflow: hidden;
+  background: var(--blue);
+}
+
+.hero-slide {
+  position: absolute;
+  inset: 0;
+  display: block;
+  opacity: 0;
+  animation: heroSlide 24s linear infinite;
+}
+
+.hero-slide-1 {
+  opacity: 1;
+}
+
+.hero-slide-2 {
+  animation-delay: 6s;
+}
+
+.hero-slide-3 {
+  animation-delay: 12s;
+}
+
+.hero-slide-4 {
+  animation-delay: 18s;
+}
+
+.hero-slide img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  object-position: center;
+  animation: heroPulse 6s ease-in-out infinite;
+  transform-origin: center;
 }
 
 .nav {
@@ -665,12 +705,30 @@ input {
   }
 }
 
-@keyframes heroDrift {
-  from {
-    transform: scale(1.02);
+@keyframes heroSlide {
+  0%,
+  22% {
+    opacity: 1;
   }
-  to {
+  25%,
+  97% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes heroPulse {
+  0%,
+  100% {
+    transform: scale(1.02) translateY(0);
+  }
+  48% {
     transform: scale(1.08) translateY(-8px);
+  }
+  86% {
+    transform: scale(1.02) translateY(0);
   }
 }
 
@@ -683,8 +741,8 @@ input {
     height: 680px;
   }
 
-  .hero::before {
-    background-position: center;
+  .hero-slide img {
+    object-position: center;
   }
 
   .nav {
@@ -799,8 +857,8 @@ input {
     height: 640px;
   }
 
-  .hero::before {
-    background-position: center top;
+  .hero-slide img {
+    object-position: center top;
   }
 
   .nav {
@@ -1010,6 +1068,23 @@ input {
 
   [data-reveal] {
     opacity: 1;
+    transform: none;
+  }
+
+  .hero-slide,
+  .hero-slide img {
+    animation: none !important;
+  }
+
+  .hero-slide {
+    opacity: 0;
+  }
+
+  .hero-slide-1 {
+    opacity: 1;
+  }
+
+  .hero-slide img {
     transform: none;
   }
 }
