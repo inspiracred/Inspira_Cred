@@ -1,0 +1,13 @@
+name = "inspiracred-analytics"
+main = "worker.js"
+compatibility_date = "2026-07-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "inspiracred-analytics"
+database_id = "5a9cb8df-7f2d-4a40-b39f-3c6f498c720b"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "3b597f3a485b4ce29ba131f34f0474c0"

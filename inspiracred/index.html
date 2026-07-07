@@ -503,6 +503,9 @@
             window.fbq("track", "ViewContent");
           }
         } catch {}
+        try {
+          if (window.inspiraTrack) window.inspiraTrack.event("simulation_start");
+        } catch {}
       };
 
       const trackComplete = (propertyValue, creditValue) => {
@@ -525,6 +528,13 @@
               tipo_imovel: state.propertyType.toLowerCase()
             });
           }
+        } catch {}
+        try {
+          if (window.inspiraTrack) window.inspiraTrack.event("simulation_complete", {
+            valor_credito: creditValue,
+            valor_imovel: propertyValue,
+            tipo_imovel: state.propertyType.toLowerCase()
+          });
         } catch {}
       };
 
@@ -810,6 +820,16 @@
             window.fbq("track", "CompleteRegistration");
           }
         } catch {}
+        try {
+          if (window.inspiraTrack && lastSimulation) window.inspiraTrack.lead(Object.assign({
+            name: name,
+            phone: "+55" + phone.replace(/\D/g, ""),
+            property_type: lastSimulation.propertyType.toLowerCase(),
+            property_value: lastSimulation.propertyValue,
+            credit_value: lastSimulation.creditValue,
+            source: "landing_page"
+          }, getUtmParams()));
+        } catch {}
         elements.leadSuccess.scrollIntoView({ behavior: "smooth", block: "center" });
       });
 
@@ -818,5 +838,8 @@
         setTimeout(() => window.location.reload(), 50);
       });
     </script>
+
+    <script>window.IC_PAGE = "landing_page";</script>
+    <script src="assets/js/track.js" defer></script>
   </body>
 </html>

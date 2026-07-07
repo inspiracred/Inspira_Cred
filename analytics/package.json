@@ -1,0 +1,14 @@
+{
+  "name": "inspiracred-analytics",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Worker de analytics + dashboard do InspiraCred (Cloudflare Workers + D1 + KV)",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "schema": "wrangler d1 execute inspiracred-analytics --remote --file=schema.sql",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4.107.0"
+  }
+}

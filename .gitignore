@@ -1,3 +1,8 @@
 ref/
 referencia/
 referência/
+
+# Tooling e segredos — NÃO versionar
+node_modules/
+.wrangler/
+.claude/
