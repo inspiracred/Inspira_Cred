@@ -6,7 +6,7 @@
  *   <script src="assets/js/track.js" defer></script>
  */
 (function () {
-  var ENDPOINT = "https://inspiracred-analytics.huedsonneto.workers.dev/track";
+  var ENDPOINT = "https://nova.inspiracred.com.br/analytics/track";
   var PAGE = window.IC_PAGE || "other";
   var KEY = "ic_sid";
 
@@ -22,11 +22,10 @@
     if (!payload.page_name) payload.page_name = PAGE;
     try {
       var body = JSON.stringify(payload);
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(ENDPOINT, new Blob([body], { type: "application/json" }));
-      } else {
-        fetch(ENDPOINT, { method: "POST", headers: { "Content-Type": "application/json" }, body: body, keepalive: true });
-      }
+      // text/plain evita preflight CORS em requisições cross-subdomain (links/bio -> nova)
+      var blob = new Blob([body], { type: "text/plain;charset=UTF-8" });
+      if (navigator.sendBeacon && navigator.sendBeacon(ENDPOINT, blob)) return;
+      fetch(ENDPOINT, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: body, keepalive: true, mode: "cors" });
     } catch (e) {}
   }
 
