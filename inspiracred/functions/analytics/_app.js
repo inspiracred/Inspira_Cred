@@ -254,6 +254,7 @@ const DASHBOARD_HTML = `<!doctype html>
     </select>
     <select id="rangeSel"><option value="7">Últimos 7 dias</option><option value="30" selected>Últimos 30 dias</option><option value="90">Últimos 90 dias</option></select>
     <button id="refresh">Atualizar</button>
+    <button id="openPage" title="Abrir a página selecionada em nova aba">Abrir página ↗</button>
   </div>
 </header>
 <div class="wrap">
@@ -285,20 +286,30 @@ const DASHBOARD_HTML = `<!doctype html>
 <script>
 var dailyChart=null, sourcesChart=null, clickCharts=[], lastLeads=[];
 var PAGE_LABELS={landing_page:"Landing (Simulação)",link_bio:"Link na bio",bio_test:"Bio (teste)",other:"Outras"};
+var PAGE_URLS={landing_page:"https://nova.inspiracred.com.br/",link_bio:"https://links.inspiracred.com.br/",bio_test:"https://nova.inspiracred.com.br/bio/"};
 function pretty(n){return (n==null||n===""?"-":String(n))}
 function label(p){return PAGE_LABELS[p]||p}
 function daysAgo(n){return new Date(Date.now()-n*864e5).toISOString().slice(0,10)}
 function brl(v){if(v==null)return"-";return "R$ "+Number(v).toLocaleString("pt-BR")}
 function currentPage(){return document.getElementById("pageSel").value}
 
+function setLoading(on){var b=document.getElementById("refresh");b.disabled=on;b.textContent=on?"Atualizando…":"Atualizar";}
+function updateOpenBtn(){var b=document.getElementById("openPage");if(PAGE_URLS[currentPage()]){b.style.display="";}else{b.style.display="none";}}
 function loadAll(){
   var days=document.getElementById("rangeSel").value;
   var page=currentPage();
   var pageQ=(page&&page!=="all")?"&page="+encodeURIComponent(page):"";
   var qs="?start="+daysAgo(parseInt(days)-1)+"&end="+new Date().toISOString().slice(0,10);
-  document.getElementById("scope").innerHTML="Exibindo: <b>"+(page==="all"?"Todas as páginas":label(page))+"</b> · últimos "+days+" dias";
-  fetch("${API}/overview"+qs+pageQ).then(function(r){return r.json()}).then(render).catch(function(e){console.error(e)});
-  fetch("${API}/leads?limit=500"+pageQ).then(function(r){return r.json()}).then(renderLeads).catch(function(e){console.error(e)});
+  updateOpenBtn();
+  setLoading(true);
+  var scopeTxt="Exibindo: <b>"+(page==="all"?"Todas as páginas":label(page))+"</b> · últimos "+days+" dias";
+  document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--mut)">carregando…</span>';
+  var p1=fetch("${API}/overview"+qs+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(render);
+  var p2=fetch("${API}/leads?limit=500"+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderLeads);
+  Promise.all([p1,p2]).then(function(){
+    document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--green)">atualizado às '+new Date().toLocaleTimeString("pt-BR")+'</span>';
+  }).catch(function(e){console.error(e);document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:#e0568b">erro ao carregar</span>';})
+  .then(function(){setLoading(false);});
 }
 
 function render(d){
@@ -317,7 +328,7 @@ function renderPages(pages,clicks){
   clickCharts.forEach(function(c){c.destroy()}); clickCharts=[];
   var box=document.getElementById("pages");
   if(!pages.length){box.innerHTML='<div class="empty">Sem dados ainda. Assim que houver acessos, aparece aqui.</div>';return}
-  box.innerHTML=pages.map(function(p,i){return '<div class="pagecard"><div class="head"><span class="pname">'+label(p.page_name)+'</span><span class="pstats">'+p.views+' views · '+p.uniques+' únicos · '+p.forms+' forms</span></div><canvas id="clk'+i+'" height="150"></canvas></div>'}).join("");
+  box.innerHTML=pages.map(function(p,i){var pl=PAGE_URLS[p.page_name]?' <a href="'+PAGE_URLS[p.page_name]+'" target="_blank" rel="noopener" title="Abrir esta página" style="color:var(--accent);text-decoration:none;font-size:12px">↗ abrir</a>':'';return '<div class="pagecard"><div class="head"><span class="pname">'+label(p.page_name)+pl+'</span><span class="pstats">'+p.views+' views · '+p.uniques+' únicos · '+p.forms+' forms</span></div><canvas id="clk'+i+'" height="150"></canvas></div>'}).join("");
   pages.forEach(function(p,i){
     var rows=clicks.filter(function(c){return c.page_name===p.page_name}).slice(0,6);
     var labels=rows.map(function(c){return (c.element_id||c.element_text||"?").slice(0,22)});
@@ -366,6 +377,7 @@ function drawDoughnut(id,labels,data){var ctx=document.getElementById(id);if(sou
 document.getElementById("refresh").addEventListener("click",loadAll);
 document.getElementById("rangeSel").addEventListener("change",loadAll);
 document.getElementById("pageSel").addEventListener("change",loadAll);
+document.getElementById("openPage").addEventListener("click",function(){var u=PAGE_URLS[currentPage()];if(u)window.open(u,"_blank","noopener");});
 document.getElementById("csvBtn").addEventListener("click",exportCSV);
 document.getElementById("modalClose").addEventListener("click",closeModal);
 document.getElementById("leadModal").addEventListener("click",function(e){if(e.target.id==="leadModal")closeModal()});
