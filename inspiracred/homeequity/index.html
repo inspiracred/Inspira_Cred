@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Crédito com Garantia de Imóvel (Home Equity): de R$ 100 mil a R$ 25 milhões, taxas a partir de 1,09% ao mês e até 240 meses para pagar. Use seu imóvel a seu favor sem vendê-lo." />
+    <meta name="theme-color" content="#061a42" />
+    <title>Home Equity | Crédito com Garantia de Imóvel — InspiraCred</title>
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Home Equity | Crédito com Garantia de Imóvel — InspiraCred" />
+    <meta property="og:description" content="Libere de R$ 100 mil a R$ 25 milhões para reorganizar dívidas, investir ou expandir — taxas a partir de 1,09% ao mês e até 240 meses para pagar." />
+    <meta property="og:image" content="img/hero-home.webp" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+
+    <!-- Integrações (GA4, Meta Pixel, RD Station, analytics D1) DESATIVADAS por enquanto.
+         Todo o código e o passo a passo para religar estão em ./INTEGRACOES.md -->
+  </head>
+
+  <body class="loading">
+    <main class="page">
+      <!-- ============ HERO ============ -->
+      <section class="hero" aria-label="Crédito com garantia de imóvel">
+        <img class="hero-bg" src="img/hero-home.webp" alt="" aria-hidden="true" />
+
+        <nav class="nav" aria-label="Navegação principal">
+          <a href="../" aria-label="InspiraCred">
+            <img class="logo" src="../assets/img/landing-logo-ref.png" alt="InspiraCred" />
+          </a>
+          <div class="nav-links">
+            <a href="#acesso">O que você tem acesso</a>
+            <a href="#comparativo">Comparar juros</a>
+            <a href="#ideal">Para quem é</a>
+            <a href="#faq">Dúvidas</a>
+            <a class="button" href="#simular">Simular agora</a>
+          </div>
+        </nav>
+
+        <div class="hero-inner">
+          <div class="hero-copy" data-reveal>
+            <span class="eyebrow on-dark">Crédito com Garantia de Imóvel</span>
+            <h1 class="hero-title">
+              Use seu imóvel a seu favor para <span class="accent">quitar dívidas ou crescer com inteligência</span>
+            </h1>
+            <p class="hero-subtitle">
+              Libere de R$ 100 mil a R$ 25 milhões para reorganizar dívidas, investir ou expandir negócios — com taxas a partir de 1,09% ao mês e até 240 meses para pagar.
+            </p>
+            <div class="hero-actions">
+              <a class="button button-lg" href="#simular">Quero saber se meu imóvel é elegível</a>
+            </div>
+            <div class="hero-trust" aria-label="Selos de confiança">
+              <span class="badge">Imóvel continua no seu nome</span>
+              <span class="badge">100% digital</span>
+              <span class="badge">Sem compromisso</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ SIMULAÇÃO / FORM (transborda o hero) ============ -->
+      <section class="section simulacao" id="simular">
+        <div class="shell">
+          <div class="form-shell" data-reveal>
+            <form class="form-card is-dark form-floating" id="lead-form" novalidate>
+              <div class="form-head">
+                <h3>Simulação gratuita</h3>
+                <p class="sub">Preencha e um especialista entra em contato. Sem compromisso.</p>
+              </div>
+              <div class="form-rows">
+                <div class="form-row form-row-3">
+                  <div class="field">
+                    <label for="f-nome">Nome completo <span class="req">*</span></label>
+                    <input class="input" id="f-nome" name="nome" type="text" placeholder="Digite seu nome completo" autocomplete="name" />
+                    <p class="field-error" data-error="nome"></p>
+                  </div>
+                  <div class="field">
+                    <label for="f-email">Email <span class="opt">(opcional)</span></label>
+                    <input class="input" id="f-email" name="email" type="email" placeholder="Digite seu email" autocomplete="email" />
+                    <p class="field-error" data-error="email"></p>
+                  </div>
+                  <div class="field">
+                    <label for="f-celular">Celular <span class="req">*</span></label>
+                    <div class="phone-field">
+                      <span class="phone-prefix"><span class="flag">🇧🇷</span> +55</span>
+                      <input class="input" id="f-celular" name="celular" type="tel" inputmode="tel" placeholder="(DDD) + celular" autocomplete="tel" />
+                    </div>
+                    <p class="field-error" data-error="celular"></p>
+                  </div>
+                </div>
+                <div class="form-row form-row-4">
+                  <div class="field">
+                    <label for="f-valor-emp">Valor de empréstimo desejado <span class="req">*</span></label>
+                    <input class="input money" id="f-valor-emp" name="valor_emprestimo" type="text" inputmode="numeric" placeholder="Mínimo R$ 100.000" />
+                    <p class="field-error" data-error="valor_emprestimo"></p>
+                  </div>
+                  <div class="field">
+                    <label for="f-tipo">Tipo de imóvel <span class="req">*</span></label>
+                    <select class="select" id="f-tipo" name="tipo_imovel">
+                      <option value="" disabled selected>Selecione</option>
+                      <option value="Residencial">Residencial</option>
+                      <option value="Comercial">Comercial</option>
+                      <option value="Industrial">Industrial</option>
+                      <option value="Rural">Rural</option>
+                    </select>
+                    <p class="field-error" data-error="tipo_imovel"></p>
+                  </div>
+                  <div class="field">
+                    <label for="f-situacao">Situação atual do imóvel <span class="req">*</span></label>
+                    <select class="select" id="f-situacao" name="situacao_imovel">
+                      <option value="" disabled selected>Selecione</option>
+                      <option value="Quitado">Quitado</option>
+                      <option value="Financiado">Financiado</option>
+                    </select>
+                    <p class="field-error" data-error="situacao_imovel"></p>
+                  </div>
+                  <div class="field">
+                    <label for="f-valor-imovel">Valor aproximado do imóvel <span class="req">*</span></label>
+                    <input class="input money" id="f-valor-imovel" name="valor_imovel" type="text" inputmode="numeric" placeholder="Valor mínimo R$ 450.000" />
+                    <p class="field-error" data-error="valor_imovel"></p>
+                  </div>
+                </div>
+              </div>
+              <p class="form-message" id="form-message"></p>
+              <div class="form-foot">
+                <div class="form-foot-left">
+                  <button class="button button-lg form-submit-btn" type="submit">Enviar</button>
+                  <p class="form-note">Ao enviar, você concorda com nossa <a href="../ref/fe3ad243-8f41-4056-939b-fe087b3244cc~/pages/politica-de-privacidade.html">Política de Privacidade</a>.</p>
+                </div>
+                <div class="form-trust">
+                  <span><svg class="tr-lock" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Dados criptografados</span>
+                  <span><svg class="tr-shield" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>Sem consulta ao SPC/Serasa</span>
+                </div>
+              </div>
+            </form>
+
+            <div class="form-card is-dark form-success is-hidden" id="form-success">
+              <span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+              <h3>Recebemos seus dados!</h3>
+              <p>Um especialista da InspiraCred vai entrar em contato em breve com as melhores condições para o seu perfil.</p>
+            </div>
+          </div>
+
+          <div class="simulacao-intro">
+            <div class="simulacao-copy" data-reveal>
+              <span class="eyebrow">Simule agora</span>
+              <h2 class="section-title">Descubra quanto de crédito seu imóvel pode liberar</h2>
+              <p class="section-copy">
+                Se você tem um imóvel em seu nome, pode usar esse patrimônio a seu favor — sem vendê-lo, sem burocracia e com taxas muito menores do que qualquer empréstimo tradicional.
+              </p>
+            </div>
+            <div class="feature-list" data-reveal data-stagger>
+              <div class="feature-item">
+                <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+                <span>Processo 100% digital e seguro</span>
+              </div>
+              <div class="feature-item">
+                <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+                <span>Uma das menores taxas do mercado</span>
+              </div>
+              <div class="feature-item">
+                <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+                <span>Intermediação com bancos regulados pelo BC</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ O QUE VOCÊ VAI TER ACESSO (cards flutuantes) ============ -->
+      <section class="section acesso" id="acesso">
+        <div class="floating-stage" data-floating>
+          <div class="floating-center" data-reveal>
+            <span class="eyebrow">O que você vai ter acesso</span>
+            <h2 class="section-title">Crédito estruturado,<br />do seu jeito</h2>
+            <p class="section-copy">Condições pensadas para quem quer resolver a<br class="br-lg" />vida financeira com inteligência, não no improviso.</p>
+          </div>
+
+          <div class="float-card fc-1" data-dx="-140" data-dy="-95" data-rot="-7">
+            <span class="fc-ic fc-ic-orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
+            <div class="fc-text"><strong>Crédito de R$ 100 mil a R$ 25 milhões</strong><span>Do micro ao macro</span></div>
+          </div>
+          <div class="float-card fc-2" data-dx="-180" data-dy="15" data-rot="-5">
+            <span class="fc-ic fc-ic-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg></span>
+            <div class="fc-text"><strong>Taxas a partir de 1,09% ao mês + IPCA</strong><span>Custo que cabe no bolso</span></div>
+          </div>
+          <div class="float-card fc-3" data-dx="-120" data-dy="105" data-rot="6">
+            <span class="fc-ic fc-ic-purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+            <div class="fc-text"><strong>Até 240 meses para pagar</strong><span>20 anos de fôlego</span></div>
+          </div>
+          <div class="float-card fc-4" data-dx="140" data-dy="-95" data-rot="7">
+            <span class="fc-ic fc-ic-pink"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>
+            <div class="fc-text"><strong>Possível mesmo com imóvel financiado</strong><span>Seu imóvel, suas regras</span></div>
+          </div>
+          <div class="float-card fc-5" data-dx="180" data-dy="15" data-rot="5">
+            <span class="fc-ic fc-ic-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg></span>
+            <div class="fc-text"><strong>Uso livre: quitar, investir, reformar, expandir</strong><span>Você decide o destino</span></div>
+          </div>
+          <div class="float-card fc-6" data-dx="140" data-dy="105" data-rot="-6">
+            <span class="fc-ic fc-ic-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg></span>
+            <div class="fc-text"><strong>Processo 100% digital com consultoria</strong><span>Ágil do início ao fim</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ COMPARATIVO DE JUROS ============ -->
+      <section class="section comparativo" id="comparativo">
+        <div class="shell center" data-reveal>
+          <span class="eyebrow">Comparativo de juros</span>
+          <h2 class="section-title">O valor da <span class="accent">economia</span></h2>
+          <p class="section-copy">Juros aproximados ao mês. Veja o tamanho da diferença entre o Home Equity e as demais opções do mercado.</p>
+        </div>
+        <div class="shell chart">
+          <div class="bar-row is-best">
+            <div class="bar-label">
+              <strong>Crédito com Garantia (Home Equity)</strong>
+              <span>Uma das menores taxas do mercado, usando o imóvel como garantia.</span>
+              <span class="bar-tag">Menor taxa</span>
+            </div>
+            <div class="bar-track"><div class="bar-fill" style="background:#f97316" data-w="8"></div></div>
+            <div class="bar-value" data-value="1,09">1,09%</div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label"><strong>Crédito Consignado</strong><span>Taxas menores, porém restrito a aposentados, pensionistas ou servidores.</span></div>
+            <div class="bar-track"><div class="bar-fill" data-w="25"></div></div>
+            <div class="bar-value" data-value="3,5">3,5%</div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label"><strong>Empréstimo Pessoal Tradicional</strong><span>Taxas significativamente maiores por não possuir garantia.</span></div>
+            <div class="bar-track"><div class="bar-fill" data-w="46"></div></div>
+            <div class="bar-value" data-value="6,5">6,5%</div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label"><strong>Cheque Especial</strong><span>Altíssima taxa de juros, usada apenas para emergências financeiras.</span></div>
+            <div class="bar-track"><div class="bar-fill" data-w="96"></div></div>
+            <div class="bar-value" data-value="13,5">13,5%</div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label"><strong>Cartão de Crédito Rotativo</strong><span>Uma das taxas mais altas do mercado, podendo gerar dívidas rapidamente.</span></div>
+            <div class="bar-track"><div class="bar-fill" data-w="100"></div></div>
+            <div class="bar-value" data-value="14">14%</div>
+          </div>
+        </div>
+        <p class="foot shell" data-reveal><strong>Economize milhares de reais</strong> ao substituir juros abusivos por estratégia financeira real.</p>
+      </section>
+
+      <!-- ============ POR QUE ESCOLHER / SEGURANÇA ============ -->
+      <section class="section porque">
+        <div class="shell porque-grid">
+          <div class="porque-media" data-reveal>
+            <div class="pq-top">
+              <div class="pq-logo-card"><img src="img/logo-inspira.png" alt="InspiraCred" /></div>
+              <div class="pq-photo pq-handshake"><img src="img/handshake.webp" alt="Aperto de mãos — parceria segura" loading="lazy" /></div>
+            </div>
+            <div class="pq-photo pq-mansion"><img src="img/mansao2.jpg" alt="Imóvel residencial de alto padrão" loading="lazy" /></div>
+          </div>
+          <div class="porque-body" data-reveal>
+            <span class="eyebrow">Por que escolher a InspiraCred</span>
+            <h2 class="section-title">Segurança em cada etapa da sua operação</h2>
+            <ul class="porque-list" data-stagger>
+              <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>Você continua sendo dono do imóvel</li>
+              <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>Crédito possível mesmo com imóvel ainda financiado</li>
+              <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>Operações para PF, PJ ou composição mista</li>
+              <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>Consultoria especializada do início ao fim</li>
+              <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>Intermediação com diversos bancos parceiros</li>
+              <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>Atendimento humano, seguro e orientado</li>
+              <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>Processo organizado e 100% online</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ PARA QUEM É IDEAL ============ -->
+      <section class="section ideal" id="ideal">
+        <div class="shell center" data-reveal>
+          <span class="eyebrow">Para quem é ideal</span>
+          <h2 class="section-title">Esse crédito é perfeito para você que…</h2>
+        </div>
+        <div class="shell ideal-grid" data-stagger>
+          <div class="ideal-card"><span class="ideal-num">1</span><p>Tem imóvel próprio quitado ou financiado (avaliado)</p></div>
+          <div class="ideal-card"><span class="ideal-num">2</span><p>Está pagando juros altos e quer reorganizar a vida financeira</p></div>
+          <div class="ideal-card"><span class="ideal-num">3</span><p>É empresário ou profissional liberal buscando capital para expandir ou investir</p></div>
+          <div class="ideal-card"><span class="ideal-num">4</span><p>Quer reformar, viajar, investir ou planejar o futuro com inteligência</p></div>
+          <div class="ideal-card"><span class="ideal-num">5</span><p>Busca uma solução real e estruturada, não emergencial</p></div>
+        </div>
+      </section>
+
+      <!-- ============ OFERTA / EXEMPLO PRÁTICO ============ -->
+      <section class="section oferta">
+        <div class="shell">
+          <div class="oferta-card" data-reveal>
+            <div>
+              <span class="eyebrow on-dark">Exemplo prático</span>
+              <h2 class="section-title">Como fica no <span class="accent">bolso</span></h2>
+              <div class="oferta-price">
+                <small>Um crédito de R$ 200.000 pode ter parcelas a partir de</small>
+                <strong>R$ 2.300<span style="font-size:20px">/mês</span></strong>
+                <span>Menos de R$ 77 por dia, com total segurança e juros justos.</span>
+              </div>
+              <a class="button button-lg" href="#simular">Quero saber se meu imóvel é elegível</a>
+            </div>
+            <div>
+              <ul class="oferta-list">
+                <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>Ofertas exclusivas para quem contratar agora</li>
+                <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>Comece a pagar em até 90 dias</li>
+                <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>Análise gratuita e personalizada</li>
+                <li><span class="check"><svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>Acompanhamento com especialista desde o primeiro contato</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ GARANTIA 7 DIAS ============ -->
+      <section class="section garantia">
+        <div class="shell-narrow" style="width: min(100% - 40px, 980px)">
+          <div class="garantia-inner" data-reveal>
+            <img class="garantia-selo" src="img/selo-garantia-7dias.png" alt="Selo de garantia de 7 dias" loading="lazy" />
+            <div class="garantia-text">
+              <h2>Garantia de 7 dias</h2>
+              <p>Você conta com <strong>7 dias de garantia</strong> após o início da análise. Caso a proposta não se encaixe ao seu perfil, você pode cancelar <strong>sem custo e sem compromisso</strong>.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 3 MOTIVOS (com fotos) ============ -->
+      <section class="section motivos">
+        <div class="shell center" data-reveal>
+          <span class="eyebrow">3 motivos para fazer agora</span>
+          <h2 class="section-title">Por que não deixar para depois</h2>
+        </div>
+        <div class="shell motivos-grid" data-stagger>
+          <article class="motivo">
+            <img src="img/motivo-1.webp" alt="" loading="lazy" />
+            <div class="motivo-overlay"><span class="motivo-n">1</span><p>Troque juros abusivos por inteligência financeira.</p></div>
+          </article>
+          <article class="motivo">
+            <img src="img/motivo-2.webp" alt="" loading="lazy" />
+            <div class="motivo-overlay"><span class="motivo-n">2</span><p>Ganhe fôlego e controle para tirar seus planos do papel.</p></div>
+          </article>
+          <article class="motivo">
+            <img src="img/motivo-3.webp" alt="" loading="lazy" />
+            <div class="motivo-overlay"><span class="motivo-n">3</span><p>Tenha segurança total: o imóvel segue em seu nome e você decide como usar o crédito.</p></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ============ DEPOIMENTOS ============ -->
+      <!-- TODO(integração): substituir por avaliações reais do Google (Google Business / Places API).
+           Por enquanto, depoimentos estáticos abaixo. -->
+      <section class="section depoimentos">
+        <div class="shell center" data-reveal>
+          <span class="eyebrow">Depoimentos</span>
+          <h2 class="section-title">Veja algumas pessoas que confiam na gente</h2>
+        </div>
+        <div class="shell dep-grid" data-stagger>
+          <article class="dep-card">
+            <div class="dep-stars"><img src="../assets/img/landing-star.png" alt="" /><img src="../assets/img/landing-star.png" alt="" /><img src="../assets/img/landing-star.png" alt="" /><img src="../assets/img/landing-star.png" alt="" /><img src="../assets/img/landing-star.png" alt="" /></div>
+            <p class="dep-quote">"Usei o crédito da InspiraCred para quitar dívidas que me tomavam mais de R$ 4 mil por mês. Hoje, pago menos e tenho tranquilidade."</p>
+            <div class="dep-person">
+              <span class="dep-avatar">M</span>
+              <div><strong>Marina S.</strong><span>Psicóloga</span></div>
+            </div>
+          </article>
+          <article class="dep-card">
+            <div class="dep-stars"><img src="../assets/img/landing-star.png" alt="" /><img src="../assets/img/landing-star.png" alt="" /><img src="../assets/img/landing-star.png" alt="" /><img src="../assets/img/landing-star.png" alt="" /><img src="../assets/img/landing-star.png" alt="" /></div>
+            <p class="dep-quote">"Financiei a expansão do meu negócio com taxas muito melhores do que o banco me oferecia. E sem sair de casa!"</p>
+            <div class="dep-person">
+              <span class="dep-avatar">R</span>
+              <div><strong>Rafael D.</strong><span>Empresário</span></div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ============ FAQ ============ -->
+      <section class="section faq" id="faq">
+        <div class="shell-narrow center" data-reveal>
+          <span class="eyebrow">Dúvidas frequentes</span>
+          <h2 class="section-title">Perguntas que todo mundo faz</h2>
+        </div>
+        <div class="shell-narrow faq-list" data-reveal>
+          <div class="faq-item">
+            <button class="faq-q" type="button">Preciso ter o imóvel quitado?<svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+            <div class="faq-a"><p>Não. Imóveis financiados podem ser aceitos, mediante análise de saldo e perfil.</p></div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-q" type="button">O imóvel sai do meu nome?<svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+            <div class="faq-a"><p>Não. A garantia é contratual — você continua dono e morando normalmente.</p></div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-q" type="button">Posso usar o valor para o que quiser?<svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+            <div class="faq-a"><p>Sim. O valor é de uso livre: quitar dívidas, investir, reformar, planejar etc.</p></div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-q" type="button">É muito burocrático?<svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+            <div class="faq-a"><p>Não. Nosso processo é digital, rápido e com apoio humano o tempo todo.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ FOOTER ============ -->
+      <footer class="footer">
+        <div class="shell footer-top">
+          <div class="footer-brand">
+            <img class="logo" src="../assets/img/landing-logo-ref.png" alt="InspiraCred" />
+            <p>Correspondente Bancário autorizado. Intermediadora de crédito com instituições parceiras reguladas pelo Banco Central. Parceiros: Banco Inter S.A., Banco Paulista S.A., Trinus S.A., entre outros. Operações sujeitas à aprovação de crédito.</p>
+            <div class="footer-seals">
+              <img src="../assets/img/landing-seal-reclame.png" alt="Verificada no Reclame Aqui" />
+              <img src="../assets/img/landing-seal-aneps.png" alt="Certificação ANEPS" />
+            </div>
+          </div>
+          <div class="footer-col">
+            <h4>Contato</h4>
+            <ul>
+              <li class="row"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>R. Mem de Sá, 19 - Icaraí, Niterói - RJ, 24220-260</li>
+              <li class="row"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg>contato@inspiracred.com.br</li>
+              <li class="row"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>(21) 97734-0731</li>
+            </ul>
+          </div>
+          <div class="footer-col">
+            <h4>Institucional</h4>
+            <ul>
+              <li><a href="../">Página inicial</a></li>
+              <li><a href="#comparativo">Comparar juros</a></li>
+              <li><a href="#ideal">Para quem é ideal</a></li>
+              <li><a href="#faq">Dúvidas frequentes</a></li>
+            </ul>
+          </div>
+        </div>
+        <div class="shell footer-bottom">
+          <p>© 2026 INSPIRA SOLUÇÕES E NEGÓCIOS LTDA — CNPJ 49.247.378/0001-83. Correspondente Bancário autorizado. Intermediadora de crédito com instituições parceiras reguladas pelo Banco Central. Sede: Niterói/RJ.</p>
+          <div class="footer-legal-links">
+            <a href="../ref/fe3ad243-8f41-4056-939b-fe087b3244cc~/pages/politica-de-privacidade.html">Política de Privacidade</a>
+            <a href="../ref/fe3ad243-8f41-4056-939b-fe087b3244cc~/pages/termos-de-uso.html">Termos e Condições</a>
+          </div>
+        </div>
+      </footer>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
