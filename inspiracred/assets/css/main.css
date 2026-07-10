@@ -730,12 +730,12 @@ input {
 .stars {
   display: flex;
   gap: 2px;
+  color: var(--orange);
 }
 
-.stars img {
-  width: 14px;
-  height: 14px;
-  object-fit: contain;
+.stars svg {
+  width: 16px;
+  height: 16px;
 }
 
 .quote {

@@ -234,7 +234,18 @@
       window.addEventListener("resize", function () { measure(); kick(); });
       measure(); applyCards(); kick();
     } else {
-      stage.classList.add("no-float"); // fallback estático (mobile / reduced-motion)
+      stage.classList.add("no-float");
+      // Mobile: cada card entra inclinado, vindo de um lado, ao rolar (simula o desktop, mas em lista)
+      if (!reduceMotion && window.matchMedia("(max-width: 1023px)").matches && "IntersectionObserver" in window) {
+        var mObs = new IntersectionObserver(function (entries) {
+          entries.forEach(function (e) {
+            if (e.isIntersecting) { e.target.classList.add("is-in"); mObs.unobserve(e.target); }
+          });
+        }, { threshold: 0.25, rootMargin: "0px 0px -12% 0px" });
+        cards.forEach(function (c) { mObs.observe(c); });
+      } else {
+        cards.forEach(function (c) { c.classList.add("is-in"); });
+      }
     }
   }
 
