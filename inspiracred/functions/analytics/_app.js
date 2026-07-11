@@ -127,12 +127,12 @@ async function handleTrack(request, env, cors, context) {
 }
 
 /* ---- RD STATION (CRM do cliente — já em produção; só plugamos as páginas novas) ----
- * Token público, mesma conta onde os leads de hoje já caem (era usado no WP antigo).
+ * Token público (mesma conta onde os leads de hoje já caem, era usado no WP antigo) —
+ * fica em env.RD_STATION_TOKEN (Cloudflare Pages), não hardcoded no código-fonte.
  * `identificador` é próprio de cada página nova — não usado pelas páginas antigas do
  * cliente — pra não misturar relatório. `cf_variante_pagina` marca a origem (redesign
  * em teste A/B) mesmo se o tráfego chegar sem UTM.
  */
-const RD_STATION_TOKEN = "97c41d08ec55d8a13b94684b9e3f2b22";
 const RD_PAGE_CONFIG = {
   landing_page: { identificador: "landing-nova-raiz" },
   home_equity_lp: { identificador: "home-equity-lp" },
@@ -140,11 +140,11 @@ const RD_PAGE_CONFIG = {
 
 async function sendLeadToRD(event, env, leadId) {
   const cfg = RD_PAGE_CONFIG[event.source];
-  if (!cfg) return; // fonte desconhecida — não manda pro RD com identificador genérico
+  if (!cfg || !env.RD_STATION_TOKEN) return; // fonte desconhecida ou token não configurado
 
   const phoneDigits = (event.phone || "").replace(/\D/g, "");
   const payload = {
-    token_rdstation: RD_STATION_TOKEN,
+    token_rdstation: env.RD_STATION_TOKEN,
     identificador: cfg.identificador,
     nome: event.name || undefined,
     email: event.email || (phoneDigits ? `${phoneDigits}@lead.inspiracred.com.br` : undefined),
