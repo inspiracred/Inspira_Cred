@@ -55,6 +55,15 @@ CREATE TABLE IF NOT EXISTS leads (
   utm_campaign   TEXT,
   utm_content    TEXT,
   utm_term       TEXT,
+  -- Atribuição + status de entrega (RD Station / Meta CAPI) — adicionadas out-of-band
+  -- em produção via ALTER TABLE; aqui só pra ambientes novos partirem já corretos.
+  fbp            TEXT,
+  fbc            TEXT,
+  fbclid         TEXT,
+  gclid          TEXT,
+  event_id       TEXT,
+  rd_status      TEXT,
+  meta_status    TEXT,
   created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now'))
 );
 CREATE INDEX IF NOT EXISTS idx_leads_created ON leads (created_at);

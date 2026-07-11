@@ -65,6 +65,17 @@
       if (input) input.classList.remove("is-invalid");
     }
 
+    function getUtmParams() {
+      var params = new URLSearchParams(window.location.search);
+      return {
+        utm_source: params.get("utm_source") || null,
+        utm_medium: params.get("utm_medium") || null,
+        utm_campaign: params.get("utm_campaign") || null,
+        utm_content: params.get("utm_content") || null,
+        utm_term: params.get("utm_term") || null
+      };
+    }
+
     var MIN_EMP = 100000, MIN_IMOVEL = 450000;
 
     function validate(data) {
@@ -100,9 +111,21 @@
       submitBtn.disabled = true;
       submitBtn.textContent = "Enviando...";
 
-      // ⚠️ INTEGRAÇÕES DESATIVADAS por enquanto (envio do lead + tracking).
-      // Todo o código e as instruções para religar estão em ./INTEGRACOES.md
-      // Quando ativar, chame aqui o envio do lead com o objeto `data`.
+      // Envio do lead: nosso analytics D1 grava o lead e dispara pro RD Station
+      // server-side (Pages Function /analytics/track, ver inspiracred/functions/analytics/_app.js).
+      try {
+        if (window.inspiraTrack) {
+          window.inspiraTrack.lead(Object.assign({
+            name: data.nome,
+            phone: "+55" + data.celular.replace(/\D/g, ""),
+            email: data.email || null,
+            property_type: data.tipo_imovel.toLowerCase(),
+            property_value: parseMoney(data.valor_imovel),
+            credit_value: parseMoney(data.valor_emprestimo),
+            source: "home_equity_lp"
+          }, getUtmParams()));
+        }
+      } catch (e) {}
 
       setTimeout(function () {
         form.classList.add("is-hidden");

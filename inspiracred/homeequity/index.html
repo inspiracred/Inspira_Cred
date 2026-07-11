@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="style.css" />
 
-    <!-- Integrações (GA4, Meta Pixel, RD Station, analytics D1) DESATIVADAS por enquanto.
-         Todo o código e o passo a passo para religar estão em ./INTEGRACOES.md -->
+    <!-- RD Station + analytics D1: ativos (server-side, via /analytics/track — ver script.js).
+         Meta Pixel e GA4 ainda DESATIVADOS (Fase 2/3). Passo a passo em ./INTEGRACOES.md -->
   </head>
 
   <body class="loading">
@@ -443,5 +443,8 @@
     </main>
 
     <script src="script.js"></script>
+
+    <script>window.IC_PAGE = "home_equity_lp";</script>
+    <script src="../assets/js/track.js" defer></script>
   </body>
 </html>

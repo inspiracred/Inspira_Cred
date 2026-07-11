@@ -430,8 +430,6 @@
         });
       };
 
-      const normalizeOption = (value) => value === "Sim" ? "sim" : value === "Não" ? "nao" : "";
-
       const calculateInstallment = (amount, monthlyRate) => {
         if (amount <= 0) return 0;
         const factor = Math.pow(1 + monthlyRate, TERM_MONTHS);
@@ -656,42 +654,6 @@
         };
       };
 
-      const submitLead = async ({ name, phone }) => {
-        if (!lastSimulation) return;
-        const phoneDigits = phone.replace(/\D/g, "");
-        const payload = {
-          nome: name.trim(),
-          email: "nao-informado@lead.inspira",
-          telefone: `+55${phoneDigits}`,
-          tipologia: lastSimulation.propertyType.toLowerCase(),
-          imovel_quitado: normalizeOption(lastSimulation.paid),
-          saldo_devedor: lastSimulation.paid === "Não" ? lastSimulation.debtValue : null,
-          documentacao_regularizada: normalizeOption(lastSimulation.docs),
-          valor_imovel: lastSimulation.propertyValue,
-          valor_credito: lastSimulation.creditValue,
-          prazo: TERM_MONTHS,
-          origem_lp: "landing_page",
-          produto: "home_equity",
-          status: "novo_lead",
-          ...getUtmParams()
-        };
-
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
-        try {
-          await fetch("https://roytdlnwffhwuylimadw.supabase.co/functions/v1/lead-inspira", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-            signal: controller.signal
-          });
-        } catch (error) {
-          console.warn("[Lead] Falha ao enviar para CRM externo:", error);
-        } finally {
-          clearTimeout(timeout);
-        }
-      };
-
       window.addEventListener("load", () => {
         document.body.classList.remove("loading");
       });
@@ -806,7 +768,6 @@
 
         elements.leadForm.querySelector("button[type='submit']").disabled = true;
         showMessage(elements.leadMessage, "Enviando...", "info");
-        await submitLead({ name, phone });
         elements.leadForm.querySelector("button[type='submit']").disabled = false;
         elements.leadForm.classList.add("is-hidden");
         elements.leadSuccess.classList.remove("is-hidden");

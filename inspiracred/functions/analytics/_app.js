@@ -39,7 +39,7 @@ export async function onRequest(context) {
   if (request.method === "OPTIONS") return new Response(null, { headers: cors });
 
   if (sub === "/track" && request.method === "POST") {
-    return handleTrack(request, env, cors);
+    return handleTrack(request, env, cors, context);
   }
 
   if (!isAuthorized(request, env)) return unauthorized();
@@ -71,7 +71,7 @@ function unauthorized() {
 }
 
 /* ---- COLETA ---- */
-async function handleTrack(request, env, cors) {
+async function handleTrack(request, env, cors, context) {
   try {
     const event = await request.json();
     if (!event.type || !event.session_id) {
@@ -96,14 +96,21 @@ async function handleTrack(request, env, cors) {
         ).bind(event.session_id, event.form_id || null, JSON.stringify(event.form_data || {}),
           event.success === false ? 0 : 1, event.completion_time_ms || null, event.page_name || "other").run();
         break;
-      case "lead":
-        await env.DB.prepare(
-          `INSERT INTO leads (session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      case "lead": {
+        const leadInsert = await env.DB.prepare(
+          `INSERT INTO leads (session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbp, fbc, fbclid, gclid, event_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         ).bind(event.session_id || null, event.name || null, event.phone || null, event.email || null,
           event.property_type || null, event.property_value || null, event.credit_value || null,
           event.source || null, event.utm_source || null, event.utm_medium || null,
-          event.utm_campaign || null, event.utm_content || null, event.utm_term || null).run();
+          event.utm_campaign || null, event.utm_content || null, event.utm_term || null,
+          event.fbp || null, event.fbc || null, event.fbclid || null, event.gclid || null,
+          event.event_id || null).run();
+        const leadId = leadInsert.meta && leadInsert.meta.last_row_id;
+        if (leadId && context) {
+          context.waitUntil(sendLeadToRD(event, env, leadId));
+        }
         break;
+      }
       case "event":
         await env.DB.prepare(
           `INSERT INTO events (session_id, event_type, event_name, properties, page_name) VALUES (?,?,?,?,?)`
@@ -116,6 +123,57 @@ async function handleTrack(request, env, cors) {
     return json({ success: true }, 200, cors);
   } catch (err) {
     return json({ error: "erro interno" }, 500, cors);
+  }
+}
+
+/* ---- RD STATION (CRM do cliente — já em produção; só plugamos as páginas novas) ----
+ * Token público, mesma conta onde os leads de hoje já caem (era usado no WP antigo).
+ * `identificador` é próprio de cada página nova — não usado pelas páginas antigas do
+ * cliente — pra não misturar relatório. `cf_variante_pagina` marca a origem (redesign
+ * em teste A/B) mesmo se o tráfego chegar sem UTM.
+ */
+const RD_STATION_TOKEN = "97c41d08ec55d8a13b94684b9e3f2b22";
+const RD_PAGE_CONFIG = {
+  landing_page: { identificador: "landing-nova-raiz" },
+  home_equity_lp: { identificador: "home-equity-lp" },
+};
+
+async function sendLeadToRD(event, env, leadId) {
+  const cfg = RD_PAGE_CONFIG[event.source];
+  if (!cfg) return; // fonte desconhecida — não manda pro RD com identificador genérico
+
+  const phoneDigits = (event.phone || "").replace(/\D/g, "");
+  const payload = {
+    token_rdstation: RD_STATION_TOKEN,
+    identificador: cfg.identificador,
+    nome: event.name || undefined,
+    email: event.email || (phoneDigits ? `${phoneDigits}@lead.inspiracred.com.br` : undefined),
+    telefone: phoneDigits ? `+55${phoneDigits}` : undefined,
+    cf_tipo_imovel: event.property_type || undefined,
+    cf_valor_imovel: event.property_value != null ? String(event.property_value) : undefined,
+    cf_valor_emprestimo_desejado: event.credit_value != null ? String(event.credit_value) : undefined,
+    cf_variante_pagina: "redesign-2026",
+    traffic_source: event.utm_source || undefined,
+    traffic_medium: event.utm_medium || undefined,
+    traffic_campaign: event.utm_campaign || undefined,
+  };
+  Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
+
+  let status = "erro";
+  try {
+    const res = await fetch("https://www.rdstation.com.br/api/1.3/conversions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    status = res.ok ? "ok" : `http_${res.status}`;
+  } catch (e) {
+    status = "fetch_error";
+  }
+  try {
+    await env.DB.prepare(`UPDATE leads SET rd_status = ? WHERE id = ?`).bind(status, leadId).run();
+  } catch (e) {
+    // não deixa uma falha de log derrubar o fan-out
   }
 }
 
@@ -174,7 +232,7 @@ async function handleLeads(request, env) {
   const limit = Math.min(parseInt(p.get("limit")) || 100, 500);
   const pageRaw = p.get("page");
   const page = pageRaw && pageRaw !== "all" ? pageRaw : null;
-  let sql = `SELECT id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, created_at FROM leads`;
+  let sql = `SELECT id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, rd_status, meta_status, created_at FROM leads`;
   const binds = [];
   if (page) { sql += ` WHERE source = ?`; binds.push(page); }
   sql += ` ORDER BY created_at DESC LIMIT ?`; binds.push(limit);
@@ -354,7 +412,7 @@ function showLead(i){
   var l=lastLeads[i]; if(!l)return;
   document.getElementById("modalName").textContent=l.name||"Lead sem nome";
   document.getElementById("modalDate").textContent=(l.created_at||"").slice(0,16);
-  var fields=[["Telefone",pretty(l.phone)],["E-mail",pretty(l.email)],["Tipo de imóvel",pretty(l.property_type)],["Valor do imóvel",brl(l.property_value)],["Crédito desejado",brl(l.credit_value)],["Origem (página)",pretty(l.source)],["utm_source",pretty(l.utm_source)],["utm_medium",pretty(l.utm_medium)],["utm_campaign",pretty(l.utm_campaign)]];
+  var fields=[["Telefone",pretty(l.phone)],["E-mail",pretty(l.email)],["Tipo de imóvel",pretty(l.property_type)],["Valor do imóvel",brl(l.property_value)],["Crédito desejado",brl(l.credit_value)],["Origem (página)",pretty(l.source)],["utm_source",pretty(l.utm_source)],["utm_medium",pretty(l.utm_medium)],["utm_campaign",pretty(l.utm_campaign)],["RD Station",pretty(l.rd_status)],["Meta CAPI",pretty(l.meta_status)]];
   document.getElementById("modalBody").innerHTML=fields.map(function(f){return '<dt>'+f[0]+'</dt><dd>'+f[1]+'</dd>'}).join("");
   document.getElementById("leadModal").classList.add("show");
 }
@@ -362,7 +420,7 @@ function closeModal(){document.getElementById("leadModal").classList.remove("sho
 
 function exportCSV(){
   if(!lastLeads.length){alert("Sem leads para exportar.");return}
-  var cols=["created_at","name","phone","email","property_type","property_value","credit_value","source","utm_source","utm_medium","utm_campaign"];
+  var cols=["created_at","name","phone","email","property_type","property_value","credit_value","source","utm_source","utm_medium","utm_campaign","rd_status","meta_status"];
   var head=cols.join(",");
   var lines=lastLeads.map(function(l){return cols.map(function(c){var v=l[c]==null?"":String(l[c]).replace(/"/g,'""');return '"'+v+'"'}).join(",")});
   var csv=head+"\\n"+lines.join("\\n");
