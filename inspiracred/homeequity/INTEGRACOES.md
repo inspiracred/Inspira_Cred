@@ -44,16 +44,40 @@ campo fixo `cf_variante_pagina = "redesign-2026"`, pra dar pro cliente um jeito 
 Confirmar com o cliente/agência que já cuida do RD Station se esses `cf_*` já existem ou
 se algum tem nome diferente do que as páginas antigas usam.
 
-## O que falta (Fase 2/3 — Meta CAPI + GA4, ainda não ligado)
+## Fase 2 (Meta Pixel + CAPI) — JÁ CONSTRUÍDA, DORMINDO (código pronto, não ligada)
 
-- **Meta Pixel** (client, ID `588064149882794`, compartilhado com a página raiz) — ainda
-  não carregado no `<head>`.
-- **Meta CAPI** (server-side, hash de e-mail/nome/telefone, dedup por `event_id` com o
-  pixel do navegador) — precisa de `META_ACCESS_TOKEN` (System User token gerado no
-  Business Manager do cliente) como secret no Cloudflare Pages.
-- **GA4** (client, `G-JH0P2VY5SR`, compartilhado) — ainda não carregado.
-- Middleware de atribuição (`_middleware.js`) pra capturar `fbclid`/`gclid` e manter
-  `_fbp`/`_fbc` mesmo com bloqueador de anúncio ativo.
+Pixel (navegador) e CAPI (servidor) já estão no código, disparando o **mesmo evento
+`Lead` com o mesmo `event_id`** (Meta deduplica). Fica **inerte** até ligar.
+
+- **Pixel** — `assets/js/track.js`: carrega o Pixel só se a constante `META_PIXEL_ID`
+  (topo do arquivo) estiver preenchida. Hoje **vazia = desligado**. Dispara `PageView`,
+  `Lead` (com `value`=valor do empréstimo, `currency`=BRL, `content_category`=tipo de
+  imóvel) e eventos custom `SimulacaoIniciada`/`SimulacaoCompleta`.
+- **CAPI** — `functions/analytics/_app.js` `sendLeadToMeta`: server-side, hash SHA-256 de
+  e-mail/telefone/nome, `external_id`=hash do session_id, `fbp`/`fbc` lidos do cookie do
+  Pixel. Só dispara se os secrets `META_PIXEL_ID` + `META_ACCESS_TOKEN` existirem. Grava
+  `leads.meta_status`.
+
+**Passo a passo pra LIGAR (segunda, depois de confirmar o Pixel ID):**
+1. Preencher `META_PIXEL_ID` no topo de `inspiracred/assets/js/track.js` com o ID confirmado.
+2. Setar secrets no Pages `inspira-cred`: `META_PIXEL_ID` (mesmo ID) + `META_ACCESS_TOKEN`
+   (System User token do Business Manager). Opcional: `META_TEST_EVENT_CODE` p/ testar.
+3. `git push` + retriggar o deploy (secret novo não pega em deploy antigo).
+4. Validar na aba **Testar eventos** do Meta: um Lead de teste deve aparecer 1x (pixel e
+   CAPI deduplicados pelo `event_id`), com e-mail/telefone casados por Advanced Matching.
+
+⚠️ **Pixel ID a confirmar**: doc antigo dizia `588064149882794`; cliente enviou depois
+`3021870508000260`. Confirmar qual antes de ligar.
+
+## O que ainda falta (fases seguintes)
+
+- **GA4** (client `G-JH0P2VY5SR` + Measurement Protocol server-side) — cliente quer só
+  Pixel no começo; GA4 depois.
+- **Google Ads** — depois.
+- **Loop de venda**: webhook do RD CRM quando a Negociação é ganha → Meta `Purchase` com
+  valor (fecha o funil pro Meta otimizar por venda, não só lead). Ver `TRACKING-FUNIL-PLANO.md`.
+- **Middleware de atribuição** (`_middleware.js`) pra cookie 1st-party 400d ITP-safe — hoje
+  o `fbp`/`fbc` vêm do próprio Pixel (suficiente pra v1); o middleware é um upgrade.
 
 Ver o plano completo em `.claude/` (sessão de implementação) pra sequência exata.
 

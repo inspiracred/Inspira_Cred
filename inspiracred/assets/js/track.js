@@ -1,11 +1,20 @@
 /**
- * InspiraCred — tracking leve (page views, cliques, formulários).
+ * InspiraCred — tracking leve (page views, cliques, formulários) + Meta Pixel.
  * Envia eventos para o Worker de analytics. Configurar a página assim,
  * ANTES de carregar este arquivo:
  *   <script>window.IC_PAGE="landing_page";</script>
  *   <script src="assets/js/track.js" defer></script>
+ *
+ * META PIXEL: preencha META_PIXEL_ID abaixo com o ID confirmado do cliente pra
+ * LIGAR o Pixel (hoje vazio = desligado, seguro no ar). O Pixel dispara PageView
+ * e Lead no navegador; o servidor dispara o MESMO Lead via CAPI com o mesmo
+ * event_id (o Meta deduplica). O ID do Pixel é público (aparece no navegador),
+ * então pode ficar aqui — o TOKEN da CAPI é que é secret, fica no Cloudflare.
+ * ⚠️ Este ID (client) e o secret META_PIXEL_ID (server) precisam ser IGUAIS.
  */
 (function () {
+  var META_PIXEL_ID = "3021870508000260"; // Pixel/Dataset ID confirmado pelo cliente
+
   var ENDPOINT = "https://nova.inspiracred.com.br/analytics/track";
   var PAGE = window.IC_PAGE || "other";
   var KEY = "ic_sid";
@@ -16,6 +25,38 @@
     sid = "s_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 9);
     try { localStorage.setItem(KEY, sid); } catch (e) {}
   }
+
+  function uuid() {
+    try { if (crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
+    return "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12);
+  }
+
+  function urlParam(name) {
+    try { return new URLSearchParams(window.location.search).get(name); } catch (e) { return null; }
+  }
+
+  /* ---- Meta Pixel (só carrega se META_PIXEL_ID estiver preenchido) ---- */
+  if (META_PIXEL_ID) {
+    !function (f, b, e, v, n, t, s) {
+      if (f.fbq) return; n = f.fbq = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments); };
+      if (!f._fbq) f._fbq = n; n.push = n; n.loaded = !0; n.version = "2.0"; n.queue = [];
+      t = b.createElement(e); t.async = !0; t.src = v; s = b.getElementsByTagName(e)[0]; s.parentNode.insertBefore(t, s);
+    }(window, document, "script", "https://connect.facebook.net/en_US/fbevents.js");
+    window.fbq("init", META_PIXEL_ID);
+    window.fbq("track", "PageView");
+  }
+  function pixel(name, data, eventId) {
+    try {
+      if (typeof window.fbq === "function") {
+        window.fbq("track", name, data || {}, eventId ? { eventID: eventId } : undefined);
+      }
+    } catch (e) {}
+  }
+  // nomes de evento internos -> evento do Pixel (custom p/ as etapas da simulação)
+  var PIXEL_EVENT = {
+    simulation_start: "SimulacaoIniciada",
+    simulation_complete: "SimulacaoCompleta",
+  };
 
   function send(payload) {
     payload.session_id = sid;
@@ -74,7 +115,26 @@
 
   // API para eventos manuais (usada pela landing na simulação/lead)
   window.inspiraTrack = {
-    event: function (name, props) { send({ type: "event", event_name: name, properties: props || {} }); },
-    lead: function (data) { var p = { type: "lead" }; for (var k in (data || {})) p[k] = data[k]; send(p); },
+    event: function (name, props) {
+      if (PIXEL_EVENT[name]) pixel(PIXEL_EVENT[name], props || {});
+      send({ type: "event", event_name: name, properties: props || {} });
+    },
+    lead: function (data) {
+      data = data || {};
+      // event_id único: o mesmo vai no Pixel (browser) e na CAPI (server) -> dedup no Meta
+      var eventId = uuid();
+      // Pixel do navegador (Advanced Matching básico + valor da simulação)
+      pixel("Lead", {
+        currency: "BRL",
+        value: data.credit_value != null ? Number(data.credit_value) : undefined,
+        content_category: data.property_type || undefined,
+      }, eventId);
+      // Payload pro servidor: carrega event_id + fbclid/gclid + url pra CAPI/atribuição
+      var p = { type: "lead", event_id: eventId, url: location.href };
+      p.fbclid = urlParam("fbclid") || null;
+      p.gclid = urlParam("gclid") || null;
+      for (var k in data) p[k] = data[k];
+      send(p);
+    },
   };
 })();

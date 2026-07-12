@@ -97,6 +97,10 @@ async function handleTrack(request, env, cors, context) {
           event.success === false ? 0 : 1, event.completion_time_ms || null, event.page_name || "other").run();
         break;
       case "lead": {
+        // Enriquece fbp/fbc a partir dos cookies do Pixel (mesma origem) se o client não mandou
+        const leadCookies = parseCookies(request.headers.get("Cookie") || "");
+        if (!event.fbp && leadCookies._fbp) event.fbp = leadCookies._fbp;
+        if (!event.fbc && leadCookies._fbc) event.fbc = leadCookies._fbc;
         const leadInsert = await env.DB.prepare(
           `INSERT INTO leads (session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbp, fbc, fbclid, gclid, event_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         ).bind(event.session_id || null, event.name || null, event.phone || null, event.email || null,
@@ -108,6 +112,11 @@ async function handleTrack(request, env, cors, context) {
         const leadId = leadInsert.meta && leadInsert.meta.last_row_id;
         if (leadId && context) {
           context.waitUntil(sendLeadToRD(event, env, leadId));
+          context.waitUntil(sendLeadToMeta(event, env, leadId, {
+            clientIp: request.headers.get("CF-Connecting-IP") || "",
+            userAgent: request.headers.get("User-Agent") || "",
+            sourceUrl: event.url || request.headers.get("Referer") || "",
+          }));
         }
         break;
       }
@@ -174,6 +183,95 @@ async function sendLeadToRD(event, env, leadId) {
     await env.DB.prepare(`UPDATE leads SET rd_status = ? WHERE id = ?`).bind(status, leadId).run();
   } catch (e) {
     // não deixa uma falha de log derrubar o fan-out
+  }
+}
+
+/* ---- META CAPI (server-side; dedup por event_id com o Pixel do navegador) ----
+ * DORME até os secrets META_PIXEL_ID + META_ACCESS_TOKEN existirem no Pages —
+ * sem eles, retorna cedo e nada é enviado (seguro pra deixar no ar já).
+ * PII (email/telefone/nome) vai SHA-256 (Advanced Matching do Meta). fbp/fbc
+ * vêm do cookie do Pixel (mesma origem, lidos no case "lead"). Usa o MESMO
+ * event_id que o Pixel do navegador mandou → Meta deduplica. Grava o resultado
+ * em leads.meta_status (visível na ficha do lead / CSV do dashboard).
+ * Opcional: META_TEST_EVENT_CODE p/ validar na aba "Testar eventos" do Meta.
+ */
+async function sha256Hex(value) {
+  if (!value) return "";
+  const norm = String(value).toLowerCase().trim();
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(norm));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function parseCookies(header) {
+  const out = {};
+  (header || "").split(";").forEach((c) => {
+    const i = c.indexOf("=");
+    if (i > -1) out[c.slice(0, i).trim()] = c.slice(i + 1).trim();
+  });
+  return out;
+}
+
+async function sendLeadToMeta(event, env, leadId, ctx) {
+  if (!env.META_PIXEL_ID || !env.META_ACCESS_TOKEN) return; // dormindo até ter os secrets
+
+  const phoneDigits = (event.phone || "").replace(/\D/g, "");
+  const nameParts = (event.name || "").trim().split(/\s+/);
+  const fn = nameParts[0] || "";
+  const ln = nameParts.slice(1).join(" ") || "";
+
+  // fbc: usa o cookie do Pixel; se só tiver fbclid, monta no formato do Meta
+  // (nova.inspiracred.com.br é .com.br → subdomain index 2).
+  let fbc = event.fbc || "";
+  if (!fbc && event.fbclid) fbc = `fb.2.${Date.now()}.${event.fbclid}`;
+
+  const userData = {
+    client_ip_address: ctx.clientIp || undefined,
+    client_user_agent: ctx.userAgent || undefined,
+    fbp: event.fbp || undefined,
+    fbc: fbc || undefined,
+  };
+  const em = await sha256Hex(event.email);
+  const ph = await sha256Hex(phoneDigits);
+  const hfn = await sha256Hex(fn);
+  const hln = await sha256Hex(ln);
+  const ext = await sha256Hex(event.session_id);
+  if (em) userData.em = [em];
+  if (ph) userData.ph = [ph];
+  if (hfn) userData.fn = [hfn];
+  if (hln) userData.ln = [hln];
+  if (ext) userData.external_id = [ext];
+
+  const payload = {
+    data: [{
+      event_name: "Lead",
+      event_time: Math.floor(Date.now() / 1000),
+      event_id: event.event_id || undefined,
+      event_source_url: ctx.sourceUrl || undefined,
+      action_source: "website",
+      user_data: userData,
+      custom_data: {
+        currency: "BRL",
+        value: event.credit_value != null ? Number(event.credit_value) : undefined,
+        content_category: event.property_type || undefined,
+      },
+    }],
+  };
+  if (env.META_TEST_EVENT_CODE) payload.test_event_code = env.META_TEST_EVENT_CODE;
+
+  let status = "erro";
+  try {
+    const res = await fetch(
+      `https://graph.facebook.com/v21.0/${env.META_PIXEL_ID}/events?access_token=${env.META_ACCESS_TOKEN}`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
+    );
+    status = res.ok ? "ok" : `http_${res.status}`;
+  } catch (e) {
+    status = "fetch_error";
+  }
+  try {
+    await env.DB.prepare(`UPDATE leads SET meta_status = ? WHERE id = ?`).bind(status, leadId).run();
+  } catch (e) {
+    // falha de log não derruba o fan-out
   }
 }
 
