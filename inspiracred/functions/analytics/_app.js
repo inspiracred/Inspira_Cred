@@ -350,6 +350,7 @@ const DASHBOARD_HTML = `<!doctype html>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>InspiraCred · Analytics</title>
+<link rel="icon" type="image/svg+xml" href="/assets/icons/favicon.svg"/>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
