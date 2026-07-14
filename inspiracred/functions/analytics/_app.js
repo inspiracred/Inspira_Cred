@@ -444,11 +444,31 @@ const DASHBOARD_HTML = `<!doctype html>
   .card h2{font-size:12px;margin:0 0 16px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
   .h2row{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
   .h2row h2{margin:0}
-  .pages{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
-  .pagecard{border:1px solid var(--border);border-radius:14px;padding:14px;background:var(--surface)}
-  .pagecard .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;gap:8px}
-  .pagecard .pname{font-size:14px;font-weight:700;color:var(--blue)}
-  .pagecard .pstats{font-size:11.5px;color:var(--muted)}
+  .pages{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+  .pagecard{border:1px solid var(--border);border-radius:14px;padding:15px 16px;background:var(--surface)}
+  .pagecard .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;gap:8px}
+  .pagecard .pname{font-size:14px;font-weight:700;color:var(--blue);display:flex;align-items:center;gap:6px}
+  .pagecard .pstats{font-size:11.5px;color:var(--muted);white-space:nowrap}
+  /* topo da aba Tráfego: 2 cards equilibrados */
+  .traffic-top{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .hint{font-size:11.5px;color:var(--muted);font-weight:500}
+  /* lista de barras ranqueadas (origens / cliques) — padrão Plausible */
+  .bars{display:flex;flex-direction:column;gap:3px}
+  .bar-row{position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 11px;border-radius:9px;overflow:hidden;isolation:isolate}
+  .bar-row .fill{position:absolute;inset:0;z-index:-1;background:rgba(11,45,114,.10);border-radius:9px;transform-origin:left;transition:width .5s cubic-bezier(.22,1,.36,1)}
+  .bar-row.top .fill{background:rgba(249,115,22,.16)}
+  .bar-row .lbl{font-size:13px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .bar-row .val{font-size:12.5px;color:var(--blue);font-weight:700;font-variant-numeric:tabular-nums;flex-shrink:0;font-family:"Instrument Sans","Inter",sans-serif}
+  .bar-row .val small{color:var(--muted);font-weight:600;font-family:"Inter",sans-serif;margin-left:5px}
+  /* tabela-resumo por página */
+  .sumtable{width:100%;border-collapse:collapse;font-size:13px}
+  .sumtable th{text-align:right;color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:0 10px 9px;border-bottom:1px solid var(--border)}
+  .sumtable th:first-child{text-align:left}
+  .sumtable td{padding:11px 10px;border-bottom:1px solid var(--border);text-align:right;font-variant-numeric:tabular-nums}
+  .sumtable td:first-child{text-align:left;font-weight:600;color:var(--blue)}
+  .sumtable tr:last-child td{border-bottom:none}
+  .sumtable .num{font-family:"Instrument Sans","Inter",sans-serif;font-weight:700}
+  .sumtable tbody tr:hover td{background:var(--surface)}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th,td{text-align:left;padding:10px;border-bottom:1px solid var(--border);white-space:nowrap}
   th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
@@ -494,9 +514,11 @@ const DASHBOARD_HTML = `<!doctype html>
   .hm-viewport{position:relative;overflow-y:auto;overflow-x:hidden;margin:0 auto;box-shadow:var(--shadow);background:#fff}
   .hm-inner{position:relative}
   .hm-sticky{position:sticky;top:0;line-height:0}
-  #hmFrame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff}
+  /* pointer-events:none → a roda do mouse vai pro .hm-viewport (scroll real), não pro iframe;
+     assim o drawSlice sincroniza calor + página. scrollTo programático segue funcionando. */
+  #hmFrame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
   #hmCanvas{position:absolute;inset:0;pointer-events:none}
-  @media(max-width:760px){.grid{grid-template-columns:1fr}.tabs{top:auto}}
+  @media(max-width:760px){.grid,.traffic-top{grid-template-columns:1fr}.tabs{top:auto}}
 </style>
 </head>
 <body>
@@ -540,9 +562,19 @@ const DASHBOARD_HTML = `<!doctype html>
   </section>
 
   <section class="tab-section" id="tab-traffic">
-    <div class="grid">
-      <div class="card"><h2>Origem dos leads (UTM)</h2><div class="chart-box"><canvas id="sourcesChart"></canvas></div></div>
-      <div class="card"><h2>Desempenho por página</h2><div class="pages" id="pages"></div></div>
+    <div class="traffic-top">
+      <div class="card">
+        <div class="h2row"><h2>Origem dos leads</h2><span class="hint" id="sourcesHint"></span></div>
+        <div id="sourcesList"></div>
+      </div>
+      <div class="card">
+        <div class="h2row"><h2>Resumo por página</h2></div>
+        <div id="pagesSummary"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:18px">
+      <div class="h2row"><h2>Cliques por página</h2><span class="hint">os elementos mais clicados em cada página</span></div>
+      <div class="pages" id="pages"></div>
     </div>
   </section>
 
@@ -587,7 +619,7 @@ const DASHBOARD_HTML = `<!doctype html>
 </div>
 
 <script>
-var dailyChart=null, sourcesChart=null, clickCharts=[], lastLeads=[], activeTab="overview";
+var dailyChart=null, lastLeads=[], activeTab="overview";
 var PAGE_LABELS={landing_page:"Landing / Simulação",home_equity_lp:"Home Equity",link_bio:"Link na bio",bio_test:"Bio (teste)",other:"Outras"};
 var PAGE_URLS={landing_page:"https://nova.inspiracred.com.br/",home_equity_lp:"https://nova.inspiracred.com.br/homeequity/",link_bio:"https://links.inspiracred.com.br/"};
 var CHART_PALETTE=["#f97316","#0b2d72","#10b981","#f59e0b","#3b82f6","#8b5cf6","#ec4899"];
@@ -605,7 +637,7 @@ function showTab(name){
     document.getElementById("tab-"+t).style.display=(t===name)?"block":"none";
     document.getElementById("tabbtn-"+t).classList.toggle("active",t===name);
   });
-  setTimeout(function(){[dailyChart,sourcesChart].concat(clickCharts).forEach(function(c){if(c){try{c.resize()}catch(e){}}});},30);
+  setTimeout(function(){if(dailyChart){try{dailyChart.resize()}catch(e){}}},30);
 }
 
 function setLoading(on){var b=document.getElementById("refresh");b.disabled=on;b.textContent=on?"Atualizando…":"Atualizar";}
@@ -638,23 +670,51 @@ function render(d){
 }
 
 function renderTraffic(d){
-  var so=d.sources||[]; drawDoughnut("sourcesChart",so.map(function(x){return x.source}),so.map(function(x){return x.n}));
-  renderPages(d.pages||[],d.clicks||[]);
+  renderSources(d.sources||[]);
+  renderPagesSummary(d.pages||[]);
+  renderClicksByPage(d.pages||[], d.clicks||[]);
 }
 
-function renderPages(pages,clicks){
-  clickCharts.forEach(function(c){c.destroy()}); clickCharts=[];
+// lista de barras ranqueadas: rows = [{lbl, val, sub, w(0..1)}]; a 1ª barra ganha o acento laranja
+function barList(rows){
+  return '<div class="bars">'+rows.map(function(r,i){
+    var w=Math.max(4,Math.round((r.w||0)*100));
+    return '<div class="bar-row'+(i===0?' top':'')+'"><span class="fill" style="width:'+w+'%"></span>'+
+      '<span class="lbl" title="'+esc(r.lbl)+'">'+esc(r.lbl)+'</span>'+
+      '<span class="val">'+r.val+(r.sub?'<small>'+r.sub+'</small>':'')+'</span></div>';
+  }).join("")+'</div>';
+}
+function pageLink(pn){return PAGE_URLS[pn]?' <a href="'+PAGE_URLS[pn]+'" target="_blank" rel="noopener" title="Abrir esta página" style="color:var(--orange);text-decoration:none">↗</a>':'';}
+
+function renderSources(so){
+  var hint=document.getElementById("sourcesHint"), box=document.getElementById("sourcesList");
+  if(!so.length){box.innerHTML='<div class="empty">Nenhum lead com origem no período.</div>';hint.textContent="";return}
+  var total=so.reduce(function(a,x){return a+(x.n||0)},0);
+  var max=Math.max.apply(null,so.map(function(x){return x.n||0}));
+  hint.textContent=total+(total===1?" lead":" leads");
+  box.innerHTML=barList(so.map(function(x){return {lbl:x.source||"direto",val:x.n,sub:total?Math.round(x.n/total*100)+"%":"",w:max?x.n/max:0};}));
+}
+
+function renderPagesSummary(pages){
+  var box=document.getElementById("pagesSummary");
+  if(!pages.length){box.innerHTML='<div class="empty">Sem acessos no período.</div>';return}
+  var html='<table class="sumtable"><thead><tr><th>Página</th><th>Views</th><th>Únicos</th><th>Forms</th></tr></thead><tbody>';
+  pages.forEach(function(p){
+    html+='<tr><td>'+label(p.page_name)+pageLink(p.page_name)+'</td><td class="num">'+p.views+'</td><td class="num">'+p.uniques+'</td><td class="num">'+p.forms+'</td></tr>';
+  });
+  box.innerHTML=html+'</tbody></table>';
+}
+
+function renderClicksByPage(pages,clicks){
   var box=document.getElementById("pages");
   if(!pages.length){box.innerHTML='<div class="empty">Sem dados ainda. Assim que houver acessos, aparece aqui.</div>';return}
-  box.innerHTML=pages.map(function(p,i){var pl=PAGE_URLS[p.page_name]?' <a href="'+PAGE_URLS[p.page_name]+'" target="_blank" rel="noopener" title="Abrir esta página" style="color:var(--orange);text-decoration:none;font-size:12px">↗</a>':'';return '<div class="pagecard"><div class="head"><span class="pname">'+label(p.page_name)+pl+'</span><span class="pstats">'+p.views+' views · '+p.uniques+' únicos · '+p.forms+' forms</span></div><canvas id="clk'+i+'" height="150"></canvas></div>'}).join("");
-  pages.forEach(function(p,i){
+  box.innerHTML=pages.map(function(p){
     var rows=clicks.filter(function(c){return c.page_name===p.page_name}).slice(0,6);
-    var labels=rows.map(function(c){return (c.element_id||c.element_text||"?").slice(0,22)});
-    var vals=rows.map(function(c){return c.clicks});
-    var ctx=document.getElementById("clk"+i); if(!ctx)return;
-    if(!rows.length){ctx.parentNode.innerHTML+='<div class="empty">Sem cliques.</div>';return}
-    clickCharts.push(new Chart(ctx,{type:"bar",data:{labels:labels,datasets:[{data:vals,backgroundColor:"#0b2d72",borderRadius:5}]},options:{indexAxis:"y",plugins:{legend:{display:false}},scales:{x:{ticks:{color:"#6b7280"},grid:{color:"#eef0f3"}},y:{ticks:{color:"#6b7280"},grid:{display:false}}}}}));
-  });
+    var head='<div class="head"><span class="pname">'+label(p.page_name)+pageLink(p.page_name)+'</span><span class="pstats">'+p.views+' views · '+p.uniques+' únicos</span></div>';
+    if(!rows.length)return '<div class="pagecard">'+head+'<div class="empty" style="padding:12px 0">Sem cliques registrados.</div></div>';
+    var max=Math.max.apply(null,rows.map(function(c){return c.clicks}));
+    return '<div class="pagecard">'+head+barList(rows.map(function(c){return {lbl:(c.element_text||c.element_id||"(sem identificação)"),val:c.clicks,sub:"",w:max?c.clicks/max:0};}))+'</div>';
+  }).join("");
 }
 
 function renderLeads(d){
@@ -730,7 +790,6 @@ function exportCSV(){
 }
 
 function drawLine(id,labels,data){var ctx=document.getElementById(id);if(dailyChart)dailyChart.destroy();dailyChart=new Chart(ctx,{type:"line",data:{labels:labels,datasets:[{data:data,borderColor:"#f97316",backgroundColor:"rgba(249,115,22,.12)",fill:true,tension:.3,pointRadius:2,pointBackgroundColor:"#f97316"}]},options:{maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:"#6b7280"},grid:{color:"#eef0f3"}},y:{ticks:{color:"#6b7280"},grid:{color:"#eef0f3"}}}}})}
-function drawDoughnut(id,labels,data){var ctx=document.getElementById(id);if(sourcesChart)sourcesChart.destroy();sourcesChart=new Chart(ctx,{type:"doughnut",data:{labels:labels,datasets:[{data:data,backgroundColor:CHART_PALETTE,borderColor:"#fff",borderWidth:2}]},options:{maintainAspectRatio:false,cutout:"60%",plugins:{legend:{position:"right",labels:{color:"#374151",font:{size:11}}}}}})}
 
 /* ---- Mapa de calor ---- */
 // Paths same-origin (as 3 páginas existem no projeto Pages inspira-cred) → dá pra
