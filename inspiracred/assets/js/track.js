@@ -35,6 +35,32 @@
     try { return new URLSearchParams(window.location.search).get(name); } catch (e) { return null; }
   }
 
+  // UTMs da URL (first-touch: guarda na sessão pra não perder em cliques posteriores
+  // nem em navegação interna que chegue sem os parâmetros).
+  var UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
+  var UTM_STORE = "ic_utm";
+  function utmParams() {
+    var out = {};
+    try {
+      var q = new URLSearchParams(window.location.search);
+      UTM_KEYS.forEach(function (k) { var v = q.get(k); if (v) out[k] = v.slice(0, 120); });
+    } catch (e) {}
+    try {
+      if (Object.keys(out).length) {
+        localStorage.setItem(UTM_STORE, JSON.stringify(out));
+      } else {
+        var saved = localStorage.getItem(UTM_STORE);
+        if (saved) out = JSON.parse(saved);
+      }
+    } catch (e) {}
+    return out;
+  }
+  function withUtm(payload) {
+    var u = utmParams();
+    for (var k in u) if (payload[k] == null) payload[k] = u[k];
+    return payload;
+  }
+
   /* ---- Meta Pixel (só carrega se META_PIXEL_ID estiver preenchido) ---- */
   if (META_PIXEL_ID) {
     !function (f, b, e, v, n, t, s) {
@@ -71,21 +97,78 @@
   }
 
   // Page view
-  send({ type: "page_view", url: location.pathname + location.search, title: document.title, referrer: document.referrer });
+  send(withUtm({ type: "page_view", url: location.pathname + location.search, title: document.title, referrer: document.referrer }));
 
   // Cliques em links e botões
   document.addEventListener("click", function (e) {
     var t = e.target.closest("a, button");
     if (!t) return;
     var withId = t.closest("[id]");
-    send({
+    send(withUtm({
       type: "click",
       element_id: t.id || (withId && withId.id) || null,
       element_text: (t.textContent || "").trim().slice(0, 80) || null,
       destination: t.href || null,
       link_type: guessType(t),
-    });
+    }));
   }, true);
+
+  /* ---- Mapa de calor: toque/clique com coordenadas percentuais do documento ---- */
+  var HEATMAP_PAGES = { link_bio: 1, landing_page: 1, home_equity_lp: 1 };
+  if (HEATMAP_PAGES[PAGE]) {
+    document.addEventListener("click", function (e) {
+      var docH = document.documentElement.scrollHeight || 1;
+      var t = e.target;
+      var idEl = t && t.closest ? t.closest("[id]") : null;
+      send({
+        type: "tap",
+        x_pct: +((e.clientX) / (window.innerWidth || 1)).toFixed(4),
+        y_pct: +(((window.scrollY || window.pageYOffset || 0) + e.clientY) / docH).toFixed(4),
+        vw: window.innerWidth,
+        doc_h: docH,
+        element_id: (idEl && idEl.id) || null,
+      });
+    }, true);
+  }
+
+  /* ---- Scroll depth (marcos 25/50/75/100, 1x cada por página/sessão) ---- */
+  var scrollMarks = [25, 50, 75, 100];
+  var scrollHit = {};
+  var scrollTick = false;
+  function checkScroll() {
+    scrollTick = false;
+    var docH = document.documentElement.scrollHeight || 1;
+    var pct = ((window.scrollY || window.pageYOffset || 0) + window.innerHeight) / docH * 100;
+    scrollMarks.forEach(function (m) {
+      if (pct >= m && !scrollHit[m]) {
+        scrollHit[m] = 1;
+        send({ type: "event", event_name: "scroll_depth", properties: { pct: m } });
+      }
+    });
+  }
+  window.addEventListener("scroll", function () {
+    if (!scrollTick) { scrollTick = true; requestAnimationFrame(checkScroll); }
+  }, { passive: true });
+
+  /* ---- Seções lidas (data-section="nome") via IntersectionObserver ---- */
+  try {
+    if ("IntersectionObserver" in window) {
+      var secObs = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (en.isIntersecting) {
+            var name = en.target.getAttribute("data-section");
+            secObs.unobserve(en.target);
+            if (name) send({ type: "event", event_name: "section_view", properties: { section: name } });
+          }
+        });
+      }, { threshold: 0.25 }); // baixo p/ seções altas (>2x viewport nunca atingiriam 0.5)
+      var runObs = function () {
+        document.querySelectorAll("[data-section]").forEach(function (el) { secObs.observe(el); });
+      };
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", runObs);
+      else runObs();
+    }
+  } catch (e) {}
 
   // Envio de formulários (sem campos sensíveis)
   document.addEventListener("submit", function (e) {

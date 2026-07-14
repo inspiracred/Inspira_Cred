@@ -25,7 +25,7 @@
   <body class="loading">
     <main class="page">
       <!-- ============ HERO ============ -->
-      <section class="hero" aria-label="Crédito com garantia de imóvel">
+      <section class="hero" data-section="hero" aria-label="Crédito com garantia de imóvel">
         <img class="hero-bg" src="img/hero-home.webp" alt="" aria-hidden="true" />
 
         <nav class="nav" aria-label="Navegação principal">
@@ -63,7 +63,7 @@
       </section>
 
       <!-- ============ SIMULAÇÃO / FORM (transborda o hero) ============ -->
-      <section class="section simulacao" id="simular">
+      <section class="section simulacao" id="simular" data-section="form">
         <div class="shell">
           <div class="form-shell" data-reveal>
             <form class="form-card is-dark form-floating" id="lead-form" novalidate>
@@ -172,7 +172,7 @@
       </section>
 
       <!-- ============ O QUE VOCÊ VAI TER ACESSO (cards flutuantes) ============ -->
-      <section class="section acesso" id="acesso">
+      <section class="section acesso" id="acesso" data-section="credito-estruturado">
         <div class="floating-stage" data-floating>
           <div class="floating-center" data-reveal>
             <span class="eyebrow">O que você vai ter acesso</span>
@@ -208,7 +208,7 @@
       </section>
 
       <!-- ============ COMPARATIVO DE JUROS ============ -->
-      <section class="section comparativo" id="comparativo">
+      <section class="section comparativo" id="comparativo" data-section="comparativo">
         <div class="shell center" data-reveal>
           <span class="eyebrow">Comparativo de juros</span>
           <h2 class="section-title">O valor da <span class="accent">economia</span></h2>
@@ -249,7 +249,7 @@
       </section>
 
       <!-- ============ POR QUE ESCOLHER / SEGURANÇA ============ -->
-      <section class="section porque">
+      <section class="section porque" data-section="seguranca">
         <div class="shell porque-grid">
           <div class="porque-media" data-reveal>
             <div class="pq-top">
@@ -275,7 +275,7 @@
       </section>
 
       <!-- ============ PARA QUEM É IDEAL ============ -->
-      <section class="section ideal" id="ideal">
+      <section class="section ideal" id="ideal" data-section="ideal">
         <div class="shell center" data-reveal>
           <span class="eyebrow">Para quem é ideal</span>
           <h2 class="section-title">Esse crédito é perfeito para você que…</h2>
@@ -316,7 +316,7 @@
       </section>
 
       <!-- ============ GARANTIA 7 DIAS ============ -->
-      <section class="section garantia">
+      <section class="section garantia" data-section="garantia">
         <div class="shell-narrow" style="width: min(100% - 40px, 980px)">
           <div class="garantia-inner" data-reveal>
             <img class="garantia-selo" src="img/selo-garantia-7dias.png" alt="Selo de garantia de 7 dias" loading="lazy" />
@@ -353,7 +353,7 @@
       <!-- ============ DEPOIMENTOS ============ -->
       <!-- TODO(integração): substituir por avaliações reais do Google (Google Business / Places API).
            Por enquanto, depoimentos estáticos abaixo. -->
-      <section class="section depoimentos">
+      <section class="section depoimentos" data-section="depoimentos">
         <div class="shell center" data-reveal>
           <span class="eyebrow">Depoimentos</span>
           <h2 class="section-title">Veja algumas pessoas que confiam na gente</h2>
@@ -379,7 +379,7 @@
       </section>
 
       <!-- ============ FAQ ============ -->
-      <section class="section faq" id="faq">
+      <section class="section faq" id="faq" data-section="faq">
         <div class="shell-narrow center" data-reveal>
           <span class="eyebrow">Dúvidas frequentes</span>
           <h2 class="section-title">Perguntas que todo mundo faz</h2>

@@ -46,6 +46,8 @@ export async function onRequest(context) {
 
   if (sub === "/api/overview" && request.method === "GET") return handleOverview(request, env);
   if (sub === "/api/leads" && request.method === "GET") return handleLeads(request, env);
+  if (sub === "/api/journey" && request.method === "GET") return handleJourney(request, env);
+  if (sub === "/api/heatmap" && request.method === "GET") return handleHeatmap(request, env);
   if ((sub === "/" || sub === "/dashboard") && request.method === "GET") {
     return new Response(DASHBOARD_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
   }
@@ -125,6 +127,12 @@ async function handleTrack(request, env, cors, context) {
           `INSERT INTO events (session_id, event_type, event_name, properties, page_name) VALUES (?,?,?,?,?)`
         ).bind(event.session_id, event.event_type || "custom", event.event_name || "custom",
           JSON.stringify(event.properties || {}), event.page_name || null).run();
+        break;
+      case "tap":
+        await env.DB.prepare(
+          `INSERT INTO heatmap_taps (session_id, page_name, x_pct, y_pct, vw, doc_h, element_id) VALUES (?,?,?,?,?,?,?)`
+        ).bind(event.session_id, event.page_name || "other", event.x_pct, event.y_pct,
+          event.vw || null, event.doc_h || null, event.element_id || null).run();
         break;
       default:
         return json({ error: "tipo desconhecido" }, 400, cors);
@@ -330,12 +338,56 @@ async function handleLeads(request, env) {
   const limit = Math.min(parseInt(p.get("limit")) || 100, 500);
   const pageRaw = p.get("page");
   const page = pageRaw && pageRaw !== "all" ? pageRaw : null;
-  let sql = `SELECT id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, rd_status, meta_status, created_at FROM leads`;
+  let sql = `SELECT id, session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, rd_status, meta_status, created_at FROM leads`;
   const binds = [];
   if (page) { sql += ` WHERE source = ?`; binds.push(page); }
   sql += ` ORDER BY created_at DESC LIMIT ?`; binds.push(limit);
   const rows = (await env.DB.prepare(sql).bind(...binds).all()).results || [];
   return json({ leads: rows, count: rows.length });
+}
+
+/* ---- JORNADA DO LEAD (timeline por session_id) ----
+ * Une page_views + clicks + events + form_submissions numa linha do tempo única,
+ * ordenada por created_at. `a`/`b`/`c` são colunas genéricas (o significado muda
+ * por `kind`) pra caber tudo num UNION. Devolve também o lead da sessão (se houver).
+ */
+async function handleJourney(request, env) {
+  const p = new URL(request.url).searchParams;
+  const sid = p.get("session_id");
+  if (!sid) return json({ error: "session_id obrigatório" }, 400);
+
+  const sql = `
+    SELECT created_at t, 'page_view' kind, page_name, url a, title b, referrer c FROM page_views WHERE session_id=?
+    UNION ALL SELECT created_at, 'click', page_name, element_id, element_text, destination FROM clicks WHERE session_id=?
+    UNION ALL SELECT created_at, 'event', page_name, event_name, properties, NULL FROM events WHERE session_id=?
+    UNION ALL SELECT created_at, 'form',  page_name, form_id, CAST(success AS TEXT), NULL FROM form_submissions WHERE session_id=?
+    ORDER BY t ASC`;
+  const timeline = (await env.DB.prepare(sql).bind(sid, sid, sid, sid).all()).results || [];
+
+  const lead = await env.DB.prepare(
+    `SELECT name, phone, email, source, utm_source, utm_medium, utm_campaign, credit_value, created_at
+     FROM leads WHERE session_id=? ORDER BY created_at DESC LIMIT 1`
+  ).bind(sid).first();
+
+  return json({ session_id: sid, timeline, lead: lead || null, count: timeline.length });
+}
+
+/* ---- MAPA DE CALOR (pontos agregados por página) ---- */
+async function handleHeatmap(request, env) {
+  const p = new URL(request.url).searchParams;
+  const page = p.get("page");
+  if (!page) return json({ error: "page obrigatório" }, 400);
+  const today = new Date().toISOString().slice(0, 10);
+  const past = new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10);
+  const start = p.get("start") || past;
+  const end = p.get("end") || today;
+
+  const rows = (await env.DB.prepare(
+    `SELECT x_pct, y_pct, element_id FROM heatmap_taps
+     WHERE page_name=? AND DATE(created_at) BETWEEN ? AND ? LIMIT 20000`
+  ).bind(page, start, end).all()).results || [];
+
+  return json({ page, range: { start, end }, points: rows, count: rows.length });
 }
 
 function json(obj, status = 200, extra = {}) {
@@ -422,6 +474,28 @@ const DASHBOARD_HTML = `<!doctype html>
   dl{display:grid;grid-template-columns:140px 1fr;gap:9px 12px;margin:18px 0 0;font-size:13px}
   dt{color:var(--muted)}dd{margin:0;font-weight:600;color:var(--text)}
   .tab-section{display:none}
+  /* Jornada (timeline no modal) */
+  .journey-head{margin-top:18px;display:flex;justify-content:flex-end}
+  #journey{margin-top:12px;max-height:340px;overflow:auto}
+  .tl{position:relative;margin:0;padding:2px 0 2px 4px;list-style:none}
+  .tl-item{position:relative;padding:0 0 14px 26px;border-left:2px solid var(--border)}
+  .tl-item:last-child{border-left-color:transparent}
+  .tl-dot{position:absolute;left:-7px;top:2px;width:12px;height:12px;border-radius:50%;background:var(--blue);border:2px solid #fff;box-shadow:0 0 0 1px var(--border)}
+  .tl-item.k-lead .tl-dot,.tl-item.k-form .tl-dot{background:var(--orange)}
+  .tl-item.k-event .tl-dot{background:var(--green)}
+  .tl-time{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .tl-main{font-size:13px;font-weight:600;color:var(--text);margin-top:1px}
+  .tl-sub{font-size:12px;color:var(--muted);word-break:break-word}
+  .tl-kind{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--blue);margin-right:6px}
+  /* Mapa de calor */
+  .hm-note{font-size:12.5px;color:var(--muted);margin-bottom:14px}
+  .hm-stage{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;overflow-x:auto}
+  /* viewport fixo (vh estável dentro do iframe) + scroll externo controlando o slice */
+  .hm-viewport{position:relative;overflow-y:auto;overflow-x:hidden;margin:0 auto;box-shadow:var(--shadow);background:#fff}
+  .hm-inner{position:relative}
+  .hm-sticky{position:sticky;top:0;line-height:0}
+  #hmFrame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff}
+  #hmCanvas{position:absolute;inset:0;pointer-events:none}
   @media(max-width:760px){.grid{grid-template-columns:1fr}.tabs{top:auto}}
 </style>
 </head>
@@ -444,6 +518,7 @@ const DASHBOARD_HTML = `<!doctype html>
   <button class="tab" id="tabbtn-overview" onclick="showTab('overview')">Visão geral</button>
   <button class="tab" id="tabbtn-leads" onclick="showTab('leads')">Leads</button>
   <button class="tab" id="tabbtn-traffic" onclick="showTab('traffic')">Tráfego</button>
+  <button class="tab" id="tabbtn-heatmap" onclick="showTab('heatmap')">Mapa de calor</button>
 </div>
 <div class="wrap">
   <div class="scope" id="scope"></div>
@@ -470,6 +545,34 @@ const DASHBOARD_HTML = `<!doctype html>
       <div class="card"><h2>Desempenho por página</h2><div class="pages" id="pages"></div></div>
     </div>
   </section>
+
+  <section class="tab-section" id="tab-heatmap">
+    <div class="card">
+      <div class="h2row">
+        <h2>Mapa de calor de cliques</h2>
+        <div class="controls">
+          <select id="hmPageSel">
+            <option value="link_bio">Link na bio</option>
+            <option value="landing_page">Landing / Simulação</option>
+            <option value="home_equity_lp">Home Equity</option>
+          </select>
+          <select id="hmDevice"><option value="390">Mobile (390px)</option><option value="1280">Desktop (1280px)</option></select>
+          <button id="hmLoad" class="primary">Carregar</button>
+        </div>
+      </div>
+      <div class="hm-note" id="hmNote">Escolha a página e clique em <b>Carregar</b>. As manchas mostram onde as pessoas mais clicaram/tocaram. Role a página para ver o mapa inteiro.</div>
+      <div class="hm-stage" id="hmStage">
+        <div class="hm-viewport" id="hmViewport">
+          <div class="hm-inner" id="hmInner">
+            <div class="hm-sticky" id="hmSticky">
+              <iframe id="hmFrame" title="Página"></iframe>
+              <canvas id="hmCanvas"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 </div>
 
 <div class="modal-bg" id="leadModal">
@@ -478,6 +581,8 @@ const DASHBOARD_HTML = `<!doctype html>
     <h3 id="modalName">Lead</h3>
     <div class="chip" id="modalDate"></div>
     <dl id="modalBody"></dl>
+    <div class="journey-head"><button class="btn-sm" id="journeyBtn">Ver jornada ↓</button></div>
+    <div id="journey"></div>
   </div>
 </div>
 
@@ -496,7 +601,7 @@ function badge(s){if(s==="ok")return '<span class="pill ok">entregue</span>';if(
 
 function showTab(name){
   activeTab=name;
-  ["overview","leads","traffic"].forEach(function(t){
+  ["overview","leads","traffic","heatmap"].forEach(function(t){
     document.getElementById("tab-"+t).style.display=(t===name)?"block":"none";
     document.getElementById("tabbtn-"+t).classList.toggle("active",t===name);
   });
@@ -574,9 +679,44 @@ function showLead(i){
   document.getElementById("modalDate").textContent=(l.created_at||"").slice(0,16);
   var fields=[["Telefone",pretty(l.phone)],["E-mail",pretty(l.email)],["Tipo de imóvel",pretty(l.property_type)],["Valor do imóvel",brl(l.property_value)],["Crédito desejado",brl(l.credit_value)],["Origem (página)",label(l.source)],["utm_source",pretty(l.utm_source)],["utm_medium",pretty(l.utm_medium)],["utm_campaign",pretty(l.utm_campaign)],["RD Station",badge(l.rd_status)],["Meta CAPI",badge(l.meta_status)]];
   document.getElementById("modalBody").innerHTML=fields.map(function(f){return '<dt>'+f[0]+'</dt><dd>'+f[1]+'</dd>'}).join("");
+  var jb=document.getElementById("journeyBtn");
+  document.getElementById("journey").innerHTML="";
+  if(l.session_id){jb.style.display="";jb.disabled=false;jb.textContent="Ver jornada ↓";jb.onclick=function(){loadJourney(l.session_id)};}
+  else{jb.style.display="none";}
   document.getElementById("leadModal").classList.add("show");
 }
 function closeModal(){document.getElementById("leadModal").classList.remove("show")}
+
+/* ---- Jornada do lead (timeline) ---- */
+var JK={page_view:"Página",click:"Clique",event:"Evento",form:"Formulário",lead:"Lead"};
+function jTime(t){return (t||"").slice(11,16)}
+function jDate(t){return (t||"").slice(0,10)}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function jLine(it){
+  var main="", sub="";
+  if(it.kind==="page_view"){main="Viu "+label(it.page_name);sub=esc(it.b||it.a||"");}
+  else if(it.kind==="click"){main="Clicou "+esc(it.b||it.a||"algo");sub=esc(it.c||"");}
+  else if(it.kind==="event"){var nm=it.a||"evento";main=(nm==="simulation_start"?"Iniciou simulação":nm==="simulation_complete"?"Concluiu simulação":esc(nm));var pr="";try{pr=it.b&&it.b!=="{}"?JSON.stringify(JSON.parse(it.b)):"";}catch(e){pr=esc(it.b||"")}sub=pr;}
+  else if(it.kind==="form"){main="Enviou formulário "+esc(it.a||"");sub=(it.b==="1"||it.b===1)?"sucesso":"falha";}
+  return '<li class="tl-item k-'+it.kind+'"><span class="tl-dot"></span>'+
+    '<div class="tl-time">'+jTime(it.t)+'</div>'+
+    '<div class="tl-main"><span class="tl-kind">'+(JK[it.kind]||it.kind)+'</span>'+main+'</div>'+
+    (sub?'<div class="tl-sub">'+sub+'</div>':'')+'</li>';
+}
+function loadJourney(sid){
+  var box=document.getElementById("journey");
+  var jb=document.getElementById("journeyBtn");
+  jb.disabled=true;jb.textContent="Carregando…";
+  box.innerHTML='<div class="empty">Montando a linha do tempo…</div>';
+  fetch("${API}/journey?session_id="+encodeURIComponent(sid)+"&_="+Date.now()).then(function(r){return r.json()}).then(function(d){
+    jb.style.display="none";
+    var tl=d.timeline||[];
+    if(!tl.length){box.innerHTML='<div class="empty">Sem eventos registrados para esta sessão.</div>';return}
+    var out='', lastDate='';
+    tl.forEach(function(it){var dt=jDate(it.t);if(dt!==lastDate){out+='<div class="tl-time" style="margin:8px 0 4px;font-weight:700;color:var(--blue)">'+dt+'</div>';lastDate=dt;}out+=jLine(it);});
+    box.innerHTML='<ul class="tl">'+out+'</ul>';
+  }).catch(function(e){console.error(e);jb.disabled=false;jb.textContent="Ver jornada ↓";box.innerHTML='<div class="empty">Erro ao carregar a jornada.</div>';});
+}
 
 function exportCSV(){
   if(!lastLeads.length){alert("Sem leads para exportar.");return}
@@ -592,11 +732,106 @@ function exportCSV(){
 function drawLine(id,labels,data){var ctx=document.getElementById(id);if(dailyChart)dailyChart.destroy();dailyChart=new Chart(ctx,{type:"line",data:{labels:labels,datasets:[{data:data,borderColor:"#f97316",backgroundColor:"rgba(249,115,22,.12)",fill:true,tension:.3,pointRadius:2,pointBackgroundColor:"#f97316"}]},options:{maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:"#6b7280"},grid:{color:"#eef0f3"}},y:{ticks:{color:"#6b7280"},grid:{color:"#eef0f3"}}}}})}
 function drawDoughnut(id,labels,data){var ctx=document.getElementById(id);if(sourcesChart)sourcesChart.destroy();sourcesChart=new Chart(ctx,{type:"doughnut",data:{labels:labels,datasets:[{data:data,backgroundColor:CHART_PALETTE,borderColor:"#fff",borderWidth:2}]},options:{maintainAspectRatio:false,cutout:"60%",plugins:{legend:{position:"right",labels:{color:"#374151",font:{size:11}}}}}})}
 
+/* ---- Mapa de calor ---- */
+// Paths same-origin (as 3 páginas existem no projeto Pages inspira-cred) → dá pra
+// medir a altura real do iframe sem esbarrar em CORS.
+var HM_PATHS={link_bio:"/links/",landing_page:"/",home_equity_lp:"/homeequity/"};
+var hmRamp=null;
+function heatRamp(){
+  if(hmRamp)return hmRamp;
+  var c=document.createElement("canvas");c.width=256;c.height=1;var g=c.getContext("2d");
+  var grd=g.createLinearGradient(0,0,256,0);
+  grd.addColorStop(0.0,"#0b2d72");grd.addColorStop(0.35,"#22d3ee");grd.addColorStop(0.55,"#10b981");
+  grd.addColorStop(0.75,"#f59e0b");grd.addColorStop(1.0,"#ef4444");
+  g.fillStyle=grd;g.fillRect(0,0,256,1);
+  hmRamp=g.getImageData(0,0,256,1).data;return hmRamp;
+}
+// Estado do render: viewport FIXO (vh/svh estável dentro do iframe) + scroll externo
+// controla qual "fatia" da página aparece. Isso evita (1) o feedback de vh que estoura
+// a altura, (2) canvas gigante acima do limite do navegador, (3) travar com backdrop-filter.
+var hmLast=null, hmH0=0, hmW=390, hmVH=812, hmObs=null, hmTick=false;
+function hmDeviceVH(W){ return W>=1000 ? 800 : 812; } // altura de viewport representativa
+
+function drawSlice(){
+  hmTick=false;
+  if(!hmLast||!hmH0)return;
+  var vp=document.getElementById("hmViewport");
+  var fr=document.getElementById("hmFrame");
+  var st=vp.scrollTop;
+  try{ if(fr.contentWindow) fr.contentWindow.scrollTo(0, st); }catch(e){}
+  var radius=hmW>=1000?30:22;
+  var cv=document.getElementById("hmCanvas");
+  if(cv.width!==hmW||cv.height!==hmVH){cv.width=hmW;cv.height=hmVH;}
+  var ctx=cv.getContext("2d");ctx.clearRect(0,0,hmW,hmVH);
+  var pts=hmLast.points||[], any=false;
+  pts.forEach(function(p){
+    var yy=p.y_pct*hmH0 - st;            // posição no viewport atual
+    if(yy<-radius||yy>hmVH+radius)return;
+    var x=p.x_pct*hmW;any=true;
+    var g=ctx.createRadialGradient(x,yy,0,x,yy,radius);
+    g.addColorStop(0,"rgba(0,0,0,0.18)");g.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,yy,radius,0,6.2832);ctx.fill();
+  });
+  if(!any)return;
+  var img=ctx.getImageData(0,0,hmW,hmVH),d=img.data,ramp=heatRamp();
+  for(var i=0;i<d.length;i+=4){var a=d[i+3];if(!a)continue;var idx=(a>255?255:a)*4;d[i]=ramp[idx];d[i+1]=ramp[idx+1];d[i+2]=ramp[idx+2];d[i+3]=Math.min(200,a+40);}
+  ctx.putImageData(img,0,0);
+}
+function measureAndLayout(){
+  var fr=document.getElementById("hmFrame");
+  var H0=0;
+  try{H0=fr.contentDocument.documentElement.scrollHeight||fr.contentDocument.body.scrollHeight;}catch(e){H0=0;}
+  if(!H0){document.getElementById("hmNote").innerHTML='<span style="color:var(--red-ink)">Não consegui medir a página (CORS). Abra o dashboard em nova.inspiracred.com.br (mesma origem das páginas).</span>';return;}
+  hmH0=H0;
+  document.getElementById("hmInner").style.height=H0+"px";
+  var vp=document.getElementById("hmViewport");
+  vp.style.height=Math.min(hmVH,H0)+"px";
+  drawSlice();
+}
+function loadHeatmap(){
+  var page=document.getElementById("hmPageSel").value;
+  var W=parseInt(document.getElementById("hmDevice").value,10);
+  var days=document.getElementById("rangeSel").value;
+  var fr=document.getElementById("hmFrame"), cv=document.getElementById("hmCanvas");
+  hmW=W; hmVH=hmDeviceVH(W); hmH0=0;
+  if(hmObs){try{hmObs.disconnect()}catch(e){}hmObs=null;}
+  document.getElementById("hmNote").textContent="Carregando página e cliques…";
+  // dimensiona o palco fixo (W × VH); vh dentro do iframe fica preso a VH.
+  var vp=document.getElementById("hmViewport"), sticky=document.getElementById("hmSticky");
+  vp.style.width=W+"px"; vp.scrollTop=0;
+  sticky.style.width=W+"px"; sticky.style.height=hmVH+"px";
+  cv.width=W; cv.height=hmVH; cv.getContext("2d").clearRect(0,0,W,hmVH);
+  document.getElementById("hmInner").style.height=hmVH+"px";
+  fr.src=location.origin+(HM_PATHS[page]||"/");
+  var qs="?page="+encodeURIComponent(page)+"&start="+daysAgo(parseInt(days)-1)+"&end="+new Date().toISOString().slice(0,10);
+  var pdata=fetch("${API}/heatmap"+qs+"&_="+Date.now()).then(function(r){return r.json()});
+  var pframe=new Promise(function(res){fr.onload=function(){res();};});
+  Promise.all([pdataGuard(pdata),pframe]).then(function(r){
+    hmLast=r[0]||{points:[],count:0,page:page,range:{start:"",end:""}};
+    document.getElementById("hmNote").innerHTML=hmLast.count+' cliques/toques em <b>'+label(hmLast.page||page)+'</b> · '+(hmLast.range?hmLast.range.start+' a '+hmLast.range.end:'')+' · <span style="color:var(--muted)">role para ver o mapa inteiro</span>';
+    try{
+      var doc=fr.contentDocument;
+      if(doc){
+        // força imagens lazy (same-origin) → altura estabiliza sem depender de scroll
+        doc.querySelectorAll('img[loading="lazy"]').forEach(function(im){im.loading="eager";});
+        // esconde a barra do iframe (o scroll é controlado pelo viewport externo via scrollTo)
+        if(!doc.getElementById("__ic_hm_style")){var st=doc.createElement("style");st.id="__ic_hm_style";st.textContent="html{scrollbar-width:none}html::-webkit-scrollbar,body::-webkit-scrollbar{width:0;height:0;display:none}";(doc.head||doc.documentElement).appendChild(st);}
+      }
+      if(doc&&"ResizeObserver"in window){hmObs=new ResizeObserver(function(){measureAndLayout();});hmObs.observe(doc.documentElement);}
+    }catch(e){}
+    measureAndLayout();
+    [200,700,1600].forEach(function(ms){setTimeout(measureAndLayout,ms);});
+  });
+}
+function pdataGuard(p){return p.then(function(d){return d}).catch(function(){return null});}
+
 document.getElementById("refresh").addEventListener("click",loadAll);
 document.getElementById("rangeSel").addEventListener("change",loadAll);
 document.getElementById("pageSel").addEventListener("change",loadAll);
 document.getElementById("openPage").addEventListener("click",function(){var u=PAGE_URLS[currentPage()];if(u)window.open(u,"_blank","noopener");});
 document.getElementById("csvBtn").addEventListener("click",exportCSV);
+document.getElementById("hmLoad").addEventListener("click",loadHeatmap);
+document.getElementById("hmViewport").addEventListener("scroll",function(){if(!hmTick){hmTick=true;requestAnimationFrame(drawSlice);}},{passive:true});
 document.getElementById("modalClose").addEventListener("click",closeModal);
 document.getElementById("leadModal").addEventListener("click",function(e){if(e.target.id==="leadModal")closeModal()});
 showTab("overview");

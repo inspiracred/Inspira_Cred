@@ -16,6 +16,21 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="../assets/css/links.css" />
+
+    <!-- Microsoft Clarity — mapa de calor (cliques/scroll) + gravação de sessão.
+         INERTE até preencher CLARITY_PROJECT_ID. Pegue o ID em
+         clarity.microsoft.com > seu projeto > Settings > Overview (é público, roda no navegador). -->
+    <script>
+      (function () {
+        var CLARITY_PROJECT_ID = ""; // TODO: colar o Project ID do Clarity pra LIGAR o heatmap
+        if (!CLARITY_PROJECT_ID) return;
+        (function (c, l, a, r, i, t, y) {
+          c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
+          t = l.createElement(r); t.async = 1; t.src = "https://www.clarity.ms/tag/" + i;
+          y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+        })(window, document, "clarity", "script", CLARITY_PROJECT_ID);
+      })();
+    </script>
   </head>
   <body>
     <main class="page" aria-label="Links oficiais da InspiraCred">
@@ -30,23 +45,30 @@
           <p class="handle">@inspiracred</p>
         </header>
 
-        <section class="cta-wrap" aria-label="Simulação de crédito">
-          <a class="cta" href="https://simulacao.inspiracred.com.br/">
+        <section class="cta-wrap" data-section="whatsapp" aria-label="Fale conosco pelo WhatsApp">
+          <a
+            class="cta"
+            id="cta-whatsapp"
+            href="https://wa.me/5521977340731?text=Ol%C3%A1,%20vim%20pelo%20link%20na%20bio"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             <span>
-              <span class="cta-title">Simule seu Crédito</span>
-              <span class="cta-subtitle">Grátis, sem compromisso</span>
+              <span class="cta-title">Fale conosco pelo WhatsApp</span>
+              <span class="cta-subtitle">Atendimento rápido, sem compromisso</span>
             </span>
             <span class="cta-icon" aria-hidden="true">
-              <img src="../assets/icons/link-bio-chevron-cta.svg" alt="" />
+              <img src="../assets/icons/link-bio-whatsapp.svg" alt="" />
             </span>
           </a>
         </section>
 
-        <section class="products" aria-labelledby="products-title">
+        <section class="products" data-section="produtos" aria-labelledby="products-title">
           <h2 class="section-title" id="products-title">Nossos Produtos</h2>
           <div class="product-grid">
             <a
               class="product-card"
+              id="prod-home-equity"
               href="https://simulacao.inspiracred.com.br/"
               aria-label="Home Equity, crédito com garantia de imóvel"
             >
@@ -68,6 +90,7 @@
 
             <a
               class="product-card"
+              id="prod-auto"
               href="https://app.creditas.com/auto-refi/solicitacao/informacoes-pessoais?utm_medium=affiliates&amp;utm_source=ISE217792&amp;utm_campaign=[ar]-crm&amp;utm_term=always-on&amp;utm_content=lp"
               target="_blank"
               rel="noopener noreferrer"
@@ -91,29 +114,10 @@
           </div>
         </section>
 
-        <nav class="links" aria-label="Links InspiraCred">
+        <nav class="links" data-section="links" aria-label="Links InspiraCred">
           <a
             class="link-item"
-            href="https://wa.me/5521977340731?text=Ol%C3%A1,%20vim%20do%20Instagram"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <span class="link-left">
-              <span class="link-icon whatsapp-icon" aria-hidden="true">
-                <img src="../assets/icons/link-bio-whatsapp.svg" alt="" />
-              </span>
-              <span class="link-text">
-                <span class="link-title">WhatsApp</span>
-                <span class="link-copy">Fale com a gente</span>
-              </span>
-            </span>
-            <span class="chevron" aria-hidden="true">
-              <img src="../assets/icons/link-bio-chevron-list.svg" alt="" />
-            </span>
-          </a>
-
-          <a
-            class="link-item"
+            id="link-site"
             href="https://inspiracred.com.br/"
             target="_blank"
             rel="noopener noreferrer"
@@ -134,17 +138,18 @@
 
           <a
             class="link-item"
-            href="https://www.reclameaqui.com.br/empresa/inspira-solucoes-e-negocios-ltda/"
+            id="link-linkedin"
+            href="https://www.linkedin.com/company/inspiracred/"
             target="_blank"
             rel="noopener noreferrer"
           >
             <span class="link-left">
-              <span class="link-icon verified-icon" aria-hidden="true">
-                <img src="../assets/icons/link-bio-reclame-aqui.svg" alt="" />
+              <span class="link-icon linkedin-icon" aria-hidden="true">
+                <img src="../assets/icons/link-bio-linkedin.svg" alt="" />
               </span>
               <span class="link-text">
-                <span class="link-title">Empresa Verificada</span>
-                <span class="link-copy">Reclame Aqui</span>
+                <span class="link-title">LinkedIn</span>
+                <span class="link-copy">Acompanhe novidades</span>
               </span>
             </span>
             <span class="chevron" aria-hidden="true">
@@ -154,6 +159,7 @@
 
           <a
             class="link-item"
+            id="link-instagram"
             href="https://www.instagram.com/inspiracred/"
             target="_blank"
             rel="noopener noreferrer"
@@ -174,17 +180,18 @@
 
           <a
             class="link-item"
-            href="https://www.linkedin.com/company/inspiracred/"
+            id="link-reclame-aqui"
+            href="https://www.reclameaqui.com.br/empresa/inspira-solucoes-e-negocios-ltda/"
             target="_blank"
             rel="noopener noreferrer"
           >
             <span class="link-left">
-              <span class="link-icon linkedin-icon" aria-hidden="true">
-                <img src="../assets/icons/link-bio-linkedin.svg" alt="" />
+              <span class="link-icon verified-icon" aria-hidden="true">
+                <img src="../assets/icons/link-bio-reclame-aqui.svg" alt="" />
               </span>
               <span class="link-text">
-                <span class="link-title">LinkedIn</span>
-                <span class="link-copy">Acompanhe novidades</span>
+                <span class="link-title">Empresa Verificada</span>
+                <span class="link-copy">Reclame Aqui</span>
               </span>
             </span>
             <span class="chevron" aria-hidden="true">
