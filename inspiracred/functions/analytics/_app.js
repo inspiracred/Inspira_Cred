@@ -891,6 +891,14 @@ document.getElementById("openPage").addEventListener("click",function(){var u=PA
 document.getElementById("csvBtn").addEventListener("click",exportCSV);
 document.getElementById("hmLoad").addEventListener("click",loadHeatmap);
 document.getElementById("hmViewport").addEventListener("scroll",function(){if(!hmTick){hmTick=true;requestAnimationFrame(drawSlice);}},{passive:true});
+// Roda do mouse controla EXPLICITAMENTE o scroll do viewport (não depende do iframe
+// deixar o evento passar). Só "prende" o scroll enquanto ainda dá pra rolar o mapa;
+// nas pontas deixa a página rolar normalmente.
+document.getElementById("hmViewport").addEventListener("wheel",function(e){
+  var m=this.scrollHeight-this.clientHeight;
+  if(m<=0)return;
+  if((e.deltaY<0&&this.scrollTop>0)||(e.deltaY>0&&this.scrollTop<m-1)){e.preventDefault();this.scrollTop+=e.deltaY;}
+},{passive:false});
 document.getElementById("modalClose").addEventListener("click",closeModal);
 document.getElementById("leadModal").addEventListener("click",function(e){if(e.target.id==="leadModal")closeModal()});
 showTab("overview");
