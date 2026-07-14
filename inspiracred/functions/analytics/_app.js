@@ -372,7 +372,17 @@ async function handleJourney(request, env) {
   return json({ session_id: sid, timeline, lead: lead || null, count: timeline.length });
 }
 
-/* ---- MAPA DE CALOR (pontos agregados por página) ---- */
+/* ---- MAPA DE CALOR (pontos por página, ISOLADOS por device) ----
+ * Os layouts diferem entre mobile/tablet/desktop, então misturar taps de larguras
+ * diferentes no mesmo render não faz sentido. Filtra por `device` usando o `vw`
+ * (largura da tela gravada em cada tap). Buckets: mobile <768, tablet 768–1023,
+ * desktop >=1024. Também devolve a distribuição por device pra dar visibilidade.
+ */
+function deviceVwCond(device) {
+  if (device === "mobile") return "vw < 768";
+  if (device === "tablet") return "vw >= 768 AND vw < 1024";
+  return "vw >= 1024"; // desktop (default)
+}
 async function handleHeatmap(request, env) {
   const p = new URL(request.url).searchParams;
   const page = p.get("page");
@@ -381,13 +391,27 @@ async function handleHeatmap(request, env) {
   const past = new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10);
   const start = p.get("start") || past;
   const end = p.get("end") || today;
+  const device = p.get("device") || "desktop";
 
   const rows = (await env.DB.prepare(
     `SELECT x_pct, y_pct, element_id FROM heatmap_taps
-     WHERE page_name=? AND DATE(created_at) BETWEEN ? AND ? LIMIT 20000`
+     WHERE page_name=? AND DATE(created_at) BETWEEN ? AND ? AND ${deviceVwCond(device)} LIMIT 20000`
   ).bind(page, start, end).all()).results || [];
 
-  return json({ page, range: { start, end }, points: rows, count: rows.length });
+  // distribuição por device (todos os taps da página no período) — pra saber quanto
+  // tráfego vem de cada tamanho de tela, mesmo os que a gente não está vendo agora.
+  const dist = (await env.DB.prepare(
+    `SELECT
+       SUM(CASE WHEN vw < 768 THEN 1 ELSE 0 END) mobile,
+       SUM(CASE WHEN vw >= 768 AND vw < 1024 THEN 1 ELSE 0 END) tablet,
+       SUM(CASE WHEN vw >= 1024 THEN 1 ELSE 0 END) desktop
+     FROM heatmap_taps WHERE page_name=? AND DATE(created_at) BETWEEN ? AND ?`
+  ).bind(page, start, end).first()) || {};
+
+  return json({
+    page, device, range: { start, end }, points: rows, count: rows.length,
+    by_device: { mobile: dist.mobile || 0, tablet: dist.tablet || 0, desktop: dist.desktop || 0 },
+  });
 }
 
 function json(obj, status = 200, extra = {}) {
@@ -588,7 +612,7 @@ const DASHBOARD_HTML = `<!doctype html>
             <option value="landing_page">Landing / Simulação</option>
             <option value="home_equity_lp">Home Equity</option>
           </select>
-          <select id="hmDevice"><option value="390">Mobile (390px)</option><option value="1280">Desktop (1280px)</option></select>
+          <select id="hmDevice"><option value="mobile" selected>Mobile</option><option value="tablet">Tablet</option><option value="desktop">Desktop</option></select>
           <button id="hmLoad" class="primary">Carregar</button>
         </div>
       </div>
@@ -809,7 +833,13 @@ function heatRamp(){
 // controla qual "fatia" da página aparece. Isso evita (1) o feedback de vh que estoura
 // a altura, (2) canvas gigante acima do limite do navegador, (3) travar com backdrop-filter.
 var hmLast=null, hmH0=0, hmW=390, hmVH=812, hmObs=null, hmTick=false;
-function hmDeviceVH(W){ return W>=1000 ? 800 : 812; } // altura de viewport representativa
+// dimensões de render representativas por device (largura do iframe + altura de viewport
+// pra vh/svh ficar estável). Os DADOS já vêm filtrados por device pela API (bucket de vw).
+function hmDeviceDims(dev){
+  if(dev==="desktop")return {w:1280,vh:800};
+  if(dev==="tablet")return {w:768,vh:1024};
+  return {w:390,vh:812}; // mobile
+}
 
 function drawSlice(){
   hmTick=false;
@@ -849,10 +879,11 @@ function measureAndLayout(){
 }
 function loadHeatmap(){
   var page=document.getElementById("hmPageSel").value;
-  var W=parseInt(document.getElementById("hmDevice").value,10);
+  var dev=document.getElementById("hmDevice").value;
+  var dims=hmDeviceDims(dev), W=dims.w;
   var days=document.getElementById("rangeSel").value;
   var fr=document.getElementById("hmFrame"), cv=document.getElementById("hmCanvas");
-  hmW=W; hmVH=hmDeviceVH(W); hmH0=0;
+  hmW=W; hmVH=dims.vh; hmH0=0;
   if(hmObs){try{hmObs.disconnect()}catch(e){}hmObs=null;}
   document.getElementById("hmNote").textContent="Carregando página e cliques…";
   // dimensiona o palco fixo (W × VH); vh dentro do iframe fica preso a VH.
@@ -862,12 +893,17 @@ function loadHeatmap(){
   cv.width=W; cv.height=hmVH; cv.getContext("2d").clearRect(0,0,W,hmVH);
   document.getElementById("hmInner").style.height=hmVH+"px";
   fr.src=location.origin+(HM_PATHS[page]||"/");
-  var qs="?page="+encodeURIComponent(page)+"&start="+daysAgo(parseInt(days)-1)+"&end="+new Date().toISOString().slice(0,10);
+  var qs="?page="+encodeURIComponent(page)+"&device="+dev+"&start="+daysAgo(parseInt(days)-1)+"&end="+new Date().toISOString().slice(0,10);
   var pdata=fetch("${API}/heatmap"+qs+"&_="+Date.now()).then(function(r){return r.json()});
   var pframe=new Promise(function(res){fr.onload=function(){res();};});
   Promise.all([pdataGuard(pdata),pframe]).then(function(r){
     hmLast=r[0]||{points:[],count:0,page:page,range:{start:"",end:""}};
-    document.getElementById("hmNote").innerHTML=hmLast.count+' cliques/toques em <b>'+label(hmLast.page||page)+'</b> · '+(hmLast.range?hmLast.range.start+' a '+hmLast.range.end:'')+' · <span style="color:var(--muted)">role para ver o mapa inteiro</span>';
+    var DEVN={mobile:"Mobile",tablet:"Tablet",desktop:"Desktop"};
+    var bd=hmLast.by_device||{mobile:0,tablet:0,desktop:0};
+    document.getElementById("hmNote").innerHTML=
+      '<b>'+hmLast.count+'</b> toque'+(hmLast.count===1?"":"s")+' em <b>'+label(hmLast.page||page)+'</b> · '+(DEVN[dev]||dev)+
+      ' <span style="color:var(--muted)">(distribuição no período: mobile '+bd.mobile+' · tablet '+bd.tablet+' · desktop '+bd.desktop+')</span>'+
+      ' · <span style="color:var(--muted)">role para ver o mapa inteiro</span>';
     try{
       var doc=fr.contentDocument;
       if(doc){
@@ -890,6 +926,8 @@ document.getElementById("pageSel").addEventListener("change",loadAll);
 document.getElementById("openPage").addEventListener("click",function(){var u=PAGE_URLS[currentPage()];if(u)window.open(u,"_blank","noopener");});
 document.getElementById("csvBtn").addEventListener("click",exportCSV);
 document.getElementById("hmLoad").addEventListener("click",loadHeatmap);
+document.getElementById("hmDevice").addEventListener("change",loadHeatmap);
+document.getElementById("hmPageSel").addEventListener("change",loadHeatmap);
 document.getElementById("hmViewport").addEventListener("scroll",function(){if(!hmTick){hmTick=true;requestAnimationFrame(drawSlice);}},{passive:true});
 // Roda do mouse controla EXPLICITAMENTE o scroll do viewport (não depende do iframe
 // deixar o evento passar). Só "prende" o scroll enquanto ainda dá pra rolar o mapa;
