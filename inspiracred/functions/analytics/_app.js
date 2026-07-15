@@ -48,6 +48,7 @@ export async function onRequest(context) {
   if (sub === "/api/leads" && request.method === "GET") return handleLeads(request, env);
   if (sub === "/api/journey" && request.method === "GET") return handleJourney(request, env);
   if (sub === "/api/heatmap" && request.method === "GET") return handleHeatmap(request, env);
+  if (sub === "/api/campaigns" && request.method === "GET") return handleCampaigns(request, env);
   if ((sub === "/" || sub === "/dashboard") && request.method === "GET") {
     return new Response(DASHBOARD_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
   }
@@ -339,12 +340,52 @@ async function handleLeads(request, env) {
   const limit = Math.min(parseInt(p.get("limit")) || 100, 500);
   const pageRaw = p.get("page");
   const page = pageRaw && pageRaw !== "all" ? pageRaw : null;
-  let sql = `SELECT id, session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, rd_status, meta_status, created_at FROM leads`;
+  let sql = `SELECT id, session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, rd_status, meta_status, created_at FROM leads`;
   const binds = [];
   if (page) { sql += ` WHERE source = ?`; binds.push(page); }
   sql += ` ORDER BY created_at DESC LIMIT ?`; binds.push(limit);
   const rows = (await env.DB.prepare(sql).bind(...binds).all()).results || [];
   return json({ leads: rows, count: rows.length });
+}
+
+/* ---- CAMPANHAS (de onde vêm os leads: origem, mídia, campanha, criativo) ----
+ * Tudo sai da tabela `leads`, agrupado pelos utm_*. `utm_content` é onde Meta/Google
+ * costumam mandar o criativo/anúncio — só aparece se o anúncio enviar o parâmetro.
+ * `valor` = soma do crédito solicitado, pra saber qual campanha traz ticket maior.
+ */
+async function handleCampaigns(request, env) {
+  const { start, end, page } = params(request.url);
+  const sc = page ? " AND source = ?" : "";
+  const b = page ? [start, end, page] : [start, end];
+  const many = async (sql) => (await env.DB.prepare(sql).bind(...b).all()).results || [];
+
+  const SRC = "COALESCE(NULLIF(utm_source,''),'direto')";
+  const CAMP = "COALESCE(NULLIF(utm_campaign,''),'(sem campanha)')";
+  const CONT = "COALESCE(NULLIF(utm_content,''),'(sem criativo)')";
+  const MED = "COALESCE(NULLIF(utm_medium,''),'(sem mídia)')";
+  const WHERE = `WHERE DATE(created_at) BETWEEN ? AND ?${sc}`;
+  const AGG = "COUNT(*) leads, SUM(COALESCE(credit_value,0)) valor";
+
+  const [by_source, by_medium, by_campaign, by_content, totals] = await Promise.all([
+    many(`SELECT ${SRC} k, ${AGG} FROM leads ${WHERE} GROUP BY k ORDER BY leads DESC`),
+    many(`SELECT ${MED} k, ${AGG} FROM leads ${WHERE} GROUP BY k ORDER BY leads DESC`),
+    many(`SELECT ${CAMP} k, ${SRC} src, ${MED} med, ${AGG} FROM leads ${WHERE} GROUP BY k, src, med ORDER BY leads DESC`),
+    many(`SELECT ${CONT} k, ${CAMP} camp, ${SRC} src, ${AGG} FROM leads ${WHERE} GROUP BY k, camp, src ORDER BY leads DESC`),
+    env.DB.prepare(
+      `SELECT COUNT(*) total,
+              SUM(CASE WHEN COALESCE(utm_source,'')<>'' THEN 1 ELSE 0 END) com_utm,
+              SUM(COALESCE(credit_value,0)) valor
+       FROM leads ${WHERE}`
+    ).bind(...b).first(),
+  ]);
+
+  const t = totals || {};
+  const total = t.total || 0, com_utm = t.com_utm || 0;
+  return json({
+    range: { start, end }, page: page || "all",
+    totals: { total, com_utm, direto: total - com_utm, valor: t.valor || 0 },
+    by_source, by_medium, by_campaign, by_content,
+  });
 }
 
 /* ---- JORNADA DO LEAD (timeline por session_id) ----
@@ -573,6 +614,7 @@ const DASHBOARD_HTML = `<!doctype html>
 <div class="tabs">
   <button class="tab" id="tabbtn-overview" onclick="showTab('overview')">Visão geral</button>
   <button class="tab" id="tabbtn-leads" onclick="showTab('leads')">Leads</button>
+  <button class="tab" id="tabbtn-campaigns" onclick="showTab('campaigns')">Campanhas</button>
   <button class="tab" id="tabbtn-traffic" onclick="showTab('traffic')">Tráfego</button>
   <button class="tab" id="tabbtn-heatmap" onclick="showTab('heatmap')">Mapa de calor</button>
 </div>
@@ -592,6 +634,28 @@ const DASHBOARD_HTML = `<!doctype html>
     <div class="card">
       <div class="h2row"><h2 id="leadsTitle">Leads</h2><button class="btn-sm" id="csvBtn">Baixar CSV</button></div>
       <div class="table-scroll"><div id="leads"></div></div>
+    </div>
+  </section>
+
+  <section class="tab-section" id="tab-campaigns">
+    <div class="kpis" id="campKpis"></div>
+    <div class="traffic-top">
+      <div class="card">
+        <div class="h2row"><h2>Origem</h2><span class="hint">utm_source</span></div>
+        <div id="campSources"></div>
+      </div>
+      <div class="card">
+        <div class="h2row"><h2>Mídia</h2><span class="hint">utm_medium</span></div>
+        <div id="campMediums"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:18px">
+      <div class="h2row"><h2>Campanhas</h2><span class="hint">utm_campaign · leads e crédito solicitado</span></div>
+      <div class="table-scroll" id="campTable"></div>
+    </div>
+    <div class="card" style="margin-top:18px">
+      <div class="h2row"><h2>Criativos / anúncios</h2><span class="hint">utm_content — só aparece se o anúncio enviar esse parâmetro</span></div>
+      <div class="table-scroll" id="campContent"></div>
     </div>
   </section>
 
@@ -668,7 +732,7 @@ function badge(s){if(s==="ok")return '<span class="pill ok">entregue</span>';if(
 
 function showTab(name){
   activeTab=name;
-  ["overview","leads","traffic","heatmap"].forEach(function(t){
+  ["overview","leads","campaigns","traffic","heatmap"].forEach(function(t){
     document.getElementById("tab-"+t).style.display=(t===name)?"block":"none";
     document.getElementById("tabbtn-"+t).classList.toggle("active",t===name);
   });
@@ -688,7 +752,8 @@ function loadAll(){
   document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--muted)">carregando…</span>';
   var p1=fetch("${API}/overview"+qs+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(function(d){render(d);renderTraffic(d);});
   var p2=fetch("${API}/leads?limit=500"+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderLeads);
-  Promise.all([p1,p2]).then(function(){
+  var p3=fetch("${API}/campaigns"+qs+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderCampaigns);
+  Promise.all([p1,p2,p3]).then(function(){
     document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--green-ink)">atualizado às '+new Date().toLocaleTimeString("pt-BR")+'</span>';
   }).catch(function(e){console.error(e);document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--red-ink)">erro ao carregar</span>';})
   .then(function(){setLoading(false);});
@@ -721,6 +786,59 @@ function renderFunnel(steps){
       '<div class="fn-stats"><span class="n">'+pretty(s[1])+'</span><span class="c">'+conv+'</span></div>'+
     '</div>';
   }).join("");
+}
+
+/* ---- Campanhas: de onde vêm os leads (origem, mídia, campanha, criativo) ---- */
+function renderCampaigns(d){
+  var t=d.totals||{total:0,com_utm:0,direto:0,valor:0};
+  var kpis=[
+    ["Total de leads",pretty(t.total),""],
+    ["Vindos de campanha",pretty(t.com_utm),pct(t.com_utm,t.total)+"% do total"],
+    ["Diretos / sem UTM",pretty(t.direto),pct(t.direto,t.total)+"% do total"],
+    ["Crédito solicitado",brl(t.valor),"soma dos leads do período"]
+  ];
+  document.getElementById("campKpis").innerHTML=kpis.map(function(k){
+    return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub">'+k[2]+'</div></div>';
+  }).join("");
+
+  barsInto("campSources", d.by_source||[], "Nenhum lead no período.");
+  barsInto("campMediums", d.by_medium||[], "Nenhum lead no período.");
+
+  // Campanhas: campanha | origem | mídia | leads | crédito | ticket
+  var camps=d.by_campaign||[];
+  document.getElementById("campTable").innerHTML = !camps.length
+    ? '<div class="empty">Nenhuma campanha no período.</div>'
+    : '<table class="sumtable"><thead><tr><th>Campanha</th><th style="text-align:left">Origem</th><th style="text-align:left">Mídia</th><th>Leads</th><th>Crédito</th><th>Ticket médio</th></tr></thead><tbody>'+
+      camps.map(function(c){
+        return '<tr><td title="'+esc(c.k)+'">'+esc(c.k)+'</td>'+
+          '<td style="text-align:left;font-weight:500;color:var(--text)">'+esc(c.src)+'</td>'+
+          '<td style="text-align:left;font-weight:500;color:var(--muted)" title="'+esc(c.med)+'">'+esc(c.med)+'</td>'+
+          '<td class="num">'+c.leads+'</td><td class="num">'+brl(c.valor)+'</td>'+
+          '<td class="num">'+(c.leads?brl(Math.round(c.valor/c.leads)):"-")+'</td></tr>';
+      }).join("")+'</tbody></table>';
+
+  // Criativos (utm_content)
+  var conts=d.by_content||[];
+  var semCriativo=conts.length===1&&conts[0].k==="(sem criativo)";
+  document.getElementById("campContent").innerHTML = (!conts.length||semCriativo)
+    ? '<div class="empty">Nenhum criativo identificado. Os anúncios precisam enviar <b>utm_content</b> no link para essa quebra funcionar.</div>'
+    : '<table class="sumtable"><thead><tr><th>Criativo</th><th style="text-align:left">Campanha</th><th style="text-align:left">Origem</th><th>Leads</th><th>Crédito</th></tr></thead><tbody>'+
+      conts.map(function(c){
+        return '<tr><td title="'+esc(c.k)+'">'+esc(c.k)+'</td>'+
+          '<td style="text-align:left;font-weight:500;color:var(--muted)" title="'+esc(c.camp)+'">'+esc(c.camp)+'</td>'+
+          '<td style="text-align:left;font-weight:500;color:var(--text)">'+esc(c.src)+'</td>'+
+          '<td class="num">'+c.leads+'</td><td class="num">'+brl(c.valor)+'</td></tr>';
+      }).join("")+'</tbody></table>';
+}
+// lista de barras a partir de [{k, leads, valor}]
+function barsInto(id, rows, emptyMsg){
+  var box=document.getElementById(id);
+  if(!rows.length){box.innerHTML='<div class="empty">'+emptyMsg+'</div>';return}
+  var total=rows.reduce(function(a,x){return a+(x.leads||0)},0);
+  var max=Math.max.apply(null,rows.map(function(x){return x.leads||0}));
+  box.innerHTML=barList(rows.map(function(x){
+    return {lbl:x.k, val:x.leads, sub:total?Math.round(x.leads/total*100)+"%":"", w:max?x.leads/max:0};
+  }));
 }
 
 function renderTraffic(d){
@@ -791,7 +909,7 @@ function showLead(i){
   var l=lastLeads[i]; if(!l)return;
   document.getElementById("modalName").textContent=l.name||"Lead sem nome";
   document.getElementById("modalDate").textContent=(l.created_at||"").slice(0,16);
-  var fields=[["Telefone",pretty(l.phone)],["E-mail",pretty(l.email)],["Tipo de imóvel",pretty(l.property_type)],["Valor do imóvel",brl(l.property_value)],["Crédito desejado",brl(l.credit_value)],["Origem (página)",label(l.source)],["utm_source",pretty(l.utm_source)],["utm_medium",pretty(l.utm_medium)],["utm_campaign",pretty(l.utm_campaign)],["RD Station",badge(l.rd_status)],["Meta CAPI",badge(l.meta_status)]];
+  var fields=[["Telefone",pretty(l.phone)],["E-mail",pretty(l.email)],["Tipo de imóvel",pretty(l.property_type)],["Valor do imóvel",brl(l.property_value)],["Crédito desejado",brl(l.credit_value)],["Origem (página)",label(l.source)],["utm_source",pretty(l.utm_source)],["utm_medium",pretty(l.utm_medium)],["utm_campaign",pretty(l.utm_campaign)],["Criativo (utm_content)",pretty(l.utm_content)],["utm_term",pretty(l.utm_term)],["RD Station",badge(l.rd_status)],["Meta CAPI",badge(l.meta_status)]];
   document.getElementById("modalBody").innerHTML=fields.map(function(f){return '<dt>'+f[0]+'</dt><dd>'+f[1]+'</dd>'}).join("");
   var jb=document.getElementById("journeyBtn");
   document.getElementById("journey").innerHTML="";
@@ -834,7 +952,7 @@ function loadJourney(sid){
 
 function exportCSV(){
   if(!lastLeads.length){alert("Sem leads para exportar.");return}
-  var cols=["created_at","name","phone","email","property_type","property_value","credit_value","source","utm_source","utm_medium","utm_campaign","rd_status","meta_status"];
+  var cols=["created_at","name","phone","email","property_type","property_value","credit_value","source","utm_source","utm_medium","utm_campaign","utm_content","utm_term","rd_status","meta_status"];
   var head=cols.join(",");
   var lines=lastLeads.map(function(l){return cols.map(function(c){var v=l[c]==null?"":String(l[c]).replace(/"/g,'""');return '"'+v+'"'}).join(",")});
   var csv=head+"\\n"+lines.join("\\n");
