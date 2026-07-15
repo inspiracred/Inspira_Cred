@@ -153,6 +153,7 @@ async function handleTrack(request, env, cors, context) {
 const RD_PAGE_CONFIG = {
   landing_page: { identificador: "landing-nova-raiz" },
   home_equity_lp: { identificador: "home-equity-lp" },
+  home_equity_form: { identificador: "home-equity-typeform" },
 };
 
 async function sendLeadToRD(event, env, leadId) {
@@ -440,7 +441,7 @@ const DASHBOARD_HTML = `<!doctype html>
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:"Inter",-apple-system,Segoe UI,Roboto,sans-serif;background:var(--surface);color:var(--text);-webkit-font-smoothing:antialiased}
-  .num,h2,.logo,.kpi .val,.funnel-bar{font-family:"Instrument Sans","Inter",sans-serif}
+  .num,h2,.logo,.kpi .val{font-family:"Instrument Sans","Inter",sans-serif}
   header{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 26px;background:#fff;border-bottom:1px solid var(--border);flex-wrap:wrap}
   .logo{font-size:20px;font-weight:800;color:var(--blue);letter-spacing:-.02em;display:flex;align-items:baseline;gap:9px}
   .logo .o{color:var(--orange)}
@@ -504,10 +505,18 @@ const DASHBOARD_HTML = `<!doctype html>
   .pill.wait{background:var(--surface);color:var(--muted)}
   .btn-sm{padding:6px 12px;font-size:12px;border-radius:9px}
   .empty{color:var(--muted);font-size:13px;padding:28px 0;text-align:center}
-  .funnel-step{display:flex;align-items:center;gap:12px;margin-bottom:11px}
-  .funnel-label{width:150px;font-size:12.5px;color:var(--muted)}
-  .funnel-bar{height:36px;background:var(--blue);border-radius:9px;min-width:46px;display:flex;align-items:center;padding:0 12px;font-weight:700;font-size:13px;color:#fff}
-  .funnel-step:last-child .funnel-bar{background:var(--orange)}
+  /* Funil: trapézios empilhados (silhueta contínua) + rótulos fora da forma */
+  #funnel{display:flex;flex-direction:column;padding:4px 0}
+  .fn-row{display:grid;grid-template-columns:1fr 210px 1fr;column-gap:16px;align-items:stretch}
+  .fn-name{align-self:center;text-align:right;font-size:13px;font-weight:600;color:var(--muted)}
+  .fn-shape{height:56px}
+  .fn-shape .tz{display:block;width:100%;height:100%;background:linear-gradient(180deg,#2a5cb8 0%,var(--blue) 100%);transition:clip-path .5s cubic-bezier(.22,1,.36,1)}
+  .fn-row.last .fn-shape .tz{background:linear-gradient(180deg,#fb923c 0%,var(--orange) 100%)}
+  .fn-stats{align-self:center;display:flex;flex-direction:column}
+  .fn-stats .n{font-family:"Instrument Sans","Inter",sans-serif;font-weight:800;font-size:19px;color:var(--blue);line-height:1}
+  .fn-row.last .fn-stats .n{color:var(--orange)}
+  .fn-stats .c{font-size:11px;color:var(--muted);margin-top:4px}
+  @media(max-width:520px){.fn-row{grid-template-columns:1fr 110px 1fr;column-gap:10px}.fn-name{font-size:12px}}
   .chart-box{position:relative;height:250px}
   .table-scroll{overflow:auto;max-height:560px}
   .modal-bg{position:fixed;inset:0;background:rgba(6,26,66,.55);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
@@ -553,6 +562,7 @@ const DASHBOARD_HTML = `<!doctype html>
       <option value="all" selected>Todas as páginas</option>
       <option value="landing_page">Landing / Simulação</option>
       <option value="home_equity_lp">Home Equity</option>
+      <option value="home_equity_form">Formulário Home Equity</option>
       <option value="link_bio">Link na bio</option>
     </select>
     <select id="rangeSel"><option value="7">Últimos 7 dias</option><option value="30" selected>Últimos 30 dias</option><option value="90">Últimos 90 dias</option></select>
@@ -611,6 +621,7 @@ const DASHBOARD_HTML = `<!doctype html>
             <option value="link_bio">Link na bio</option>
             <option value="landing_page">Landing / Simulação</option>
             <option value="home_equity_lp">Home Equity</option>
+            <option value="home_equity_form">Formulário Home Equity</option>
           </select>
           <select id="hmDevice"><option value="mobile" selected>Mobile</option><option value="tablet">Tablet</option><option value="desktop">Desktop</option></select>
           <button id="hmLoad" class="primary">Carregar</button>
@@ -644,8 +655,8 @@ const DASHBOARD_HTML = `<!doctype html>
 
 <script>
 var dailyChart=null, lastLeads=[], activeTab="overview";
-var PAGE_LABELS={landing_page:"Landing / Simulação",home_equity_lp:"Home Equity",link_bio:"Link na bio",bio_test:"Bio (teste)",other:"Outras"};
-var PAGE_URLS={landing_page:"https://nova.inspiracred.com.br/",home_equity_lp:"https://nova.inspiracred.com.br/homeequity/",link_bio:"https://links.inspiracred.com.br/"};
+var PAGE_LABELS={landing_page:"Landing / Simulação",home_equity_lp:"Home Equity",home_equity_form:"Formulário Home Equity",link_bio:"Link na bio",bio_test:"Bio (teste)",other:"Outras"};
+var PAGE_URLS={landing_page:"https://nova.inspiracred.com.br/",home_equity_lp:"https://nova.inspiracred.com.br/homeequity/",home_equity_form:"https://nova.inspiracred.com.br/formulario/",link_bio:"https://links.inspiracred.com.br/"};
 var CHART_PALETTE=["#f97316","#0b2d72","#10b981","#f59e0b","#3b82f6","#8b5cf6","#ec4899"];
 function pretty(n){return (n==null||n===""?"-":String(n))}
 function label(p){return PAGE_LABELS[p]||p}
@@ -687,10 +698,29 @@ function render(d){
   var t=d.totals, r=d.rates;
   var kpis=[["Visitantes únicos",pretty(t.visitors),r.visitor_to_lead+"% viram lead"],["Simulações concluídas",pretty(t.sim_complete),r.start_to_complete+"% de conclusão"],["Leads capturados",pretty(t.leads),r.complete_to_lead+"% dos que concluíram"],["Conversão visitante→lead",r.visitor_to_lead+"%",pretty(t.leads)+" de "+pretty(t.visitors)]];
   document.getElementById("kpis").innerHTML=kpis.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>'}).join("");
-  var steps=[["Visitantes",t.visitors],["Simulação iniciada",t.sim_start],["Simulação concluída",t.sim_complete],["Lead",t.leads]];
-  var max=Math.max(1,t.visitors);
-  document.getElementById("funnel").innerHTML=steps.map(function(s){var w=Math.max(6,Math.round(((s[1]||0)/max)*100));return '<div class="funnel-step"><div class="funnel-label">'+s[0]+'</div><div class="funnel-bar" style="width:'+w+'%">'+pretty(s[1])+'</div></div>'}).join("");
+  renderFunnel([["Visitantes",t.visitors],["Simulação iniciada",t.sim_start],["Simulação concluída",t.sim_complete],["Lead",t.leads]]);
   var dl=d.daily||[]; drawLine("dailyChart",dl.map(function(x){return x.d.slice(5)}),dl.map(function(x){return x.v}));
+}
+
+/* Funil de conversão com silhueta real: cada etapa é um trapézio que vai da própria
+   largura até a largura da etapa seguinte, então as bordas se encontram e formam um
+   funil contínuo. Nome e números ficam FORA da forma (nunca são cortados pelo clip). */
+function renderFunnel(steps){
+  var max=Math.max(1, steps[0][1]||0);
+  var pctW=function(v){return Math.max(7, (v||0)/max*100);};
+  document.getElementById("funnel").innerHTML=steps.map(function(s,i){
+    var last=(i===steps.length-1);
+    var wTop=pctW(s[1]), wBot=pctW(last?s[1]:steps[i+1][1]);
+    var clip='polygon('+((100-wTop)/2).toFixed(2)+'% 0%,'+((100+wTop)/2).toFixed(2)+'% 0%,'+
+             ((100+wBot)/2).toFixed(2)+'% 100%,'+((100-wBot)/2).toFixed(2)+'% 100%)';
+    var prev=i>0?steps[i-1][1]:0;
+    var conv=i>0?(prev?Math.round(((s[1]||0)/prev)*100)+"% do passo anterior":"—"):"base do funil";
+    return '<div class="fn-row'+(last?' last':'')+'">'+
+      '<div class="fn-name">'+s[0]+'</div>'+
+      '<div class="fn-shape"><span class="tz" style="clip-path:'+clip+'"></span></div>'+
+      '<div class="fn-stats"><span class="n">'+pretty(s[1])+'</span><span class="c">'+conv+'</span></div>'+
+    '</div>';
+  }).join("");
 }
 
 function renderTraffic(d){
@@ -818,7 +848,7 @@ function drawLine(id,labels,data){var ctx=document.getElementById(id);if(dailyCh
 /* ---- Mapa de calor ---- */
 // Paths same-origin (as 3 páginas existem no projeto Pages inspira-cred) → dá pra
 // medir a altura real do iframe sem esbarrar em CORS.
-var HM_PATHS={link_bio:"/links/",landing_page:"/",home_equity_lp:"/homeequity/"};
+var HM_PATHS={link_bio:"/links/",landing_page:"/",home_equity_lp:"/homeequity/",home_equity_form:"/formulario/"};
 var hmRamp=null;
 function heatRamp(){
   if(hmRamp)return hmRamp;
