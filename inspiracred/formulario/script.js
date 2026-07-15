@@ -10,7 +10,6 @@
 
   if (!form || !shell || !nextButton || !backButton) return;
 
-  var WHATSAPP_URL = "https://wa.me/5521977340731?text=Ol%C3%A1%2C%20acabei%20de%20responder%20a%20simula%C3%A7%C3%A3o%20Home%20Equity%20da%20InspiraCred.";
   var answers = {};
   var stepIndex = 0;
   var started = false;
@@ -301,20 +300,15 @@
       }
     } catch (e) {}
 
+    progressLabel.textContent = "Concluído";
+    progressFill.style.width = "100%";
+
+    // Redireciona pra página de obrigado da ETAPA (page_view próprio -> dá pra medir
+    // quantos leads concluíram esta etapa). O lead vai por sendBeacon, que sobrevive
+    // à navegação; a folga é pro Meta Pixel conseguir disparar antes de sair.
     setTimeout(function () {
-      progressLabel.textContent = "Concluído";
-      progressFill.style.width = "100%";
-      shell.innerHTML = '<section class="success">' +
-        '<div class="success-inner">' +
-        '<span class="success-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>' +
-        '<h2>Muito obrigada por suas respostas!</h2>' +
-        '<p>Caso queira acelerar seu atendimento, mande uma mensagem para nós pelo WhatsApp clicando no botão abaixo.</p>' +
-        '<a class="whatsapp-button" id="form-whatsapp-success" href="' + WHATSAPP_URL + '" target="_blank" rel="noopener">' +
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20.5 4.4 16A8.7 8.7 0 1 1 8 19.3L3 20.5Z"/><path d="M8.8 8.5c.2-.5.4-.5.7-.5h.6c.2 0 .4.1.5.4l.7 1.7c.1.3 0 .5-.2.7l-.4.4c.6 1.1 1.5 2 2.7 2.6l.5-.5c.2-.2.4-.3.7-.2l1.6.7c.3.1.4.3.4.6v.6c0 .3 0 .5-.5.7-.5.2-1.7.7-3.9-.2-2.7-1.1-4.5-3.6-5-4.8-.5-1.3.3-2 .6-2.2Z"/></svg>' +
-        'Mandar mensagem</a>' +
-        '</div></section>';
-      document.querySelector(".nav-actions").hidden = true;
-    }, 420);
+      window.location.assign("/obrigado/formulario/");
+    }, 700);
   }
 
   function goNext() {

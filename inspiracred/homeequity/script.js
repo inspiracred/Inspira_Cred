@@ -127,11 +127,12 @@
         }
       } catch (e) {}
 
+      // Redireciona pra página de obrigado desta etapa (page_view próprio -> dá pra
+      // medir quantos leads concluíram aqui). O lead vai por sendBeacon, que sobrevive
+      // à navegação; a folga é pro Meta Pixel disparar antes de sair.
       setTimeout(function () {
-        form.classList.add("is-hidden");
-        formSuccess.classList.remove("is-hidden");
-        formSuccess.scrollIntoView({ behavior: "smooth", block: "center" });
-      }, 400);
+        window.location.assign("/obrigado/home-equity/");
+      }, 700);
     });
   }
 

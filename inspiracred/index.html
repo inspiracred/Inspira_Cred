@@ -792,7 +792,10 @@
             source: "landing_page"
           }, getUtmParams()));
         } catch {}
-        elements.leadSuccess.scrollIntoView({ behavior: "smooth", block: "center" });
+        // Redireciona pra página de obrigado desta etapa (page_view próprio -> dá pra
+        // medir quantos leads concluíram aqui). O lead vai por sendBeacon, que sobrevive
+        // à navegação; a folga é pro Meta Pixel disparar antes de sair.
+        setTimeout(() => window.location.assign("/obrigado/simulacao/"), 700);
       });
 
       document.getElementById("new-simulation").addEventListener("click", () => {
