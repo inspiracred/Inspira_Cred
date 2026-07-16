@@ -310,15 +310,17 @@
       }
     } catch (e) {}
 
-    progressLabel.textContent = "Concluído";
-    progressFill.style.width = "100%";
-
-    // Redireciona pra página de obrigado da ETAPA (page_view próprio -> dá pra medir
-    // quantos leads concluíram esta etapa). O lead vai por sendBeacon, que sobrevive
-    // à navegação; a folga é pro Meta Pixel conseguir disparar antes de sair.
     setTimeout(function () {
-      window.location.assign("/obrigado/formulario/");
-    }, 700);
+      progressLabel.textContent = "Concluído";
+      progressFill.style.width = "100%";
+      shell.innerHTML = '<section class="success">' +
+        '<div class="success-inner">' +
+        '<span class="success-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>' +
+        '<h2>Muito obrigada por suas respostas!</h2>' +
+        '<p>Nossa equipe vai analisar o seu perfil e entrar em contato em breve para falar sobre as melhores condições para você.</p>' +
+        '</div></section>';
+      document.querySelector(".nav-actions").hidden = true;
+    }, 420);
   }
 
   function goNext() {
