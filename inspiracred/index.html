@@ -789,7 +789,12 @@
             property_type: lastSimulation.propertyType.toLowerCase(),
             property_value: lastSimulation.propertyValue,
             credit_value: lastSimulation.creditValue,
-            source: "landing_page"
+            source: "landing_page",
+            // já eram coletados na simulação (lastSimulation) mas nunca chegavam a
+            // lugar nenhum — nem RD nem nosso banco. Ver sendLeadToRD em _app.js.
+            imovel_quitado: lastSimulation.paid || null,
+            documentacao_ok: lastSimulation.docs || null,
+            saldo_devedor: lastSimulation.debtValue || null
           }, getUtmParams()));
         } catch {}
         elements.leadSuccess.scrollIntoView({ behavior: "smooth", block: "center" });

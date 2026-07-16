@@ -188,8 +188,14 @@ async function sendLeadToRD(event, env, leadId) {
     cf_voce_possui_imovel: str(event.possui_imovel),             // formulário multi-step: Sim/Não
     cf_seu_imovel_possui_matricula: str(event.possui_matricula), // formulário multi-step: Sim/Não
     cf_whatsapp_com_ddd: phoneDigits || undefined,               // duplica o telefone (campo próprio da conta)
-    // NÃO existe campo pra "cidade" (formulário), "saldo devedor"/"quitado"/"documentação ok"
-    // (landing) na conta — ficam só no nosso D1/dashboard até o cliente decidir criar campo.
+    // ⚠️ ESPECULATIVOS: estes 3 NÃO estão na lista de 25 campos confirmados — o RD vai
+    // ignorar silenciosamente até o cliente criar campos de Lead com estes identificadores
+    // EXATOS (nomeados a partir do texto da pergunta na landing). Enquanto isso não
+    // acontece, esse dado só existe no nosso D1. Não inventar outro nome sem confirmar.
+    cf_seu_imovel_esta_quitado: str(event.imovel_quitado),    // landing: "Seu imóvel está quitado?"
+    cf_documentacao_regularizada: str(event.documentacao_ok), // landing: "Documentação regularizada?"
+    cf_saldo_devedor_aproximado: str(event.saldo_devedor),    // landing: "Saldo devedor aproximado"
+    // NÃO existe campo pra "cidade" (formulário) na conta ainda — fica só no nosso D1.
     traffic_source: event.utm_source || undefined,
     traffic_medium: event.utm_medium || undefined,
     traffic_campaign: event.utm_campaign || undefined,
