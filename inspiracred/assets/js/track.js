@@ -13,7 +13,7 @@
  * ⚠️ Este ID (client) e o secret META_PIXEL_ID (server) precisam ser IGUAIS.
  */
 (function () {
-  var META_PIXEL_ID = "3021870508000260"; // Pixel/Dataset ID confirmado pelo cliente
+  var META_PIXEL_ID = "588064149882794"; // Pixel/Dataset ID — trocado a pedido do cliente (2026-07-15)
 
   var ENDPOINT = "https://nova.inspiracred.com.br/analytics/track";
   var PAGE = window.IC_PAGE || "other";
