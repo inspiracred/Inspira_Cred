@@ -162,15 +162,25 @@ async function sendLeadToRD(event, env, leadId) {
   if (!cfg || !env.RD_STATION_TOKEN) return; // fonte desconhecida ou token não configurado
 
   const phoneDigits = (event.phone || "").replace(/\D/g, "");
+  const str = (v) => (v != null && v !== "" ? String(v) : undefined);
   const payload = {
     token_rdstation: env.RD_STATION_TOKEN,
     identificador: cfg.identificador,
     nome: event.name || undefined,
     email: event.email || (phoneDigits ? `${phoneDigits}@lead.inspiracred.com.br` : undefined),
     telefone: phoneDigits ? `+55${phoneDigits}` : undefined,
-    cf_tipo_imovel: event.property_type || undefined,
-    cf_valor_imovel: event.property_value != null ? String(event.property_value) : undefined,
-    cf_valor_emprestimo_desejado: event.credit_value != null ? String(event.credit_value) : undefined,
+    // Campos personalizados (cf_*): mandamos TUDO que os formulários coletam. ⚠️ Pra o RD
+    // realmente gravar, o identificador precisa existir na conta (a API 1.3 cria campo de
+    // lead automaticamente pra cf_* novo, mas os campos da NEGOCIAÇÃO exigem mapeamento no
+    // RD). Ver INTEGRACOES.md / o mapa de identificadores confirmado com a conta do cliente.
+    cf_tipo_imovel: str(event.property_type),
+    cf_valor_imovel: str(event.property_value),
+    cf_valor_emprestimo_desejado: str(event.credit_value),
+    cf_faixa_credito: str(event.faixa_credito),          // formulário multi-step (faixa em texto)
+    cf_possui_imovel: str(event.possui_imovel),           // formulário: sim/não
+    cf_imovel_com_matricula: str(event.possui_matricula), // formulário: sim/não
+    cf_cidade: str(event.city),                           // formulário
+    cf_saldo_devedor: str(event.debt_value),              // landing (saldo devedor, se houver)
     cf_variante_pagina: "redesign-2026",
     traffic_source: event.utm_source || undefined,
     traffic_medium: event.utm_medium || undefined,

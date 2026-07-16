@@ -259,10 +259,20 @@
     return okFields;
   }
 
-  function creditAmount() {
+  function creditOption() {
     var step = steps.filter(function (item) { return item.id === "faixa_credito"; })[0];
-    var match = step.options.filter(function (option) { return option.value === answers.faixa_credito; })[0];
-    return match ? match.amount : null;
+    return step.options.filter(function (option) { return option.value === answers.faixa_credito; })[0] || null;
+  }
+  function creditAmount() { var o = creditOption(); return o ? o.amount : null; }
+  function creditLabel() { var o = creditOption(); return o ? o.label : null; }
+
+  // rótulos legíveis pra mandar pro RD (em vez de slugs tipo "sim"/"100k_300k")
+  function labelFor(stepId, value) {
+    if (!value) return null;
+    var step = steps.filter(function (item) { return item.id === stepId; })[0];
+    if (!step || !step.options) return value;
+    var opt = step.options.filter(function (o) { return o.value === value; })[0];
+    return opt ? opt.label : value;
   }
 
   function complete() {
@@ -276,13 +286,13 @@
       name: answers.nome || null,
       phone: phoneDigits ? "+55" + phoneDigits : null,
       email: answers.email || null,
-      property_type: answers.tipo_imovel || null,
+      property_type: labelFor("tipo_imovel", answers.tipo_imovel),          // "Imóvel residencial" etc.
       property_value: null,
       credit_value: creditAmount(),
       source: "home_equity_form",
-      possui_imovel: answers.possui_imovel || null,
-      possui_matricula: answers.possui_matricula || null,
-      faixa_credito: answers.faixa_credito || null,
+      possui_imovel: labelFor("possui_imovel", answers.possui_imovel),      // "Sim" / "Não"
+      possui_matricula: labelFor("possui_matricula", answers.possui_matricula),
+      faixa_credito: creditLabel(),                                          // "De R$ 100 mil a R$ 300 mil"
       city: answers.cidade || null
     };
 
