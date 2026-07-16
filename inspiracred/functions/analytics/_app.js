@@ -148,8 +148,9 @@ async function handleTrack(request, env, cors, context) {
  * Token público (mesma conta onde os leads de hoje já caem, era usado no WP antigo) —
  * fica em env.RD_STATION_TOKEN (Cloudflare Pages), não hardcoded no código-fonte.
  * `identificador` é próprio de cada página nova — não usado pelas páginas antigas do
- * cliente — pra não misturar relatório. `cf_variante_pagina` marca a origem (redesign
- * em teste A/B) mesmo se o tráfego chegar sem UTM.
+ * cliente — pra não misturar relatório. (O marcador `cf_variante_pagina` que a gente
+ * mandava antes NUNCA chegou a existir como campo na conta — o RD descartava
+ * silenciosamente; removido. Diferenciar variante hoje é só por `identificador`/UTM.)
  */
 const RD_PAGE_CONFIG = {
   landing_page: { identificador: "landing-nova-raiz" },
@@ -161,7 +162,11 @@ async function sendLeadToRD(event, env, leadId) {
   const cfg = RD_PAGE_CONFIG[event.source];
   if (!cfg || !env.RD_STATION_TOKEN) return; // fonte desconhecida ou token não configurado
 
-  const phoneDigits = (event.phone || "").replace(/\D/g, "");
+  // O client sempre manda event.phone já com "+55" -> replace(/\D/g,"") deixa o "55"
+  // embutido nos dígitos. Removê-lo aqui (se sobrar >11 dígitos começando com 55) evita
+  // duplicar o DDI ao remontar "+55..." abaixo (bug que gerava telefone "+555521999998888").
+  const rawDigits = (event.phone || "").replace(/\D/g, "");
+  const phoneDigits = rawDigits.length > 11 && rawDigits.startsWith("55") ? rawDigits.slice(2) : rawDigits;
   const str = (v) => (v != null && v !== "" ? String(v) : undefined);
   const payload = {
     token_rdstation: env.RD_STATION_TOKEN,
@@ -169,19 +174,22 @@ async function sendLeadToRD(event, env, leadId) {
     nome: event.name || undefined,
     email: event.email || (phoneDigits ? `${phoneDigits}@lead.inspiracred.com.br` : undefined),
     telefone: phoneDigits ? `+55${phoneDigits}` : undefined,
-    // Campos personalizados (cf_*): mandamos TUDO que os formulários coletam. ⚠️ Pra o RD
-    // realmente gravar, o identificador precisa existir na conta (a API 1.3 cria campo de
-    // lead automaticamente pra cf_* novo, mas os campos da NEGOCIAÇÃO exigem mapeamento no
-    // RD). Ver INTEGRACOES.md / o mapa de identificadores confirmado com a conta do cliente.
-    cf_tipo_imovel: str(event.property_type),
-    cf_valor_imovel: str(event.property_value),
-    cf_valor_emprestimo_desejado: str(event.credit_value),
-    cf_faixa_credito: str(event.faixa_credito),          // formulário multi-step (faixa em texto)
-    cf_possui_imovel: str(event.possui_imovel),           // formulário: sim/não
-    cf_imovel_com_matricula: str(event.possui_matricula), // formulário: sim/não
-    cf_cidade: str(event.city),                           // formulário
-    cf_saldo_devedor: str(event.debt_value),              // landing (saldo devedor, se houver)
-    cf_variante_pagina: "redesign-2026",
+    // Campos personalizados (cf_*): identificadores CONFIRMADOS na conta do cliente (lidos
+    // em RD Station > Configurações > Campos personalizados, 2026-07-15 — lista de 25).
+    // ⚠️ Antes mandávamos identificadores INVENTADOS (cf_tipo_imovel, cf_valor_imovel,
+    // cf_valor_emprestimo_desejado, cf_faixa_credito, cf_possui_imovel,
+    // cf_imovel_com_matricula, cf_cidade, cf_saldo_devedor, cf_variante_pagina) que não
+    // existiam na conta — a API do RD ignora silenciosamente cf_* desconhecido (não cria
+    // campo novo, só descarta). É por isso que só nome/e-mail/telefone chegavam.
+    cf_qual_o_tipo_do_seu_imovel: str(event.property_type),
+    cf_valor_aproximado_do_imovel: str(event.property_value),
+    cf_valor_de_emprestimo_desejado: str(event.credit_value),
+    cf_qual_valor_voce_esta_buscando: str(event.faixa_credito),  // formulário multi-step (faixa em texto)
+    cf_voce_possui_imovel: str(event.possui_imovel),             // formulário multi-step: Sim/Não
+    cf_seu_imovel_possui_matricula: str(event.possui_matricula), // formulário multi-step: Sim/Não
+    cf_whatsapp_com_ddd: phoneDigits || undefined,               // duplica o telefone (campo próprio da conta)
+    // NÃO existe campo pra "cidade" (formulário), "saldo devedor"/"quitado"/"documentação ok"
+    // (landing) na conta — ficam só no nosso D1/dashboard até o cliente decidir criar campo.
     traffic_source: event.utm_source || undefined,
     traffic_medium: event.utm_medium || undefined,
     traffic_campaign: event.utm_campaign || undefined,
