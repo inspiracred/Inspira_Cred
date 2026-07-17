@@ -168,6 +168,18 @@ async function sendLeadToRD(event, env, leadId) {
   const rawDigits = (event.phone || "").replace(/\D/g, "");
   const phoneDigits = rawDigits.length > 11 && rawDigits.startsWith("55") ? rawDigits.slice(2) : rawDigits;
   const str = (v) => (v != null && v !== "" ? String(v) : undefined);
+  // Deriva a faixa de crédito (texto legível) a partir do valor numérico — usada nas
+  // páginas que não têm o passo de faixa (landing/home equity) pra alimentar o campo
+  // de Lead "Qual valor você está buscando?" que o CRM mapeia p/ a Negociação "Valor Pretendido".
+  const faixaFromCredit = (v) => {
+    const n = Number(v);
+    if (!n || isNaN(n)) return undefined;
+    if (n < 100000) return "Menos de R$ 100 mil";
+    if (n < 300000) return "De R$ 100 mil a R$ 300 mil";
+    if (n < 600000) return "De R$ 300 mil a R$ 600 mil";
+    if (n < 900000) return "De R$ 600 mil a R$ 900 mil";
+    return "Acima de R$ 900 mil";
+  };
   const payload = {
     token_rdstation: env.RD_STATION_TOKEN,
     identificador: cfg.identificador,
@@ -181,12 +193,19 @@ async function sendLeadToRD(event, env, leadId) {
     // cf_imovel_com_matricula, cf_cidade, cf_saldo_devedor, cf_variante_pagina) que não
     // existiam na conta — a API do RD ignora silenciosamente cf_* desconhecido (não cria
     // campo novo, só descarta). É por isso que só nome/e-mail/telefone chegavam.
+    // Estes 4 alimentam campos que o CRM mapeia p/ a NEGOCIAÇÃO (Combinação de Campos):
+    //   cf_qual_o_tipo_do_seu_imovel   -> Negociação "Qual o tipo do seu imóvel?"
+    //   cf_avaliacao_do_imovel         -> Negociação "Valor Imóvel"
+    //   cf_qual_valor_voce_esta_buscando -> Negociação "Valor Pretendido"
+    //   cf_seu_imovel_possui_matricula -> Negociação "Documentação ok?"
+    // Por isso mandamos o valor/faixa/documentação em TODAS as páginas (não só no multi-step).
     cf_qual_o_tipo_do_seu_imovel: str(event.property_type),
     cf_valor_aproximado_do_imovel: str(event.property_value),
+    cf_avaliacao_do_imovel: str(event.property_value),           // mesmo valor; é este campo que o CRM lê p/ "Valor Imóvel" da Negociação
     cf_valor_de_emprestimo_desejado: str(event.credit_value),
-    cf_qual_valor_voce_esta_buscando: str(event.faixa_credito),  // formulário multi-step (faixa em texto)
+    cf_qual_valor_voce_esta_buscando: str(event.faixa_credito) || faixaFromCredit(event.credit_value), // faixa: multi-step manda pronto; landing/HE deriva do valor
     cf_voce_possui_imovel: str(event.possui_imovel),             // formulário multi-step: Sim/Não
-    cf_seu_imovel_possui_matricula: str(event.possui_matricula), // formulário multi-step: Sim/Não
+    cf_seu_imovel_possui_matricula: str(event.possui_matricula) || str(event.documentacao_ok), // multi-step: matrícula; landing: documentação (mesma pergunta na Negociação "Documentação ok?")
     cf_whatsapp_com_ddd: phoneDigits || undefined,               // duplica o telefone (campo próprio da conta)
     cf_anuncio: str(event.utm_content),                          // nome do anúncio/criativo (utm_content = {{ad.name}} do Meta) — campo "Anúncio"/cf_anuncio criado na conta 2026-07-16
     // ⚠️ ESPECULATIVOS: estes 3 NÃO estão na lista de 25 campos confirmados — o RD vai
