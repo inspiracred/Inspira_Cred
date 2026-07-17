@@ -188,6 +188,7 @@ async function sendLeadToRD(event, env, leadId) {
     cf_voce_possui_imovel: str(event.possui_imovel),             // formulário multi-step: Sim/Não
     cf_seu_imovel_possui_matricula: str(event.possui_matricula), // formulário multi-step: Sim/Não
     cf_whatsapp_com_ddd: phoneDigits || undefined,               // duplica o telefone (campo próprio da conta)
+    cf_anuncio: str(event.utm_content),                          // nome do anúncio/criativo (utm_content = {{ad.name}} do Meta) — campo "Anúncio"/cf_anuncio criado na conta 2026-07-16
     // ⚠️ ESPECULATIVOS: estes 3 NÃO estão na lista de 25 campos confirmados — o RD vai
     // ignorar silenciosamente até o cliente criar campos de Lead com estes identificadores
     // EXATOS (nomeados a partir do texto da pergunta na landing). Enquanto isso não
