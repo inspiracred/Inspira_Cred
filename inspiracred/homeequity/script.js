@@ -122,6 +122,7 @@
             property_type: data.tipo_imovel.toLowerCase(),
             property_value: parseMoney(data.valor_imovel),
             credit_value: parseMoney(data.valor_emprestimo),
+            situacao_imovel: data.situacao_imovel || null, // "Quitado"/"Financiado" -> normalizado p/ Sim/Não no RD cf_imovel_quitado (Negociação "Imóvel Quitado?")
             source: "home_equity_lp"
           }, getUtmParams()));
         }

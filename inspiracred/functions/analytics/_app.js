@@ -180,6 +180,19 @@ async function sendLeadToRD(event, env, leadId) {
     if (n < 900000) return "De R$ 600 mil a R$ 900 mil";
     return "Acima de R$ 900 mil";
   };
+  // "Imóvel Quitado?" (Sim/Não) p/ o campo de Lead cf_imovel_quitado — TEXTO LIVRE que
+  // a Combinação de Campos do CRM mapeia p/ a Negociação "Imóvel Quitado?" (também texto).
+  // ⚠️ Tem que ser TEXTO nos dois lados: o RD só mapeia campos de MESMO tipo, então o
+  // picklist "Situação atual no imóvel" (seleção única) NÃO serve p/ preencher o card.
+  // Normaliza p/ Sim/Não consistente nas 2 páginas que perguntam sobre a quitação:
+  //   • landing: "Seu imóvel está quitado?" já vem "Sim"/"Não" (event.imovel_quitado)
+  //   • home equity: "Situação do imóvel" vem "Quitado"/"Financiado" (event.situacao_imovel)
+  const imovelQuitado = (() => {
+    if (event.imovel_quitado === "Sim" || event.imovel_quitado === "Não") return event.imovel_quitado;
+    if (event.situacao_imovel === "Quitado") return "Sim";
+    if (event.situacao_imovel === "Financiado") return "Não";
+    return undefined;
+  })();
   const payload = {
     token_rdstation: env.RD_STATION_TOKEN,
     identificador: cfg.identificador,
@@ -208,14 +221,13 @@ async function sendLeadToRD(event, env, leadId) {
     cf_seu_imovel_possui_matricula: str(event.possui_matricula) || str(event.documentacao_ok), // multi-step: matrícula; landing: documentação (mesma pergunta na Negociação "Documentação ok?")
     cf_whatsapp_com_ddd: phoneDigits || undefined,               // duplica o telefone (campo próprio da conta)
     cf_anuncio: str(event.utm_content),                          // nome do anúncio/criativo (utm_content = {{ad.name}} do Meta) — campo "Anúncio"/cf_anuncio criado na conta 2026-07-16
-    // ⚠️ ESPECULATIVOS: estes 3 NÃO estão na lista de 25 campos confirmados — o RD vai
-    // ignorar silenciosamente até o cliente criar campos de Lead com estes identificadores
-    // EXATOS (nomeados a partir do texto da pergunta na landing). Enquanto isso não
-    // acontece, esse dado só existe no nosso D1. Não inventar outro nome sem confirmar.
-    cf_seu_imovel_esta_quitado: str(event.imovel_quitado),    // landing: "Seu imóvel está quitado?"
-    cf_documentacao_regularizada: str(event.documentacao_ok), // landing: "Documentação regularizada?"
-    cf_saldo_devedor_aproximado: str(event.saldo_devedor),    // landing: "Saldo devedor aproximado"
-    // NÃO existe campo pra "cidade" (formulário) na conta ainda — fica só no nosso D1.
+    // "Imóvel Quitado?" (cf_imovel_quitado, TEXTO) — campo de Lead criado 2026-07-17 que a
+    // Combinação de Campos do CRM mapeia p/ a Negociação "Imóvel Quitado?" (texto->texto).
+    // Sim/Não vindo da landing ("está quitado?") e da HE ("situação"->Sim/Não). Ver helper acima.
+    cf_imovel_quitado: imovelQuitado,
+    // "cidade" — campo PADRÃO do RD (nome de API "city", não é cf_*). Vem do multi-step.
+    city: str(event.city),
+    // saldo_devedor (landing) segue sem campo correspondente no RD — fica só no nosso D1.
     traffic_source: event.utm_source || undefined,
     traffic_medium: event.utm_medium || undefined,
     traffic_campaign: event.utm_campaign || undefined,
