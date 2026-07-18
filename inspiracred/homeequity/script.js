@@ -14,11 +14,13 @@
     var formMessage = document.getElementById("form-message");
     var submitBtn = form.querySelector("button[type='submit']");
 
+    // Máscara de VALOR INTEIRO em reais: dígitos digitados = reais (ninguém pede
+    // centavo de empréstimo). ",00" fixo/decorativo; a regex remove esse sufixo de
+    // centavos antes de reler os dígitos. Ex.: 800000 -> "R$ 800.000,00".
     function formatMoney(value) {
-      var digits = value.replace(/\D/g, "");
+      var digits = value.replace(/,\d*$/, "").replace(/\D/g, "");
       if (!digits) return "";
-      var cents = Number(digits) / 100;
-      return cents.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      return "R$ " + Number(digits).toLocaleString("pt-BR") + ",00";
     }
     function parseMoney(value) {
       var digits = value.replace(/\D/g, "");
@@ -27,6 +29,8 @@
     document.querySelectorAll(".money").forEach(function (input) {
       input.addEventListener("input", function () {
         input.value = formatMoney(input.value);
+        // cursor antes do ",00" fixo pra novos dígitos entrarem no valor inteiro
+        if (input.value) { var p = input.value.length - 3; try { input.setSelectionRange(p, p); } catch (e) {} }
         clearError(input.name);
       });
     });

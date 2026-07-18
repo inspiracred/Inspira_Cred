@@ -407,14 +407,14 @@
         }
       };
 
+      // Máscara de VALOR INTEIRO em reais: os dígitos digitados são os reais
+      // (ninguém pede centavo de empréstimo). O ",00" é fixo/decorativo — a regex
+      // remove esse sufixo de centavos antes de reler os dígitos do inteiro.
+      // Ex.: digitar 800000 -> "R$ 800.000,00" (antes virava "R$ 8.000,00").
       const formatCurrency = (value) => {
-        const digits = value.replace(/\D/g, "");
+        const digits = value.replace(/,\d*$/, "").replace(/\D/g, "");
         if (!digits) return "";
-        const cents = Number(digits) / 100;
-        return cents.toLocaleString("pt-BR", {
-          style: "currency",
-          currency: "BRL"
-        });
+        return "R$ " + Number(digits).toLocaleString("pt-BR") + ",00";
       };
 
       const parseCurrency = (value) => {
@@ -679,6 +679,8 @@
           clearMessage(elements.formMessage);
           setFieldError(input.id === "property-value" ? "propertyValue" : input.id === "credit-value" ? "creditValue" : "debtValue");
           input.value = formatCurrency(input.value);
+          // cursor logo antes do ",00" fixo pra novos dígitos entrarem no valor inteiro
+          if (input.value) { const p = input.value.length - 3; try { input.setSelectionRange(p, p); } catch (e) {} }
           hideSimulationOutcome();
         });
       });
