@@ -410,11 +410,20 @@ async function handleLeads(request, env) {
   const limit = Math.min(parseInt(p.get("limit")) || 100, 500);
   const pageRaw = p.get("page");
   const page = pageRaw && pageRaw !== "all" ? pageRaw : null;
-  let sql = `SELECT id, session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, rd_status, meta_status, created_at FROM leads`;
-  const binds = [];
-  if (page) { sql += ` WHERE source = ?`; binds.push(page); }
-  sql += ` ORDER BY created_at DESC LIMIT ?`; binds.push(limit);
-  const rows = (await env.DB.prepare(sql).bind(...binds).all()).results || [];
+  // Colunas base + qualificadores (migration 0003). Se as colunas novas ainda não
+  // existirem no D1, o 1º SELECT falha e caímos no fallback com as colunas antigas —
+  // o dashboard nunca quebra por causa de migration pendente.
+  const BASE = `id, session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, rd_status, meta_status, created_at`;
+  const QUAL = `, imovel_quitado, documentacao_ok, situacao_imovel, saldo_devedor, possui_imovel, possui_matricula, faixa_credito, city`;
+  const where = page ? ` WHERE source = ?` : ``;
+  const tail = ` ORDER BY created_at DESC LIMIT ?`;
+  const binds = page ? [page, limit] : [limit];
+  let rows;
+  try {
+    rows = (await env.DB.prepare(`SELECT ${BASE}${QUAL} FROM leads${where}${tail}`).bind(...binds).all()).results || [];
+  } catch (e) {
+    rows = (await env.DB.prepare(`SELECT ${BASE} FROM leads${where}${tail}`).bind(...binds).all()).results || [];
+  }
   return json({ leads: rows, count: rows.length });
 }
 
@@ -635,8 +644,11 @@ const DASHBOARD_HTML = `<!doctype html>
   .modal{background:#fff;border-radius:20px;padding:26px;max-width:480px;width:100%;position:relative;box-shadow:0 24px 60px rgba(6,26,66,.3)}
   .modal h3{margin:0 0 6px;font-size:19px;color:var(--blue);font-family:"Instrument Sans","Inter",sans-serif}
   .modal .close{position:absolute;top:16px;right:18px;background:none;border:none;font-size:24px;color:var(--muted);cursor:pointer;padding:0;line-height:1}
-  dl{display:grid;grid-template-columns:140px 1fr;gap:9px 12px;margin:18px 0 0;font-size:13px}
+  dl{display:grid;grid-template-columns:150px 1fr;gap:8px 12px;margin:18px 0 0;font-size:13px}
   dt{color:var(--muted)}dd{margin:0;font-weight:600;color:var(--text)}
+  dl .sec{grid-column:1/-1;font-family:"Instrument Sans","Inter",sans-serif;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--orange);margin-top:12px;padding-bottom:5px;border-bottom:1px solid var(--border)}
+  dl .sec:first-child{margin-top:0}
+  .modal-scroll{max-height:min(70vh,620px);overflow:auto;margin-right:-8px;padding-right:8px}
   .tab-section{display:none}
   /* Jornada (timeline no modal) */
   .journey-head{margin-top:18px;display:flex;justify-content:flex-end}
@@ -784,9 +796,11 @@ const DASHBOARD_HTML = `<!doctype html>
     <button class="close" id="modalClose">&times;</button>
     <h3 id="modalName">Lead</h3>
     <div class="chip" id="modalDate"></div>
-    <dl id="modalBody"></dl>
-    <div class="journey-head"><button class="btn-sm" id="journeyBtn">Ver jornada ↓</button></div>
-    <div id="journey"></div>
+    <div class="modal-scroll">
+      <dl id="modalBody"></dl>
+      <div class="journey-head"><button class="btn-sm" id="journeyBtn">Ver jornada ↓</button></div>
+      <div id="journey"></div>
+    </div>
   </div>
 </div>
 
@@ -982,8 +996,35 @@ function showLead(i){
   var l=lastLeads[i]; if(!l)return;
   document.getElementById("modalName").textContent=l.name||"Lead sem nome";
   document.getElementById("modalDate").textContent=(l.created_at||"").slice(0,16);
-  var fields=[["Telefone",pretty(l.phone)],["E-mail",pretty(l.email)],["Tipo de imóvel",pretty(l.property_type)],["Valor do imóvel",brl(l.property_value)],["Crédito desejado",brl(l.credit_value)],["Origem (página)",label(l.source)],["utm_source",pretty(l.utm_source)],["utm_medium",pretty(l.utm_medium)],["utm_campaign",pretty(l.utm_campaign)],["Criativo (utm_content)",pretty(l.utm_content)],["utm_term",pretty(l.utm_term)],["RD Station",badge(l.rd_status)],["Meta CAPI",badge(l.meta_status)]];
-  document.getElementById("modalBody").innerHTML=fields.map(function(f){return '<dt>'+f[0]+'</dt><dd>'+f[1]+'</dd>'}).join("");
+  // Ficha em seções: row(label,val) sempre mostra; opt(label,val) só se tiver valor
+  // (evita parede de "-" nos formulários que não coletam aquele campo).
+  var h="";
+  function row(lb,v){h+='<dt>'+lb+'</dt><dd>'+v+'</dd>';}
+  function opt(lb,v){if(v!=null&&v!=="")h+='<dt>'+lb+'</dt><dd>'+esc(v)+'</dd>';}
+  function sec(t){h+='<div class="sec">'+t+'</div>';}
+  sec("Contato");
+  row("Telefone",pretty(l.phone)); row("E-mail",pretty(l.email)); opt("Cidade",l.city);
+  sec("Imóvel & simulação");
+  row("Tipo de imóvel",pretty(l.property_type));
+  opt("Valor do imóvel",l.property_value?brl(l.property_value):null);
+  row("Crédito desejado",brl(l.credit_value));
+  opt("Faixa de crédito",l.faixa_credito);
+  opt("Imóvel quitado?",l.imovel_quitado);
+  opt("Situação do imóvel",l.situacao_imovel);
+  opt("Documentação ok?",l.documentacao_ok);
+  opt("Possui imóvel?",l.possui_imovel);
+  opt("Possui matrícula?",l.possui_matricula);
+  opt("Saldo devedor",l.saldo_devedor?brl(l.saldo_devedor):null);
+  sec("Origem & campanha");
+  row("Origem (página)",label(l.source));
+  row("Origem (utm_source)",pretty(l.utm_source));
+  row("Mídia (utm_medium)",pretty(l.utm_medium));
+  row("Campanha (utm_campaign)",pretty(l.utm_campaign));
+  row("Criativo (utm_content)",pretty(l.utm_content));
+  opt("Termo (utm_term)",l.utm_term);
+  sec("Entrega");
+  row("RD Station",badge(l.rd_status)); row("Meta CAPI",badge(l.meta_status));
+  document.getElementById("modalBody").innerHTML=h;
   var jb=document.getElementById("journeyBtn");
   document.getElementById("journey").innerHTML="";
   if(l.session_id){jb.style.display="";jb.disabled=false;jb.textContent="Ver jornada ↓";jb.onclick=function(){loadJourney(l.session_id)};}
@@ -1025,7 +1066,7 @@ function loadJourney(sid){
 
 function exportCSV(){
   if(!lastLeads.length){alert("Sem leads para exportar.");return}
-  var cols=["created_at","name","phone","email","property_type","property_value","credit_value","source","utm_source","utm_medium","utm_campaign","utm_content","utm_term","rd_status","meta_status"];
+  var cols=["created_at","name","phone","email","property_type","property_value","credit_value","faixa_credito","imovel_quitado","situacao_imovel","documentacao_ok","possui_imovel","possui_matricula","saldo_devedor","city","source","utm_source","utm_medium","utm_campaign","utm_content","utm_term","rd_status","meta_status"];
   var head=cols.join(",");
   var lines=lastLeads.map(function(l){return cols.map(function(c){var v=l[c]==null?"":String(l[c]).replace(/"/g,'""');return '"'+v+'"'}).join(",")});
   var csv=head+"\\n"+lines.join("\\n");
