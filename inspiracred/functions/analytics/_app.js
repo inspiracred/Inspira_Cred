@@ -113,6 +113,20 @@ async function handleTrack(request, env, cors, context) {
           event.fbp || null, event.fbc || null, event.fbclid || null, event.gclid || null,
           event.event_id || null).run();
         const leadId = leadInsert.meta && leadInsert.meta.last_row_id;
+        // Campos qualificadores no NOSSO D1 (pra o dado bater com o que vai pro RD).
+        // UPDATE separado + try/catch: se a migration 0003 ainda não tiver criado as
+        // colunas, ignora sem quebrar a captura do lead (o INSERT core acima já gravou).
+        if (leadId) {
+          try {
+            await env.DB.prepare(
+              `UPDATE leads SET imovel_quitado=?, documentacao_ok=?, situacao_imovel=?, saldo_devedor=?, possui_imovel=?, possui_matricula=?, faixa_credito=?, city=? WHERE id=?`
+            ).bind(
+              event.imovel_quitado || null, event.documentacao_ok || null, event.situacao_imovel || null,
+              event.saldo_devedor != null ? String(event.saldo_devedor) : null, event.possui_imovel || null,
+              event.possui_matricula || null, event.faixa_credito || null, event.city || null, leadId
+            ).run();
+          } catch (e) { /* colunas ainda não existem (migration 0003 pendente) — ok */ }
+        }
         if (leadId && context) {
           context.waitUntil(sendLeadToRD(event, env, leadId));
           context.waitUntil(sendLeadToMeta(event, env, leadId, {
