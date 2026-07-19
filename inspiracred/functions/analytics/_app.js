@@ -49,6 +49,7 @@ export async function onRequest(context) {
   if (sub === "/api/journey" && request.method === "GET") return handleJourney(request, env);
   if (sub === "/api/heatmap" && request.method === "GET") return handleHeatmap(request, env);
   if (sub === "/api/campaigns" && request.method === "GET") return handleCampaigns(request, env);
+  if (sub === "/api/meta-test" && request.method === "GET") return handleMetaTest(request, env);
   if ((sub === "/" || sub === "/dashboard") && request.method === "GET") {
     return new Response(DASHBOARD_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
   }
@@ -465,6 +466,29 @@ async function handleCampaigns(request, env) {
     totals: { total, com_utm, direto: total - com_utm, valor: t.valor || 0 },
     by_source, by_medium, by_campaign, by_content,
   });
+}
+
+/* ---- TESTE META ADS (diagnóstico temporário) ----
+ * Verifica se o META_ACCESS_TOKEN (o mesmo da CAPI) tem `ads_read` na conta de
+ * anúncios da InspiraCred (act_527600591049188). Atrás do Basic Auth. Se as duas
+ * chamadas voltarem 200, já dá pra puxar gasto/insights e montar o cron. Se voltar
+ * erro de permissão, geramos um token dedicado com ads_read. REMOVER depois do teste.
+ */
+async function handleMetaTest(request, env) {
+  const token = env.META_ACCESS_TOKEN;
+  if (!token) return json({ error: "META_ACCESS_TOKEN não configurado" }, 500);
+  const act = (new URL(request.url).searchParams.get("act") || "527600591049188").replace(/\D/g, "");
+  const ver = "v21.0";
+  const call = async (path) => {
+    try {
+      const r = await fetch(`https://graph.facebook.com/${ver}/${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(token)}`);
+      return { status: r.status, body: await r.json() };
+    } catch (e) { return { error: String(e) }; }
+  };
+  const account = await call(`act_${act}?fields=name,account_status,currency,amount_spent`);
+  const insights = await call(`act_${act}/insights?level=campaign&fields=campaign_name,spend,impressions,clicks&date_preset=last_7d&limit=3`);
+  const ok = account.status === 200 && insights.status === 200;
+  return json({ ad_account: `act_${act}`, ads_read_ok: ok, account, insights });
 }
 
 /* ---- JORNADA DO LEAD (timeline por session_id) ----
