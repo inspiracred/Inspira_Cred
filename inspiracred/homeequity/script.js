@@ -132,11 +132,12 @@
         }
       } catch (e) {}
 
-      setTimeout(function () {
-        form.classList.add("is-hidden");
-        formSuccess.classList.remove("is-hidden");
-        formSuccess.scrollIntoView({ behavior: "smooth", block: "center" });
-      }, 400);
+      // Mostra o sucesso inline por um instante e redireciona pra página de obrigado.
+      // O atraso deixa o beacon do lead + Pixel dispararem antes da navegação; a
+      // conversão já foi enviada acima (a página de obrigado não dispara evento).
+      form.classList.add("is-hidden");
+      formSuccess.classList.remove("is-hidden");
+      setTimeout(function () { window.location.href = "/obrigado/home-equity/"; }, 900);
     });
   }
 

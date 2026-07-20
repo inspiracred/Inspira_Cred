@@ -310,17 +310,20 @@
       }
     } catch (e) {}
 
-    setTimeout(function () {
-      progressLabel.textContent = "Concluído";
-      progressFill.style.width = "100%";
-      shell.innerHTML = '<section class="success">' +
-        '<div class="success-inner">' +
-        '<span class="success-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>' +
-        '<h2>Muito obrigada por suas respostas!</h2>' +
-        '<p>Nossa equipe vai analisar o seu perfil e entrar em contato em breve para falar sobre as melhores condições para você.</p>' +
-        '</div></section>';
-      document.querySelector(".nav-actions").hidden = true;
-    }, 420);
+    progressLabel.textContent = "Concluído";
+    progressFill.style.width = "100%";
+    shell.innerHTML = '<section class="success">' +
+      '<div class="success-inner">' +
+      '<span class="success-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>' +
+      '<h2>Muito obrigada por suas respostas!</h2>' +
+      '<p>Estamos te levando para a próxima etapa...</p>' +
+      '</div></section>';
+    var nav = document.querySelector(".nav-actions");
+    if (nav) nav.hidden = true;
+    // Redireciona pra página de obrigado. O atraso deixa o beacon do lead + Pixel
+    // dispararem antes da navegação (a conversão já foi enviada; a página de obrigado
+    // não dispara evento, pra não duplicar).
+    setTimeout(function () { window.location.href = "/obrigado/formulario/"; }, 900);
   }
 
   function goNext() {

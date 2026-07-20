@@ -799,7 +799,11 @@
             saldo_devedor: lastSimulation.debtValue || null
           }, getUtmParams()));
         } catch {}
-        elements.leadSuccess.scrollIntoView({ behavior: "smooth", block: "center" });
+        // Redireciona pra página de obrigado. Atraso curto pra o beacon do lead
+        // (sendBeacon sobrevive ao unload) e o Pixel/CompleteRegistration dispararem
+        // antes da navegação. A conversão já foi enviada acima — a página de obrigado
+        // NÃO dispara evento (evita duplicar).
+        setTimeout(function () { window.location.href = "/obrigado/simulacao/"; }, 900);
       });
 
       document.getElementById("new-simulation").addEventListener("click", () => {
