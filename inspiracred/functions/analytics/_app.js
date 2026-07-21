@@ -127,6 +127,12 @@ async function handleTrack(request, env, cors, context) {
               event.possui_matricula || null, event.faixa_credito || null, event.city || null, leadId
             ).run();
           } catch (e) { /* colunas ainda não existem (migration 0003 pendente) — ok */ }
+          // lead_kind (migration 0004) em UPDATE PRÓPRIO: se a coluna ainda não existir,
+          // só isto falha — os qualificadores da 0003 acima continuam sendo gravados.
+          try {
+            await env.DB.prepare(`UPDATE leads SET lead_kind=? WHERE id=?`)
+              .bind(event.lead_kind || null, leadId).run();
+          } catch (e) { /* coluna lead_kind ainda não existe (migration 0004 pendente) — ok */ }
         }
         if (leadId && context) {
           context.waitUntil(sendLeadToRD(event, env, leadId));
@@ -173,6 +179,20 @@ const RD_PAGE_CONFIG = {
   home_equity_form: { identificador: "home-equity-typeform" },
 };
 
+// Identificador do RD por TIPO de lead do formulário (event.lead_kind). Home equity
+// (inclusive MQL) mantém o identificador base — que JÁ é gatilho do fluxo "Form nativo
+// > pipe" do cliente. Baixo valor e auto ganham identificador próprio pra NÃO cair no
+// mesmo funil de vendas (o dado é preservado no RD; se o cliente quiser roteá-los,
+// adiciona o identificador a um fluxo dele, igual fez com os 3 atuais).
+//   ⚠️ Enquanto o cliente não adicionar estes identificadores a um fluxo, o lead chega
+//   ao RD como conversão (visível/exportável) mas NÃO vira Negociação no pipe — que é
+//   justamente o comportamento desejado pra baixo valor / auto.
+function rdIdentificador(cfg, kind) {
+  if (kind === "baixo_valor") return cfg.identificador + "-baixo-valor";
+  if (kind === "auto") return cfg.identificador + "-auto";
+  return cfg.identificador; // home_equity / home_equity_mql / indefinido
+}
+
 async function sendLeadToRD(event, env, leadId) {
   const cfg = RD_PAGE_CONFIG[event.source];
   if (!cfg || !env.RD_STATION_TOKEN) return; // fonte desconhecida ou token não configurado
@@ -210,7 +230,7 @@ async function sendLeadToRD(event, env, leadId) {
   })();
   const payload = {
     token_rdstation: env.RD_STATION_TOKEN,
-    identificador: cfg.identificador,
+    identificador: rdIdentificador(cfg, event.lead_kind),
     nome: event.name || undefined,
     email: event.email || (phoneDigits ? `${phoneDigits}@lead.inspiracred.com.br` : undefined),
     telefone: phoneDigits ? `+55${phoneDigits}` : undefined,
@@ -322,20 +342,29 @@ async function sendLeadToMeta(event, env, leadId, ctx) {
   if (hln) userData.ln = [hln];
   if (ext) userData.external_id = [ext];
 
+  // Um lead pode disparar 1+ eventos (ex.: MQL = "Lead" + "LeadQualificado").
+  // O client manda meta_events = [{name, event_id}] — reenviamos CADA um pela CAPI
+  // com o MESMO event_id que o Pixel usou, pra o Meta deduplicar par a par.
+  // Fallback: leads antigos/sem meta_events viram um único "Lead" com event.event_id.
+  const metaEvents = Array.isArray(event.meta_events) && event.meta_events.length
+    ? event.meta_events
+    : [{ name: "Lead", event_id: event.event_id }];
+  const eventTime = Math.floor(Date.now() / 1000);
+  const customData = {
+    currency: "BRL",
+    value: event.credit_value != null ? Number(event.credit_value) : undefined,
+    content_category: event.property_type || undefined,
+  };
   const payload = {
-    data: [{
-      event_name: "Lead",
-      event_time: Math.floor(Date.now() / 1000),
-      event_id: event.event_id || undefined,
+    data: metaEvents.map((ev) => ({
+      event_name: ev.name || "Lead",
+      event_time: eventTime,
+      event_id: ev.event_id || event.event_id || undefined,
       event_source_url: ctx.sourceUrl || undefined,
       action_source: "website",
       user_data: userData,
-      custom_data: {
-        currency: "BRL",
-        value: event.credit_value != null ? Number(event.credit_value) : undefined,
-        content_category: event.property_type || undefined,
-      },
-    }],
+      custom_data: customData,
+    })),
   };
   if (env.META_TEST_EVENT_CODE) payload.test_event_code = env.META_TEST_EVENT_CODE;
 
@@ -415,7 +444,7 @@ async function handleLeads(request, env) {
   // existirem no D1, o 1º SELECT falha e caímos no fallback com as colunas antigas —
   // o dashboard nunca quebra por causa de migration pendente.
   const BASE = `id, session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, rd_status, meta_status, created_at`;
-  const QUAL = `, imovel_quitado, documentacao_ok, situacao_imovel, saldo_devedor, possui_imovel, possui_matricula, faixa_credito, city`;
+  const QUAL = `, imovel_quitado, documentacao_ok, situacao_imovel, saldo_devedor, possui_imovel, possui_matricula, faixa_credito, city, lead_kind`;
   const where = page ? ` WHERE source = ?` : ``;
   const tail = ` ORDER BY created_at DESC LIMIT ?`;
   const binds = page ? [page, limit] : [limit];
@@ -714,6 +743,8 @@ const DASHBOARD_HTML = `<!doctype html>
       <option value="obrigado_simulacao">Obrigado · Simulação</option>
       <option value="obrigado_home_equity">Obrigado · Home Equity</option>
       <option value="obrigado_formulario">Obrigado · Formulário</option>
+      <option value="obrigado_auto">Obrigado · Auto</option>
+      <option value="obrigado_nao_elegivel">Obrigado · Não elegível</option>
     </select>
     <select id="rangeSel"><option value="7">Últimos 7 dias</option><option value="30" selected>Últimos 30 dias</option><option value="90">Últimos 90 dias</option></select>
     <button id="refresh" class="primary">Atualizar</button>

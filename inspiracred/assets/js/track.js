@@ -204,19 +204,23 @@
     },
     lead: function (data) {
       data = data || {};
-      // event_id único: o mesmo vai no Pixel (browser) e na CAPI (server) -> dedup no Meta
-      var eventId = uuid();
-      // Pixel do navegador (Advanced Matching básico + valor da simulação)
-      pixel("Lead", {
+      // Um lead pode disparar 1+ eventos do Meta (ex.: MQL = "Lead" + "LeadQualificado").
+      // Cada nome ganha um event_id próprio; o MESMO {name,event_id} vai no Pixel
+      // (browser) e na CAPI (server) -> o Meta deduplica par a par.
+      var names = (data.meta_events && data.meta_events.length) ? data.meta_events : ["Lead"];
+      var metaEvents = names.map(function (name) { return { name: name, event_id: uuid() }; });
+      var custom = {
         currency: "BRL",
         value: data.credit_value != null ? Number(data.credit_value) : undefined,
         content_category: data.property_type || undefined,
-      }, eventId);
-      // Payload pro servidor: carrega event_id + fbclid/gclid + url pra CAPI/atribuição
-      var p = { type: "lead", event_id: eventId, url: location.href };
+      };
+      metaEvents.forEach(function (ev) { pixel(ev.name, custom, ev.event_id); });
+      // Payload pro servidor: carrega os eventos (nome+id) + fbclid/gclid + url pra CAPI/atribuição.
+      // Mantém event_id "solto" (1º evento) pra compatibilidade com a coluna leads.event_id.
+      var p = { type: "lead", meta_events: metaEvents, event_id: metaEvents[0].event_id, url: location.href };
       p.fbclid = urlParam("fbclid") || null;
       p.gclid = urlParam("gclid") || null;
-      for (var k in data) p[k] = data[k];
+      for (var k in data) if (k !== "meta_events") p[k] = data[k];
       // withUtm preenche utm_* de first-touch (localStorage) quando o payload não trouxe —
       // sem isso o lead perde a origem se a URL "limpou" as UTMs antes do envio (→ "direto").
       send(withUtm(p));
