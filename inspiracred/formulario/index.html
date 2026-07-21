@@ -36,27 +36,31 @@
 
       <section class="stage" aria-label="Formulário de simulação Home Equity">
         <aside class="context-panel">
-          <span class="eyebrow">Simulação rápida</span>
           <h1>Descubra quanto crédito seu imóvel pode liberar.</h1>
           <p>Faça uma simulação de crédito com garantia de imóvel em poucos passos.</p>
-          <div class="trust-list" aria-label="Pontos de segurança">
-            <span>Atendimento humano</span>
-            <span>Dados protegidos</span>
-            <span>Sem compromisso</span>
-          </div>
         </aside>
 
         <form class="typeform-card" id="typeform-home-equity" novalidate>
-          <div class="progress-wrap" aria-hidden="true">
-            <span class="progress-label" id="progress-label">1 de 3</span>
-            <span class="progress-track"><span class="progress-fill" id="progress-fill"></span></span>
-          </div>
-
           <div class="question-shell" id="question-shell" aria-live="polite"></div>
 
-          <div class="nav-actions">
-            <button class="ghost-button" id="back-button" type="button">Voltar</button>
-            <button class="primary-button" id="next-button" type="button">Continuar</button>
+          <div class="form-footer">
+            <div class="progress-block" aria-hidden="true">
+              <span class="progress-label" id="progress-label">Pergunta 1 de 5</span>
+              <div class="progress-steps" id="progress-steps">
+                <span class="pstep"></span>
+                <span class="pstep"></span>
+                <span class="pstep"></span>
+                <span class="pstep"></span>
+                <span class="pstep"></span>
+              </div>
+            </div>
+
+            <div class="nav-actions">
+              <button class="ghost-button back-button" id="back-button" type="button" aria-label="Voltar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+              </button>
+              <button class="primary-button" id="next-button" type="button">Continuar</button>
+            </div>
           </div>
         </form>
       </section>

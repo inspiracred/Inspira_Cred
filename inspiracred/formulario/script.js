@@ -5,8 +5,8 @@
   var shell = document.getElementById("question-shell");
   var nextButton = document.getElementById("next-button");
   var backButton = document.getElementById("back-button");
+  var progressSteps = document.getElementById("progress-steps");
   var progressLabel = document.getElementById("progress-label");
-  var progressFill = document.getElementById("progress-fill");
 
   if (!form || !shell || !nextButton || !backButton) return;
 
@@ -201,6 +201,17 @@
     }
   }
 
+  // Barra segmentada (5 pedaços) embaixo do botão: enche um pedaço por etapa concluída,
+  // com o rótulo "Pergunta X de Y" em cima.
+  function setProgress(current, total) {
+    if (progressLabel && total) progressLabel.textContent = "Pergunta " + current + " de " + total;
+    if (!progressSteps) return;
+    var segs = progressSteps.children;
+    for (var i = 0; i < segs.length; i++) {
+      segs[i].classList.toggle("is-done", i < current);
+    }
+  }
+
   function updateProgress() {
     var visible = visibleSteps();
     // Os dois ramos que geram lead têm 5 passos (imóvel: possui/tipo/matrícula/faixa/contato;
@@ -208,8 +219,7 @@
     // encher no passo 1 enquanto o ramo ainda não foi escolhido (showIf esconde os demais).
     var total = Math.max(visible.length, 5);
     var current = Math.min(stepIndex + 1, total);
-    progressLabel.textContent = current + " de " + total;
-    progressFill.style.width = Math.round((current / total) * 100) + "%";
+    setProgress(current, total);
     backButton.hidden = stepIndex === 0;
     nextButton.textContent = stepIndex === total - 1 ? "Enviar respostas" : "Continuar";
   }
@@ -245,7 +255,6 @@
     if (!step) return;
     updateProgress();
     shell.innerHTML = '<section class="question">' +
-      '<p class="question-kicker">' + escapeHtml(step.kicker) + '</p>' +
       '<h2 class="question-title">' + escapeHtml(step.title) + '</h2>' +
       (step.subtitle ? '<p class="question-subtitle">' + escapeHtml(step.subtitle) + '</p>' : '') +
       (step.type === "choice" ? renderChoice(step) : renderFields(step)) +
@@ -443,8 +452,7 @@
       }
     } catch (e) {}
 
-    progressLabel.textContent = "Concluído";
-    progressFill.style.width = "100%";
+    setProgress(5, 5);
     shell.innerHTML = '<section class="success">' +
       '<div class="success-inner">' +
       '<span class="success-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>' +
