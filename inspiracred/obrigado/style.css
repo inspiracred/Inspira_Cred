@@ -1,14 +1,19 @@
-/* Páginas de obrigado — momento de conclusão. Compartilhado pelas 3 etapas
-   (/obrigado/simulacao/, /obrigado/home-equity/, /obrigado/formulario/). */
+/* Páginas de obrigado — momento de conclusão. Compartilhado pelas 5 etapas
+   (/obrigado/simulacao|home-equity|formulario|nao-elegivel|auto/).
+   Linguagem visual = continuação direta do /formulario/ (mesmo fundo com glow
+   radial + gradiente vertical, mesmo eyebrow em pill, mesmos cards "glass",
+   mesmo botão WhatsApp/ghost, mesma animação translateY+opacity). Estrutura de
+   entrada (splash com check que desenha/encolhe/some, depois conteúdo em
+   cascata) inspirada numa referência aprovada pelo usuário, adaptada 100% pra
+   paleta/identidade InspiraCred (sem vermelho, sem fonte mono). */
 
 :root {
   --blue: #0b2d72;
   --blue-dark: #061a42;
   --orange: #f97316;
-  --text: #111827;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --green: #10b981;
+  --muted: rgba(255, 255, 255, 0.68);
+  --line: rgba(255, 255, 255, 0.16);
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 * { box-sizing: border-box; }
@@ -18,126 +23,234 @@ html, body { height: 100%; }
 body {
   margin: 0;
   font-family: "Inter", -apple-system, "Segoe UI", Roboto, sans-serif;
-  color: var(--text);
-  background: linear-gradient(160deg, var(--blue) 0%, var(--blue-dark) 100%);
+  color: #fff;
+  background: var(--blue-dark);
   -webkit-font-smoothing: antialiased;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  position: relative;
+  isolation: isolate;
+  overflow-x: hidden;
+}
+
+/* Mesmo fundo do /formulario/: glow radial laranja no topo + gradiente vertical
+   escurecendo pro rodapé — dá continuidade visual entre as duas telas. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 50% 6%, rgba(37, 84, 170, 0.34), transparent 46%),
+    linear-gradient(180deg, rgba(6, 26, 66, 0.9) 0%, rgba(5, 13, 31, 0.94) 55%, rgba(3, 7, 18, 0.97) 100%);
 }
 
 .topbar {
   display: flex;
   justify-content: center;
-  padding: 28px 20px 0;
+  padding: 32px 20px 0;
 }
-.topbar img { height: 30px; width: auto; display: block; }
+.topbar img {
+  height: 30px;
+  width: auto;
+  display: block;
+  opacity: 0;
+  animation: enterUp 520ms var(--ease) 1240ms forwards;
+}
 
 .wrap {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32px 20px 56px;
+  padding: 40px 20px 56px;
 }
 
 .card {
   width: 100%;
-  max-width: 520px;
-  background: #fff;
-  border-radius: 24px;
-  padding: 44px 36px 38px;
+  max-width: 560px;
   text-align: center;
-  box-shadow: 0 24px 70px rgba(6, 26, 66, 0.35);
 }
 
-/* selo de conclusão */
-.mark {
-  width: 68px;
-  height: 68px;
-  margin: 0 auto 22px;
-  border-radius: 50%;
-  background: rgba(16, 185, 129, 0.12);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: pop 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+/* ---------- Splash de entrada: check grande desenha, encolhe/sobe e some,
+   revelando o conteúdo (já em cascata) por baixo. Roda 1x por carregamento. */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  color: var(--orange);
+  background:
+    radial-gradient(560px 380px at 50% 46%, rgba(249, 115, 22, 0.16), rgba(6, 26, 66, 0) 68%),
+    rgba(6, 26, 66, 0.98);
+  pointer-events: none;
+  animation: splashOut 620ms var(--ease) 1080ms forwards;
 }
-.mark svg {
-  width: 32px;
-  height: 32px;
-  stroke: var(--green);
+.splash-mark {
+  width: 132px;
+  height: 132px;
+  display: grid;
+  place-items: center;
+  animation: splashSettle 680ms cubic-bezier(0.2, 0.9, 0.2, 1) 720ms forwards;
+}
+.splash-ring, .splash-check,
+.mark svg .ring, .mark svg .check {
   fill: none;
-  stroke-width: 3;
+  stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.mark svg path {
+.splash-ring, .mark svg .ring {
+  opacity: 0.3;
+  stroke-width: 1.6;
+  stroke-dasharray: 151;
+  stroke-dashoffset: 151;
+  animation: drawRing 620ms ease-out 80ms forwards;
+}
+.splash-check, .mark svg .check {
+  stroke-width: 3.2;
   stroke-dasharray: 32;
   stroke-dashoffset: 32;
-  animation: draw 0.5s 0.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: drawCheck 460ms cubic-bezier(0.2, 0.9, 0.2, 1) 460ms forwards;
 }
 
-@keyframes pop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-@keyframes draw { to { stroke-dashoffset: 0; } }
-
-.eyebrow {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+/* selo pequeno (fica visível depois que o splash encolhe e some) */
+.mark {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(249, 115, 22, 0.18);
   color: var(--orange);
-  margin-bottom: 12px;
+  opacity: 0;
+  animation: enterUp 520ms var(--ease) 1140ms forwards;
+}
+.mark svg { width: 30px; height: 30px; }
+
+@keyframes splashSettle { to { transform: scale(0.42) translateY(-38px); opacity: 0; } }
+@keyframes splashOut { to { opacity: 0; visibility: hidden; } }
+@keyframes drawRing { to { stroke-dashoffset: 0; } }
+@keyframes drawCheck { to { stroke-dashoffset: 0; } }
+@keyframes enterUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* pill laranja — igual ao .eyebrow do /formulario/ */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 13px;
+  margin-bottom: 18px;
+  border-radius: 999px;
+  background: rgba(249, 115, 22, 0.16);
+  color: #fdba74;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0;
+  animation: enterUp 520ms var(--ease) 1300ms forwards;
 }
 
 h1 {
   font-family: "Instrument Sans", "Inter", sans-serif;
-  font-size: 28px;
+  font-size: clamp(28px, 4vw, 36px);
   font-weight: 800;
-  line-height: 1.18;
-  letter-spacing: -0.02em;
-  color: var(--blue);
-  margin: 0 0 12px;
+  line-height: 1.12;
+  letter-spacing: 0;
+  color: #fff;
+  margin: 0 0 14px;
   text-wrap: balance;
+  opacity: 0;
+  animation: enterUp 560ms var(--ease) 1400ms forwards;
 }
 
 .lead {
-  font-size: 15.5px;
+  font-size: 16.5px;
   line-height: 1.6;
   color: var(--muted);
   margin: 0 auto;
-  max-width: 400px;
+  max-width: 440px;
+  text-wrap: pretty;
+  opacity: 0;
+  animation: enterUp 560ms var(--ease) 1500ms forwards;
+}
+
+/* ---------- Próximos passos: cards numerados "glass", igual ao .option do
+   /formulario/ (mesmo fundo translúcido + borda sutil). */
+.next-steps {
+  width: 100%;
+  max-width: 460px;
+  display: grid;
+  gap: 10px;
+  margin: 32px auto 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+.next-steps li {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  gap: 14px;
+  align-items: start;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  opacity: 0;
+  animation: enterUp 480ms var(--ease) forwards;
+}
+.next-steps li:nth-child(1) { animation-delay: 1620ms; }
+.next-steps li:nth-child(2) { animation-delay: 1710ms; }
+.next-steps li:nth-child(3) { animation-delay: 1800ms; }
+
+/* .next-steps span (elemento+classe) tem especificidade maior que uma classe só —
+   qualifica com .next-steps pra garantir que a cor laranja do índice vença. */
+.next-steps .step-index {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--orange);
+  background: rgba(249, 115, 22, 0.14);
+  border: 1px solid rgba(249, 115, 22, 0.36);
+  border-radius: 8px;
+  font-family: "Instrument Sans", "Inter", sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+}
+.next-steps strong {
+  display: block;
+  margin: 1px 0 4px;
+  color: #fff;
+  font-size: 15.5px;
+  line-height: 1.25;
+  font-weight: 700;
+}
+.next-steps span {
+  display: block;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.5;
   text-wrap: pretty;
 }
 
-.next {
-  margin-top: 26px;
-  padding-top: 22px;
-  border-top: 1px solid var(--border);
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.back-link {
-  display: inline-block;
-  margin-top: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--blue);
-  text-decoration: none;
-  border-bottom: 2px solid rgba(249, 115, 22, 0.45);
-  padding-bottom: 2px;
-  transition: color 0.15s, border-color 0.15s;
-}
-.back-link:hover { color: var(--orange); border-color: var(--orange); }
-
-/* CTAs de conclusão: falar no WhatsApp (principal) + nova simulação (secundário) */
+/* CTAs de conclusão: falar no WhatsApp (principal) + secundário */
 .cta {
-  margin-top: 28px;
+  margin-top: 30px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  opacity: 0;
+  animation: enterUp 520ms var(--ease) 1920ms forwards;
 }
 .btn {
   display: inline-flex;
@@ -145,47 +258,65 @@ h1 {
   justify-content: center;
   gap: 9px;
   width: 100%;
-  padding: 15px 20px;
-  border-radius: 14px;
+  min-height: 54px;
+  padding: 0 20px;
+  border-radius: 12px;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 800;
   text-decoration: none;
   cursor: pointer;
-  transition: transform 0.12s, box-shadow 0.15s, background 0.15s, border-color 0.15s, color 0.15s;
+  transition: transform 180ms var(--ease), filter 180ms var(--ease), border-color 180ms var(--ease), background 180ms var(--ease);
 }
 .btn:active { transform: translateY(1px); }
 .btn-whatsapp {
+  border: 0;
   background: #25d366;
-  color: #fff;
-  box-shadow: 0 10px 26px rgba(37, 211, 102, 0.32);
+  color: #062e18;
+  box-shadow: 0 12px 26px rgba(37, 211, 102, 0.22);
 }
-.btn-whatsapp:hover { background: #1fbe5a; }
+.btn-whatsapp:hover { transform: translateY(-2px); filter: brightness(1.04); }
 .btn-whatsapp svg { width: 21px; height: 21px; fill: currentColor; }
 .btn-ghost {
-  background: #fff;
-  color: var(--blue);
-  border: 1.5px solid var(--border);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.8);
 }
-.btn-ghost:hover { border-color: var(--orange); color: var(--orange); }
-.cta-hint {
-  margin-top: 16px;
-  font-size: 12.5px;
-  color: var(--muted);
+.btn-ghost:hover { border-color: rgba(249, 115, 22, 0.6); color: #fff; background: rgba(249, 115, 22, 0.1); }
+
+.fine-print {
+  max-width: 460px;
+  margin: 22px auto 0;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 12px;
+  line-height: 1.55;
+  text-wrap: balance;
+  opacity: 0;
+  animation: enterUp 520ms var(--ease) 2020ms forwards;
 }
 
 .legal {
   text-align: center;
   padding: 0 20px 26px;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.5);
 }
-.legal a { color: rgba(255, 255, 255, 0.8); }
+.legal a { color: rgba(255, 255, 255, 0.78); }
 
 @media (max-width: 520px) {
-  .card { padding: 36px 22px 30px; border-radius: 20px; }
-  h1 { font-size: 24px; }
+  .wrap { padding: 28px 20px 48px; }
+  .splash-mark { width: 108px; height: 108px; }
+  h1 { font-size: 27px; }
+  .next-steps { max-width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mark, .mark svg path { animation: none; stroke-dashoffset: 0; }
+  .splash { display: none; }
+  .topbar img, .mark, .eyebrow, h1, .lead, .next-steps li, .cta, .fine-print {
+    opacity: 1;
+    animation: none;
+  }
+  .splash-ring, .splash-check, .mark svg .ring, .mark svg .check {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
 }
