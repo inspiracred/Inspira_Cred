@@ -639,6 +639,17 @@ img { max-width: 100%; }
   .nav .logo { width: 92px; }
   .hero { min-height: 86svh; }
   .hero-bg { object-position: 76% center; }
+  /* No mobile o texto empilha (não fica mais lado a lado com a foto) — o degradê
+     diagonal do desktop (95deg, escuro só na esquerda) deixa a foto quase crua à
+     direita. Troca por vertical de cima pra baixo, mais apagado em toda a extensão. */
+  .hero::after {
+    background: linear-gradient(
+      180deg,
+      rgba(6, 26, 66, 0.72) 0%,
+      rgba(6, 26, 66, 0.88) 45%,
+      rgba(6, 26, 66, 0.97) 100%
+    );
+  }
   .hero-inner { align-items: flex-end; padding: 40px 0 104px; }
   .hero-title { font-size: 34px; }
   .hero-subtitle { font-size: 17px; }
