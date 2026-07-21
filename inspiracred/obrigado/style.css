@@ -14,6 +14,22 @@
   --muted: rgba(255, 255, 255, 0.68);
   --line: rgba(255, 255, 255, 0.16);
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Sinal visual de qualificação (pra bater o olho e já saber qual página é qual):
+     verde = lead qualificado (vai pro RD/CRM) · laranja = não qualificado (só no
+     nosso banco). Verde diferente do #25d366 do botão WhatsApp de propósito — um é
+     status da página, o outro é a marca do WhatsApp, não podem parecer a mesma coisa. */
+  --orange-rgb: 249 115 22;
+  --orange-light: #fdba74;
+  --green-rgb: 16 185 129;
+  --green-light: #6ee7b7;
+  --accent-rgb: var(--green-rgb);
+  --accent-light: var(--green-light);
+}
+
+body.is-not-qualified {
+  --accent-rgb: var(--orange-rgb);
+  --accent-light: var(--orange-light);
 }
 
 * { box-sizing: border-box; }
@@ -81,9 +97,9 @@ body::before {
   z-index: 10;
   display: grid;
   place-items: center;
-  color: var(--orange);
+  color: rgb(var(--accent-rgb));
   background:
-    radial-gradient(560px 380px at 50% 46%, rgba(249, 115, 22, 0.16), rgba(6, 26, 66, 0) 68%),
+    radial-gradient(560px 380px at 50% 46%, rgb(var(--accent-rgb) / 16%), rgba(6, 26, 66, 0) 68%),
     rgba(6, 26, 66, 0.98);
   pointer-events: none;
   animation: splashOut 620ms var(--ease) 1080ms forwards;
@@ -124,8 +140,8 @@ body::before {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: rgba(249, 115, 22, 0.18);
-  color: var(--orange);
+  background: rgb(var(--accent-rgb) / 18%);
+  color: rgb(var(--accent-rgb));
   opacity: 0;
   animation: enterUp 520ms var(--ease) 1140ms forwards;
 }
@@ -140,7 +156,8 @@ body::before {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* pill laranja — igual ao .eyebrow do /formulario/ */
+/* pill de status — igual ao .eyebrow do /formulario/, mas a cor sinaliza
+   qualificado (verde) vs não qualificado (laranja) — ver --accent-rgb no :root. */
 .eyebrow {
   display: inline-flex;
   align-items: center;
@@ -148,8 +165,8 @@ body::before {
   padding: 0 13px;
   margin-bottom: 18px;
   border-radius: 999px;
-  background: rgba(249, 115, 22, 0.16);
-  color: #fdba74;
+  background: rgb(var(--accent-rgb) / 16%);
+  color: var(--accent-light);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -211,16 +228,16 @@ h1 {
 .next-steps li:nth-child(3) { animation-delay: 1800ms; }
 
 /* .next-steps span (elemento+classe) tem especificidade maior que uma classe só —
-   qualifica com .next-steps pra garantir que a cor laranja do índice vença. */
+   qualifica com .next-steps pra garantir que a cor do índice vença. */
 .next-steps .step-index {
   width: 32px;
   height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--orange);
-  background: rgba(249, 115, 22, 0.14);
-  border: 1px solid rgba(249, 115, 22, 0.36);
+  color: rgb(var(--accent-rgb));
+  background: rgb(var(--accent-rgb) / 14%);
+  border: 1px solid rgb(var(--accent-rgb) / 36%);
   border-radius: 8px;
   font-family: "Instrument Sans", "Inter", sans-serif;
   font-size: 13px;
@@ -281,7 +298,7 @@ h1 {
   background: rgba(255, 255, 255, 0.06);
   color: rgba(255, 255, 255, 0.8);
 }
-.btn-ghost:hover { border-color: rgba(249, 115, 22, 0.6); color: #fff; background: rgba(249, 115, 22, 0.1); }
+.btn-ghost:hover { border-color: rgb(var(--accent-rgb) / 60%); color: #fff; background: rgb(var(--accent-rgb) / 10%); }
 
 .fine-print {
   max-width: 460px;

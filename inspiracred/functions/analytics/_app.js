@@ -135,7 +135,13 @@ async function handleTrack(request, env, cors, context) {
           } catch (e) { /* coluna lead_kind ainda não existe (migration 0004 pendente) — ok */ }
         }
         if (leadId && context) {
-          context.waitUntil(sendLeadToRD(event, env, leadId));
+          // Leads "não qualificados" (baixo_valor, descarte) ficam SÓ no nosso D1 —
+          // não vão pro RD/CRM. Continuam sendo salvos acima e ainda passam pela CAPI
+          // (que naturalmente não faz nada pra eles, já que META_EVENTS os manda com
+          // array vazio — ver formulario/script.js).
+          if (!NAO_QUALIFICADO.has(event.lead_kind)) {
+            context.waitUntil(sendLeadToRD(event, env, leadId));
+          }
           context.waitUntil(sendLeadToMeta(event, env, leadId, {
             clientIp: request.headers.get("CF-Connecting-IP") || "",
             userAgent: request.headers.get("User-Agent") || "",
@@ -179,16 +185,18 @@ const RD_PAGE_CONFIG = {
   home_equity_form: { identificador: "home-equity-typeform" },
 };
 
+// Leads "não qualificados": ficam SÓ no nosso D1 (dashboard/CSV), NUNCA vão pro RD.
+// baixo_valor = tem imóvel mas crédito < 100 mil; descarte = sem imóvel e sem veículo
+// (mesmo assim vira lead — contato capturado — pra eventual reengajamento nosso).
+const NAO_QUALIFICADO = new Set(["baixo_valor", "descarte"]);
+
 // Identificador do RD por TIPO de lead do formulário (event.lead_kind). Home equity
 // (inclusive MQL) mantém o identificador base — que JÁ é gatilho do fluxo "Form nativo
-// > pipe" do cliente. Baixo valor e auto ganham identificador próprio pra NÃO cair no
-// mesmo funil de vendas (o dado é preservado no RD; se o cliente quiser roteá-los,
-// adiciona o identificador a um fluxo dele, igual fez com os 3 atuais).
-//   ⚠️ Enquanto o cliente não adicionar estes identificadores a um fluxo, o lead chega
-//   ao RD como conversão (visível/exportável) mas NÃO vira Negociação no pipe — que é
-//   justamente o comportamento desejado pra baixo valor / auto.
+// > pipe" do cliente. Auto ganha identificador próprio pra NÃO cair no mesmo funil de
+// vendas (o dado é preservado no RD; se o cliente quiser roteá-lo, adiciona o
+// identificador a um fluxo dele, igual fez com os 3 atuais). baixo_valor/descarte nem
+// chegam aqui — são barrados antes de chamar sendLeadToRD (ver NAO_QUALIFICADO acima).
 function rdIdentificador(cfg, kind) {
-  if (kind === "baixo_valor") return cfg.identificador + "-baixo-valor";
   if (kind === "auto") return cfg.identificador + "-auto";
   return cfg.identificador; // home_equity / home_equity_mql / indefinido
 }
@@ -344,11 +352,14 @@ async function sendLeadToMeta(event, env, leadId, ctx) {
 
   // Um lead pode disparar 1+ eventos (ex.: MQL = "Lead" + "LeadQualificado").
   // O client manda meta_events = [{name, event_id}] — reenviamos CADA um pela CAPI
-  // com o MESMO event_id que o Pixel usou, pra o Meta deduplicar par a par.
-  // Fallback: leads antigos/sem meta_events viram um único "Lead" com event.event_id.
-  const metaEvents = Array.isArray(event.meta_events) && event.meta_events.length
+  // com o MESMO event_id que o Pixel usou, pra o Meta deduplicar par a par. Array
+  // VAZIO é válido e intencional (lead "descarte": não deve contar como conversão
+  // de ads) — testa Array.isArray, NÃO .length, senão [] cai no fallback errado.
+  // Fallback: só leads antigos/sem meta_events (campo ausente) viram um "Lead" solto.
+  const metaEvents = Array.isArray(event.meta_events)
     ? event.meta_events
     : [{ name: "Lead", event_id: event.event_id }];
+  if (!metaEvents.length) return; // nenhum evento pra este lead (por design) — não chama a API
   const eventTime = Math.floor(Date.now() / 1000);
   const customData = {
     currency: "BRL",
@@ -440,19 +451,32 @@ async function handleLeads(request, env) {
   const limit = Math.min(parseInt(p.get("limit")) || 100, 500);
   const pageRaw = p.get("page");
   const page = pageRaw && pageRaw !== "all" ? pageRaw : null;
+  // kind=nao_qualificado -> aba "Leads não qualificados" (lead_kind IN baixo_valor/
+  // descarte — ficam só no nosso D1, nunca vão pro RD). kind=<valor específico> filtra
+  // por um lead_kind exato, se algum dia precisar.
+  const kind = p.get("kind");
   // Colunas base + qualificadores (migration 0003). Se as colunas novas ainda não
   // existirem no D1, o 1º SELECT falha e caímos no fallback com as colunas antigas —
   // o dashboard nunca quebra por causa de migration pendente.
   const BASE = `id, session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, rd_status, meta_status, created_at`;
   const QUAL = `, imovel_quitado, documentacao_ok, situacao_imovel, saldo_devedor, possui_imovel, possui_matricula, faixa_credito, city, lead_kind`;
-  const where = page ? ` WHERE source = ?` : ``;
+  const conds = [];
+  const binds = [];
+  if (page) { conds.push(`source = ?`); binds.push(page); }
+  if (kind === "nao_qualificado") conds.push(`lead_kind IN ('baixo_valor','descarte')`);
+  else if (kind) { conds.push(`lead_kind = ?`); binds.push(kind); }
+  const where = conds.length ? ` WHERE ${conds.join(" AND ")}` : ``;
   const tail = ` ORDER BY created_at DESC LIMIT ?`;
-  const binds = page ? [page, limit] : [limit];
+  binds.push(limit);
   let rows;
   try {
     rows = (await env.DB.prepare(`SELECT ${BASE}${QUAL} FROM leads${where}${tail}`).bind(...binds).all()).results || [];
   } catch (e) {
-    rows = (await env.DB.prepare(`SELECT ${BASE} FROM leads${where}${tail}`).bind(...binds).all()).results || [];
+    // fallback sem QUAL (colunas da migration 0003 pendente) — mas se o filtro pedir
+    // lead_kind (migration 0004), não tem como cair pro fallback sem quebrar o filtro;
+    // nesse caso devolve vazio em vez de ignorar o filtro (evita misturar qualificados).
+    if (kind) { rows = []; }
+    else rows = (await env.DB.prepare(`SELECT ${BASE} FROM leads${where}${tail}`).bind(...binds).all()).results || [];
   }
   return json({ leads: rows, count: rows.length });
 }
@@ -754,6 +778,7 @@ const DASHBOARD_HTML = `<!doctype html>
 <div class="tabs">
   <button class="tab" id="tabbtn-overview" onclick="showTab('overview')">Visão geral</button>
   <button class="tab" id="tabbtn-leads" onclick="showTab('leads')">Leads</button>
+  <button class="tab" id="tabbtn-naoqual" onclick="showTab('naoqual')">Não qualificados</button>
   <button class="tab" id="tabbtn-campaigns" onclick="showTab('campaigns')">Campanhas</button>
   <button class="tab" id="tabbtn-traffic" onclick="showTab('traffic')">Tráfego</button>
   <button class="tab" id="tabbtn-heatmap" onclick="showTab('heatmap')">Mapa de calor</button>
@@ -774,6 +799,21 @@ const DASHBOARD_HTML = `<!doctype html>
     <div class="card">
       <div class="h2row"><h2 id="leadsTitle">Leads</h2><button class="btn-sm" id="csvBtn">Baixar CSV</button></div>
       <div class="table-scroll"><div id="leads"></div></div>
+    </div>
+  </section>
+
+  <section class="tab-section" id="tab-naoqual">
+    <div class="kpis" id="naoQualKpis"></div>
+    <div class="card">
+      <div class="h2row">
+        <h2 id="naoQualTitle">Leads não qualificados</h2>
+        <button class="btn-sm" id="naoQualCsvBtn">Baixar CSV</button>
+      </div>
+      <p class="hint" style="display:block;margin:-6px 0 14px">
+        Imóvel com crédito abaixo de R$ 100 mil, ou sem imóvel e sem veículo — não entram
+        no funil de vendas nem vão pro RD Station. Ficam só aqui, pra contato futuro.
+      </p>
+      <div class="table-scroll"><div id="naoQual"></div></div>
     </div>
   </section>
 
@@ -860,8 +900,9 @@ const DASHBOARD_HTML = `<!doctype html>
 </div>
 
 <script>
-var dailyChart=null, lastLeads=[], activeTab="overview";
+var dailyChart=null, lastLeads=[], lastNaoQual=[], activeTab="overview";
 var PAGE_LABELS={landing_page:"Landing / Simulação",home_equity_lp:"Home Equity",home_equity_form:"Formulário Home Equity",link_bio:"Link na bio",bio_test:"Bio (teste)",obrigado_simulacao:"Obrigado · Simulação",obrigado_home_equity:"Obrigado · Home Equity",obrigado_formulario:"Obrigado · Formulário",other:"Outras"};
+var LEAD_KIND_LABELS={home_equity:"Home Equity",home_equity_mql:"Home Equity · MQL",baixo_valor:"Baixo valor (não qualificado)",auto:"Garantia de veículo",descarte:"Sem imóvel/veículo (não qualificado)"};
 var PAGE_URLS={landing_page:"https://nova.inspiracred.com.br/",home_equity_lp:"https://nova.inspiracred.com.br/homeequity/",home_equity_form:"https://nova.inspiracred.com.br/formulario/",link_bio:"https://links.inspiracred.com.br/",obrigado_simulacao:"https://nova.inspiracred.com.br/obrigado/simulacao/",obrigado_home_equity:"https://nova.inspiracred.com.br/obrigado/home-equity/",obrigado_formulario:"https://nova.inspiracred.com.br/obrigado/formulario/"};
 var CHART_PALETTE=["#f97316","#0b2d72","#10b981","#f59e0b","#3b82f6","#8b5cf6","#ec4899"];
 function pretty(n){return (n==null||n===""?"-":String(n))}
@@ -874,7 +915,7 @@ function badge(s){if(s==="ok")return '<span class="pill ok">entregue</span>';if(
 
 function showTab(name){
   activeTab=name;
-  ["overview","leads","campaigns","traffic","heatmap"].forEach(function(t){
+  ["overview","leads","naoqual","campaigns","traffic","heatmap"].forEach(function(t){
     document.getElementById("tab-"+t).style.display=(t===name)?"block":"none";
     document.getElementById("tabbtn-"+t).classList.toggle("active",t===name);
   });
@@ -895,7 +936,10 @@ function loadAll(){
   var p1=fetch("${API}/overview"+qs+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(function(d){render(d);renderTraffic(d);});
   var p2=fetch("${API}/leads?limit=500"+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderLeads);
   var p3=fetch("${API}/campaigns"+qs+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderCampaigns);
-  Promise.all([p1,p2,p3]).then(function(){
+  // Não qualificados: sempre TODAS as páginas (ignora o filtro pageQ) — é um balde
+  // à parte, não faz sentido "zerar" ao filtrar por uma página específica no topo.
+  var p4=fetch("${API}/leads?limit=500&kind=nao_qualificado&_="+Date.now()).then(function(r){return r.json()}).then(renderNaoQual);
+  Promise.all([p1,p2,p3,p4]).then(function(){
     document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--green-ink)">atualizado às '+new Date().toLocaleTimeString("pt-BR")+'</span>';
   }).catch(function(e){console.error(e);document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--red-ink)">erro ao carregar</span>';})
   .then(function(){setLoading(false);});
@@ -1047,8 +1091,27 @@ function renderLeads(d){
   document.getElementById("leads").innerHTML=html+'</tbody></table>';
 }
 
-function showLead(i){
-  var l=lastLeads[i]; if(!l)return;
+// Leads que NÃO vão pro RD Station (baixo_valor / descarte) — ficam só no nosso D1.
+// Mesma ficha/modal de renderLeads (showLead aceita a lista), mas sem colunas de
+// entrega RD/Meta (não fazem sentido aqui: por design, nunca são enviados ao RD).
+function renderNaoQual(d){
+  lastNaoQual=d.leads||[];
+  var n=lastNaoQual.length;
+  document.getElementById("naoQualTitle").textContent="Leads não qualificados ("+n+")";
+  var porTipo={};
+  lastNaoQual.forEach(function(l){var k=l.lead_kind||"?";porTipo[k]=(porTipo[k]||0)+1;});
+  var kk=[["Total",pretty(n),"salvos, fora do RD Station"],["Baixo valor",pretty(porTipo.baixo_valor||0),"imóvel, crédito < R$ 100 mil"],["Sem imóvel/veículo",pretty(porTipo.descarte||0),"não qualificam pra nenhum funil"]];
+  document.getElementById("naoQualKpis").innerHTML=kk.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub">'+k[2]+'</div></div>'}).join("");
+  if(!n){document.getElementById("naoQual").innerHTML='<div class="empty">Nenhum lead não qualificado no período.</div>';return}
+  var html='<table><thead><tr><th>Data</th><th>Nome</th><th>Telefone</th><th>Tipo</th><th>Origem</th><th></th></tr></thead><tbody>';
+  lastNaoQual.forEach(function(l,i){
+    html+='<tr><td>'+(l.created_at||"").slice(0,16)+'</td><td>'+pretty(l.name)+'</td><td>'+pretty(l.phone)+'</td><td>'+(LEAD_KIND_LABELS[l.lead_kind]||pretty(l.lead_kind))+'</td><td>'+pretty(l.utm_source||l.source||"direto")+'</td><td><button class="btn-sm" onclick="showLead('+i+',lastNaoQual)">Ver ficha</button></td></tr>';
+  });
+  document.getElementById("naoQual").innerHTML=html+'</tbody></table>';
+}
+
+function showLead(i,list){
+  var l=(list||lastLeads)[i]; if(!l)return;
   document.getElementById("modalName").textContent=l.name||"Lead sem nome";
   document.getElementById("modalDate").textContent=(l.created_at||"").slice(0,16);
   // Ficha em seções: row(label,val) sempre mostra; opt(label,val) só se tiver valor
@@ -1059,6 +1122,7 @@ function showLead(i){
   function sec(t){h+='<div class="sec">'+t+'</div>';}
   sec("Contato");
   row("Telefone",pretty(l.phone)); row("E-mail",pretty(l.email)); opt("Cidade",l.city);
+  opt("Classificação",l.lead_kind?(LEAD_KIND_LABELS[l.lead_kind]||l.lead_kind):null);
   sec("Imóvel & simulação");
   row("Tipo de imóvel",pretty(l.property_type));
   opt("Valor do imóvel",l.property_value?brl(l.property_value):null);
@@ -1078,7 +1142,12 @@ function showLead(i){
   row("Criativo (utm_content)",pretty(l.utm_content));
   opt("Termo (utm_term)",l.utm_term);
   sec("Entrega");
-  row("RD Station",badge(l.rd_status)); row("Meta CAPI",badge(l.meta_status));
+  // Não qualificado (baixo_valor/descarte) NUNCA vai pro RD por design — "pendente"
+  // (o badge padrão pra rd_status null) sugeriria "ainda vai acontecer", o que é
+  // enganoso aqui. Detecta pelo próprio label (evita duplicar a lista de lead_kind).
+  var isNaoQual=/não qualificado/i.test(LEAD_KIND_LABELS[l.lead_kind]||"");
+  row("RD Station", isNaoQual ? '<span class="pill wait">não enviado (por design)</span>' : badge(l.rd_status));
+  row("Meta CAPI",badge(l.meta_status));
   document.getElementById("modalBody").innerHTML=h;
   var jb=document.getElementById("journeyBtn");
   document.getElementById("journey").innerHTML="";
@@ -1119,15 +1188,21 @@ function loadJourney(sid){
   }).catch(function(e){console.error(e);jb.disabled=false;jb.textContent="Ver jornada ↓";box.innerHTML='<div class="empty">Erro ao carregar a jornada.</div>';});
 }
 
-function exportCSV(){
-  if(!lastLeads.length){alert("Sem leads para exportar.");return}
-  var cols=["created_at","name","phone","email","property_type","property_value","credit_value","faixa_credito","imovel_quitado","situacao_imovel","documentacao_ok","possui_imovel","possui_matricula","saldo_devedor","city","source","utm_source","utm_medium","utm_campaign","utm_content","utm_term","rd_status","meta_status"];
+var CSV_COLS=["created_at","name","phone","email","lead_kind","property_type","property_value","credit_value","faixa_credito","imovel_quitado","situacao_imovel","documentacao_ok","possui_imovel","possui_matricula","saldo_devedor","city","source","utm_source","utm_medium","utm_campaign","utm_content","utm_term","rd_status","meta_status"];
+function downloadCSV(rows,cols,filename){
+  if(!rows.length){alert("Sem leads para exportar.");return}
   var head=cols.join(",");
-  var lines=lastLeads.map(function(l){return cols.map(function(c){var v=l[c]==null?"":String(l[c]).replace(/"/g,'""');return '"'+v+'"'}).join(",")});
+  var lines=rows.map(function(l){return cols.map(function(c){var v=l[c]==null?"":String(l[c]).replace(/"/g,'""');return '"'+v+'"'}).join(",")});
   var csv=head+"\\n"+lines.join("\\n");
   var url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
-  var a=document.createElement("a"); a.href=url; a.download="leads-"+currentPage()+"-"+new Date().toISOString().slice(0,10)+".csv"; a.click();
+  var a=document.createElement("a"); a.href=url; a.download=filename; a.click();
   URL.revokeObjectURL(url);
+}
+function exportCSV(){
+  downloadCSV(lastLeads,CSV_COLS,"leads-"+currentPage()+"-"+new Date().toISOString().slice(0,10)+".csv");
+}
+function exportNaoQualCSV(){
+  downloadCSV(lastNaoQual,CSV_COLS,"leads-nao-qualificados-"+new Date().toISOString().slice(0,10)+".csv");
 }
 
 function drawLine(id,labels,data){var ctx=document.getElementById(id);if(dailyChart)dailyChart.destroy();dailyChart=new Chart(ctx,{type:"line",data:{labels:labels,datasets:[{data:data,borderColor:"#f97316",backgroundColor:"rgba(249,115,22,.12)",fill:true,tension:.3,pointRadius:2,pointBackgroundColor:"#f97316"}]},options:{maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:"#6b7280"},grid:{color:"#eef0f3"}},y:{ticks:{color:"#6b7280"},grid:{color:"#eef0f3"}}}}})}
@@ -1242,6 +1317,7 @@ document.getElementById("rangeSel").addEventListener("change",loadAll);
 document.getElementById("pageSel").addEventListener("change",loadAll);
 document.getElementById("openPage").addEventListener("click",function(){var u=PAGE_URLS[currentPage()];if(u)window.open(u,"_blank","noopener");});
 document.getElementById("csvBtn").addEventListener("click",exportCSV);
+document.getElementById("naoQualCsvBtn").addEventListener("click",exportNaoQualCSV);
 document.getElementById("hmLoad").addEventListener("click",loadHeatmap);
 document.getElementById("hmDevice").addEventListener("change",loadHeatmap);
 document.getElementById("hmPageSel").addEventListener("change",loadHeatmap);

@@ -31,6 +31,7 @@
     home_equity_mql: ["Lead", "LeadQualificado"], // continua sendo Lead + evento próprio de MQL p/ otimização
     baixo_valor: ["LeadBaixoValor"],               // fora da otimização principal de Lead
     auto: ["LeadAuto"],                            // garantia de veículo — funil separado
+    descarte: [],                                  // sem imóvel nem veículo — não conta como conversão de ads
   };
 
   var steps = [
@@ -76,7 +77,7 @@
       kicker: "Crédito desejado",
       title: "Qual valor do crédito você está buscando?",
       options: [
-        { label: "Menos de R$ 100 mil", value: "menos_100k", amount: 75000, detail: "A gente confere alternativas disponíveis." },
+        { label: "Menos de R$ 100 mil", value: "menos_100k", amount: 75000 },
         { label: "De R$ 100 mil a R$ 300 mil", value: "100k_300k", amount: 200000 },
         { label: "De R$ 300 mil a R$ 600 mil", value: "300k_600k", amount: 450000 },
         { label: "De R$ 600 mil a R$ 900 mil", value: "600k_900k", amount: 750000 },
@@ -93,8 +94,10 @@
       title: "Você possui um automóvel?",
       options: [
         { label: "Sim", value: "sim" },
-        // "Não" encerra o fluxo: descarta e leva pra página de obrigado (sem lead).
-        { label: "Não", value: "nao", route: OBRIGADO.descarte }
+        // "Não" segue até a etapa de contato (mesmo sem imóvel nem veículo) — vira lead
+        // "descarte": salvo no nosso banco pra contato futuro, mas NÃO vai pro RD nem
+        // conta como conversão de ads (ver classifyLead/META_EVENTS).
+        { label: "Não", value: "nao" }
       ],
       showIf: function () { return answers.possui_imovel === "nao"; }
     },
@@ -136,10 +139,9 @@
         { id: "whatsapp", label: "Número do WhatsApp", type: "tel", autocomplete: "tel", inputmode: "tel", placeholder: "Insira sua resposta.", required: true },
         { id: "cidade", label: "Cidade", type: "text", autocomplete: "address-level2", placeholder: "Insira sua resposta.", required: true }
       ],
-      showIf: function () {
-        return answers.possui_imovel === "sim" ||
-          (answers.possui_imovel === "nao" && answers.possui_automovel === "sim");
-      }
+      // Etapa comum a TODOS os ramos que terminam em lead (inclusive "descarte" —
+      // sem imóvel e sem automóvel), pra sempre capturar o contato antes de finalizar.
+      showIf: function () { return !!answers.possui_imovel; }
     }
   ];
 
@@ -268,9 +270,6 @@
           answers[step.id] = value;
           normalizeAnswers(step.id);
           setHiddenInputs();
-          // Opção terminal (ex.: "não possui automóvel") -> descarta e redireciona.
-          var chosen = step.options.filter(function (o) { return o.value === value; })[0];
-          if (chosen && chosen.route) { redirectDiscard(chosen.route); return; }
           render();
           setTimeout(function () { goNext(); }, 140);
         });
@@ -385,19 +384,10 @@
       if (answers.possui_matricula === "sim" && faixaAlta) return "home_equity_mql";
       return "home_equity";
     }
-    return "auto"; // sem imóvel + sem automóvel já foi redirecionado antes de chegar aqui
-  }
-
-  function redirectDiscard(url) {
-    // Sem imóvel e sem automóvel: descarta (não gera lead), só marca no analytics.
-    try {
-      if (window.inspiraTrack) {
-        window.inspiraTrack.event("simulation_discard", { source: "home_equity_form", reason: "sem_imovel_sem_auto" });
-      }
-    } catch (e) {}
-    var nav = document.querySelector(".nav-actions");
-    if (nav) nav.hidden = true;
-    setTimeout(function () { window.location.href = url; }, 250);
+    if (answers.possui_automovel === "sim") return "auto";
+    // sem imóvel e sem automóvel — não qualificado pra nenhum funil, mas ainda vira
+    // lead (contato já foi capturado): fica só no nosso banco, ver META_EVENTS/_app.js.
+    return "descarte";
   }
 
   function complete() {

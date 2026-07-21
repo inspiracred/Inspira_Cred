@@ -204,10 +204,13 @@
     },
     lead: function (data) {
       data = data || {};
-      // Um lead pode disparar 1+ eventos do Meta (ex.: MQL = "Lead" + "LeadQualificado").
+      // Um lead pode disparar 1+ eventos do Meta (ex.: MQL = "Lead" + "LeadQualificado"),
+      // ou ZERO (ex.: lead "descarte" — não conta como conversão de ads). Testa
+      // `!== undefined` (não `.length`) pra um array VAZIO explícito não cair no
+      // fallback ["Lead"] (um [].length é 0, que é falsy — bug já corrigido aqui).
       // Cada nome ganha um event_id próprio; o MESMO {name,event_id} vai no Pixel
       // (browser) e na CAPI (server) -> o Meta deduplica par a par.
-      var names = (data.meta_events && data.meta_events.length) ? data.meta_events : ["Lead"];
+      var names = data.meta_events !== undefined ? data.meta_events : ["Lead"];
       var metaEvents = names.map(function (name) { return { name: name, event_id: uuid() }; });
       var custom = {
         currency: "BRL",
@@ -216,8 +219,9 @@
       };
       metaEvents.forEach(function (ev) { pixel(ev.name, custom, ev.event_id); });
       // Payload pro servidor: carrega os eventos (nome+id) + fbclid/gclid + url pra CAPI/atribuição.
-      // Mantém event_id "solto" (1º evento) pra compatibilidade com a coluna leads.event_id.
-      var p = { type: "lead", meta_events: metaEvents, event_id: metaEvents[0].event_id, url: location.href };
+      // Mantém event_id "solto" (1º evento) pra compatibilidade com a coluna leads.event_id —
+      // null quando não há nenhum evento de Meta (metaEvents vazio não quebra mais aqui).
+      var p = { type: "lead", meta_events: metaEvents, event_id: metaEvents.length ? metaEvents[0].event_id : null, url: location.href };
       p.fbclid = urlParam("fbclid") || null;
       p.gclid = urlParam("gclid") || null;
       for (var k in data) if (k !== "meta_events") p[k] = data[k];
