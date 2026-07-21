@@ -1109,6 +1109,17 @@ input {
     object-position: center top;
   }
 
+  /* No mobile a foto crua bate direto com o nav/copy — reforça o degradê de cima
+     pra baixo (mais escuro que o desktop em toda a extensão) pra foto ficar apagada. */
+  .hero::after {
+    background: linear-gradient(
+      180deg,
+      rgba(6, 22, 58, 0.62) 0%,
+      rgba(7, 28, 70, 0.82) 45%,
+      rgba(6, 26, 66, 0.97) 100%
+    );
+  }
+
   .nav {
     padding: 24px;
   }
