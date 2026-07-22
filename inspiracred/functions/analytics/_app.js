@@ -49,6 +49,7 @@ export async function onRequest(context) {
   if (sub === "/api/journey" && request.method === "GET") return handleJourney(request, env);
   if (sub === "/api/heatmap" && request.method === "GET") return handleHeatmap(request, env);
   if (sub === "/api/campaigns" && request.method === "GET") return handleCampaigns(request, env);
+  if (sub === "/api/health" && request.method === "GET") return handleHealth(request, env);
   if (sub === "/api/meta-test" && request.method === "GET") return handleMetaTest(request, env);
   if ((sub === "/" || sub === "/dashboard") && request.method === "GET") {
     return new Response(DASHBOARD_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
@@ -101,14 +102,8 @@ async function handleTrack(request, env, cors, context) {
           event.success === false ? 0 : 1, event.completion_time_ms || null, event.page_name || "other").run();
         break;
       case "lead": {
-        // fbp/fbc vêm do cookie 400d setado no edge por functions/_middleware.js
-        // (Fase 1 do plano de tracking — ver CLAUDE.md "Referência de tracking").
-        // O client não manda esses campos (nunca mandou) — o cookie é a única fonte.
         const leadCookies = parseCookies(request.headers.get("Cookie") || "");
-        if (!event.fbp && leadCookies._fbp) event.fbp = leadCookies._fbp;
-        if (!event.fbc && leadCookies._fbc) event.fbc = leadCookies._fbc;
-        const fbpSource = leadCookies._fbp ? "edge_cookie" : "none";
-        const fbcSource = leadCookies._fbc ? "edge_cookie" : "none";
+        const leadUA = request.headers.get("User-Agent") || "";
 
         // Identidade de sessão server-side (Fase A): cookies setados no edge pelo
         // functions/_middleware.js. `_krob_eid` é o external_id ESTÁVEL do Meta
@@ -119,24 +114,53 @@ async function handleTrack(request, env, cors, context) {
         const krobEid = leadCookies._krob_eid || null;
         event.external_id = krobEid || event.session_id || null;
 
+        // Fontes CRUAS de fbp/fbc/fbclid, capturadas ANTES de resolver (Fase B: saúde).
+        //   body   = o que o navegador mandou (Pixel/cookie lido no client — track.js A.3)
+        //   cookie = cookie de edge 400d (_middleware.js) — resgate ITP-safe
+        //   session= linha `sessions` (fbp/fbc/fbclid do 1º acesso)
+        const bodyFbp = validateFbCookie(event.fbp);
+        const bodyFbc = validateFbCookie(event.fbc);
+        const bodyFbclid = event.fbclid || "";
+        const cookieFbp = validateFbCookie(leadCookies._fbp);
+        const cookieFbc = validateFbCookie(leadCookies._fbc);
+
         // Enriquece com a origem CRUA capturada no 1º acesso: a linha `sessions` vence
         // quando o lead chegou sem o parâmetro (ex.: URL "limpa" antes do submit, ou
         // navegação interna que perdeu fbclid/UTM). try/catch: se a tabela `sessions`
         // ainda não existir (migration 0006 pendente), segue sem enriquecer.
+        let s = null;
         if (krobSid) {
           try {
-            const s = await env.DB.prepare("SELECT * FROM sessions WHERE session_id = ?").bind(krobSid).first();
-            if (s) {
-              if (!event.fbclid && s.fbclid) event.fbclid = s.fbclid;
-              if (!event.gclid && s.gclid) event.gclid = s.gclid;
-              if (!event.fbc && s.fbc) event.fbc = s.fbc;
-              if (!event.fbp && s.fbp) event.fbp = s.fbp;
-              ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"].forEach((k) => {
-                if (!event[k] && s[k]) event[k] = s[k];
-              });
-            }
+            s = await env.DB.prepare("SELECT * FROM sessions WHERE session_id = ?").bind(krobSid).first();
           } catch (e) { /* sessions ainda não existe (migration 0006 pendente) — ok */ }
         }
+        const sessionFbp = s ? validateFbCookie(s.fbp) : "";
+        const sessionFbc = s ? validateFbCookie(s.fbc) : "";
+
+        // Resolve fbp/fbc pela cadeia body -> cookie -> session (melhor id disponível);
+        // fbclid/gclid/UTMs herdam da sessão quando faltaram no lead.
+        event.fbp = bodyFbp || cookieFbp || sessionFbp || "";
+        event.fbc = bodyFbc || cookieFbc || sessionFbc || "";
+        if (s) {
+          if (!bodyFbclid && s.fbclid) event.fbclid = s.fbclid;
+          if (!event.gclid && s.gclid) event.gclid = s.gclid;
+          ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"].forEach((k) => {
+            if (!event[k] && s[k]) event[k] = s[k];
+          });
+        }
+
+        // Sinais de saúde do tracking (Fase B) — gravados no UPDATE 0008 mais abaixo.
+        const fbpSource = bodyFbp ? "body" : (cookieFbp ? "edge_cookie" : (sessionFbp ? "session" : "none"));
+        const fbcSource = bodyFbc ? "body" : (cookieFbc ? "edge_cookie" : (sessionFbc ? "session" : "none"));
+        const fbclidSource = bodyFbclid ? "url" : (s && s.fbclid ? "session" : "none");
+        const pixelWasBlocked = (!bodyFbp && !bodyFbc) ? 1 : 0;
+        const itpExtended = ((!bodyFbp && !!event.fbp) || (!bodyFbc && !!event.fbc)) ? 1 : 0;
+        const bot = detectBot(leadUA);
+        const uaInfo = parseBrowser(leadUA);
+        const hasEmail = event.email ? 1 : 0;
+        const hasPhone = event.phone ? 1 : 0;
+        const hasName = event.name ? 1 : 0;
+
         const leadInsert = await env.DB.prepare(
           `INSERT INTO leads (session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbp, fbc, fbclid, gclid, event_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         ).bind(event.session_id || null, event.name || null, event.phone || null, event.email || null,
@@ -175,6 +199,16 @@ async function handleTrack(request, env, cors, context) {
           try {
             await env.DB.prepare(`UPDATE leads SET krob_sid=? WHERE id=?`).bind(krobSid, leadId).run();
           } catch (e) { /* coluna krob_sid ainda não existe (migration 0007 pendente) — ok */ }
+          // Saúde do tracking completa (migration 0008): fonte de fbclid, pixel bloqueado,
+          // resgate ITP, bot, navegador/os e cobertura de PII. UPDATE próprio try/catch.
+          try {
+            await env.DB.prepare(
+              `UPDATE leads SET fbclid_source=?, pixel_was_blocked=?, itp_cookie_extended=?, is_bot=?, bot_reason=?, browser=?, os=?, is_mobile=?, has_email=?, has_phone=?, has_name=? WHERE id=?`
+            ).bind(
+              fbclidSource, pixelWasBlocked, itpExtended, bot.isBot ? 1 : 0, bot.botReason || null,
+              uaInfo.browser, uaInfo.os, uaInfo.isMobile ? 1 : 0, hasEmail, hasPhone, hasName, leadId
+            ).run();
+          } catch (e) { /* colunas 0008 ainda não existem — ok */ }
         }
         if (leadId && context) {
           // Leads "não qualificados" (baixo_valor, descarte) ficam SÓ no nosso D1 —
@@ -184,11 +218,19 @@ async function handleTrack(request, env, cors, context) {
           if (!NAO_QUALIFICADO.has(event.lead_kind)) {
             context.waitUntil(sendLeadToRD(event, env, leadId));
           }
-          context.waitUntil(sendLeadToMeta(event, env, leadId, {
-            clientIp: request.headers.get("CF-Connecting-IP") || "",
-            userAgent: request.headers.get("User-Agent") || "",
-            sourceUrl: event.url || request.headers.get("Referer") || "",
-          }));
+          // Filtro de bot (Fase B): crawler (WhatsApp/Slack/Facebook/curl/headless…) NÃO
+          // vai pra CAPI — não polui o Pixel/otimização. O lead já foi salvo no D1 com
+          // is_bot=1 (métrica de saúde correta). O RD NÃO é gateado por bot de propósito:
+          // dropar um lead real por falso-positivo de UA no CRM custa mais que um bot raro.
+          if (!bot.isBot) {
+            context.waitUntil(sendLeadToMeta(event, env, leadId, {
+              clientIp: request.headers.get("CF-Connecting-IP") || "",
+              userAgent: leadUA,
+              sourceUrl: event.url || request.headers.get("Referer") || "",
+            }));
+          } else {
+            try { await env.DB.prepare(`UPDATE leads SET meta_status=? WHERE id=?`).bind("bot_skip", leadId).run(); } catch (e) {}
+          }
         }
         break;
       }
@@ -360,6 +402,57 @@ function parseCookies(header) {
     if (i > -1) out[c.slice(0, i).trim()] = c.slice(i + 1).trim();
   });
   return out;
+}
+
+// Valida o formato do cookie _fbp/_fbc do Meta (fb.{index}.{ts}.{payload}); retorna ""
+// se malformado, pra não mandar lixo pra CAPI. Portado de krob-tracking-stack/tracker.js.
+function validateFbCookie(value) {
+  if (!value) return "";
+  const parts = String(value).split(".");
+  if (parts.length < 4 || parts.length > 5) return "";
+  if (parts[0] !== "fb") return "";
+  if (!/^\d+$/.test(parts[1])) return "";
+  if (!/^\d+$/.test(parts[2])) return "";
+  if (!parts[3]) return "";
+  return value;
+}
+
+// Detecta crawler/bot por User-Agent (WhatsApp/Slack/Facebook/curl/headless…). Bot NÃO
+// vai pra CAPI (não polui o Pixel). Portado de krob-tracking-stack/tracker.js.
+function detectBot(userAgent) {
+  if (!userAgent || userAgent.length < 10) return { isBot: true, botReason: "UA ausente ou curto" };
+  const patterns = [
+    { p: /googlebot|google-inspectiontool/i, r: "Googlebot" },
+    { p: /bingbot|msnbot/i, r: "Bingbot" },
+    { p: /facebookexternalhit|facebot/i, r: "Facebook crawler" },
+    { p: /twitterbot/i, r: "Twitter crawler" },
+    { p: /linkedinbot/i, r: "LinkedIn crawler" },
+    { p: /slackbot/i, r: "Slackbot" },
+    { p: /whatsapp/i, r: "WhatsApp preview" },
+    { p: /bot|crawler|spider|scraper|headless/i, r: "Bot genérico" },
+    { p: /python-requests|axios|node-fetch|curl|wget|httpie/i, r: "Lib HTTP" },
+    { p: /phantomjs|selenium|puppeteer|playwright/i, r: "Automação" },
+  ];
+  for (const { p, r } of patterns) if (p.test(userAgent)) return { isBot: true, botReason: r };
+  return { isBot: false, botReason: "" };
+}
+
+// Parse leve de navegador/OS/mobile a partir do UA. Portado de krob-tracking-stack.
+function parseBrowser(ua) {
+  const r = { browser: "Desconhecido", os: "Desconhecido", isMobile: false };
+  if (!ua) return r;
+  r.isMobile = /Mobile|Android|iPhone|iPad/i.test(ua);
+  if (/Edg\//i.test(ua)) r.browser = "Edge";
+  else if (/OPR\//i.test(ua)) r.browser = "Opera";
+  else if (/Chrome\//i.test(ua) && !/Chromium/i.test(ua)) r.browser = "Chrome";
+  else if (/Safari\//i.test(ua) && !/Chrome/i.test(ua)) r.browser = "Safari";
+  else if (/Firefox\//i.test(ua)) r.browser = "Firefox";
+  if (/Windows/i.test(ua)) r.os = "Windows";
+  else if (/Mac OS X/i.test(ua)) r.os = "macOS";
+  else if (/iPhone|iPad/i.test(ua)) r.os = "iOS";
+  else if (/Android/i.test(ua)) r.os = "Android";
+  else if (/Linux/i.test(ua)) r.os = "Linux";
+  return r;
 }
 
 async function sendLeadToMeta(event, env, leadId, ctx) {
@@ -563,6 +656,47 @@ async function handleCampaigns(request, env) {
     totals: { total, com_utm, direto: total - com_utm, valor: t.valor || 0 },
     by_source, by_medium, by_campaign, by_content,
   });
+}
+
+/* ---- SAÚDE DO TRACKING (Fase B) ----
+ * Agrega as colunas de diagnóstico da tabela `leads` (migration 0008): quanto do
+ * tráfego o cookie de edge resgatou (itp), quantos bots foram barrados, cobertura de
+ * PII pro Advanced Matching, distribuição de origem do fbp e de navegador. Se as
+ * colunas ainda não existirem (0008 pendente), volta um aviso em vez de quebrar.
+ */
+async function handleHealth(request, env) {
+  const { start, end, page } = params(request.url);
+  const sc = page ? " AND source = ?" : "";
+  const b = page ? [start, end, page] : [start, end];
+  const WHERE = `WHERE DATE(created_at) BETWEEN ? AND ?${sc}`;
+  const many = async (sql) => (await env.DB.prepare(sql).bind(...b).all()).results || [];
+
+  let totals = {};
+  try {
+    totals = await env.DB.prepare(
+      `SELECT COUNT(*) total,
+              SUM(CASE WHEN is_bot=1 THEN 1 ELSE 0 END) bots,
+              SUM(CASE WHEN itp_cookie_extended=1 THEN 1 ELSE 0 END) itp_recuperado,
+              SUM(CASE WHEN pixel_was_blocked=1 THEN 1 ELSE 0 END) sem_cookie_meta,
+              SUM(CASE WHEN has_email=1 THEN 1 ELSE 0 END) com_email,
+              SUM(CASE WHEN has_phone=1 THEN 1 ELSE 0 END) com_telefone,
+              SUM(CASE WHEN has_name=1 THEN 1 ELSE 0 END) com_nome,
+              SUM(CASE WHEN fbclid_source IN ('url','session') THEN 1 ELSE 0 END) com_fbclid,
+              SUM(CASE WHEN meta_status='ok' THEN 1 ELSE 0 END) meta_ok
+       FROM leads ${WHERE}`
+    ).bind(...b).first();
+  } catch (e) {
+    return json({ range: { start, end }, page: page || "all", pendente: true, totals: {}, by_fbp_source: [], by_browser: [], by_bot: [] });
+  }
+
+  let by_fbp_source = [], by_browser = [], by_bot = [];
+  try {
+    by_fbp_source = await many(`SELECT COALESCE(NULLIF(fbp_source,''),'(nulo)') k, COUNT(*) n FROM leads ${WHERE} GROUP BY k ORDER BY n DESC`);
+    by_browser = await many(`SELECT COALESCE(NULLIF(browser,''),'(nulo)') k, COUNT(*) n FROM leads ${WHERE} GROUP BY k ORDER BY n DESC`);
+    by_bot = await many(`SELECT COALESCE(NULLIF(bot_reason,''),'(humano)') k, COUNT(*) n FROM leads ${WHERE} GROUP BY k ORDER BY n DESC`);
+  } catch (e) { /* ok */ }
+
+  return json({ range: { start, end }, page: page || "all", totals: totals || {}, by_fbp_source, by_browser, by_bot });
 }
 
 /* ---- TESTE META ADS (diagnóstico temporário) ----
@@ -826,6 +960,7 @@ const DASHBOARD_HTML = `<!doctype html>
   <button class="tab" id="tabbtn-campaigns" onclick="showTab('campaigns')">Campanhas</button>
   <button class="tab" id="tabbtn-traffic" onclick="showTab('traffic')">Tráfego</button>
   <button class="tab" id="tabbtn-heatmap" onclick="showTab('heatmap')">Mapa de calor</button>
+  <button class="tab" id="tabbtn-health" onclick="showTab('health')">Saúde do tracking</button>
 </div>
 <div class="wrap">
   <div class="scope" id="scope"></div>
@@ -928,6 +1063,30 @@ const DASHBOARD_HTML = `<!doctype html>
       </div>
     </div>
   </section>
+
+  <section class="tab-section" id="tab-health">
+    <div class="kpis" id="healthKpis"></div>
+    <p class="hint" style="display:block;margin:-4px 0 16px">
+      Diagnóstico do rastreamento dos leads no período. Mostra quanto o nosso cookie de
+      edge (400 dias) resgatou do que o Safari/ITP teria cortado, quantos bots foram
+      barrados antes de sujar o Pixel, e a cobertura de dados que o Meta usa pra casar o
+      lead (Advanced Matching). Só vale pra leads capturados depois do deploy da Fase B.
+    </p>
+    <div class="traffic-top">
+      <div class="card">
+        <div class="h2row"><h2>Origem do fbp</h2><span class="hint">de onde veio o identificador do Meta</span></div>
+        <div id="healthFbp"></div>
+      </div>
+      <div class="card">
+        <div class="h2row"><h2>Navegador</h2><span class="hint">dos leads do período</span></div>
+        <div id="healthBrowser"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:18px">
+      <div class="h2row"><h2>Bots barrados</h2><span class="hint">crawlers que NÃO foram enviados à CAPI</span></div>
+      <div id="healthBots"></div>
+    </div>
+  </section>
 </div>
 
 <div class="modal-bg" id="leadModal">
@@ -959,7 +1118,7 @@ function badge(s){if(s==="ok")return '<span class="pill ok">entregue</span>';if(
 
 function showTab(name){
   activeTab=name;
-  ["overview","leads","naoqual","campaigns","traffic","heatmap"].forEach(function(t){
+  ["overview","leads","naoqual","campaigns","traffic","heatmap","health"].forEach(function(t){
     document.getElementById("tab-"+t).style.display=(t===name)?"block":"none";
     document.getElementById("tabbtn-"+t).classList.toggle("active",t===name);
   });
@@ -983,7 +1142,8 @@ function loadAll(){
   // Não qualificados: sempre TODAS as páginas (ignora o filtro pageQ) — é um balde
   // à parte, não faz sentido "zerar" ao filtrar por uma página específica no topo.
   var p4=fetch("${API}/leads?limit=500&kind=nao_qualificado&_="+Date.now()).then(function(r){return r.json()}).then(renderNaoQual);
-  Promise.all([p1,p2,p3,p4]).then(function(){
+  var p5=fetch("${API}/health"+qs+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderHealth);
+  Promise.all([p1,p2,p3,p4,p5]).then(function(){
     document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--green-ink)">atualizado às '+new Date().toLocaleTimeString("pt-BR")+'</span>';
   }).catch(function(e){console.error(e);document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--red-ink)">erro ao carregar</span>';})
   .then(function(){setLoading(false);});
@@ -1016,6 +1176,40 @@ function renderFunnel(steps){
       '<div class="fn-stats"><span class="n">'+pretty(s[1])+'</span><span class="c">'+conv+'</span></div>'+
     '</div>';
   }).join("");
+}
+
+/* ---- Saúde do tracking (Fase B): resgate ITP, bots, cobertura de PII ---- */
+function renderHealth(d){
+  var t=(d&&d.totals)||{}, total=t.total||0;
+  var fbp=document.getElementById("healthFbp"), br=document.getElementById("healthBrowser"), bots=document.getElementById("healthBots");
+  if(d&&d.pendente){
+    document.getElementById("healthKpis").innerHTML='<div class="kpi"><div class="label">Aguardando migration 0008</div><div class="val">—</div><div class="sub"><b>rode o SQL 0008 no Console do D1 pra ligar o painel</b></div></div>';
+    fbp.innerHTML=br.innerHTML=bots.innerHTML='';
+    return;
+  }
+  var kpis=[
+    ["Leads no período",pretty(total),""],
+    ["Resgatados pelo cookie de edge",pretty(t.itp_recuperado),pct(t.itp_recuperado,total)+"% — fbp/fbc que o ITP teria cortado"],
+    ["Bots barrados",pretty(t.bots),"não foram enviados à CAPI"],
+    ["Enviados ao Meta (ok)",pretty(t.meta_ok),pct(t.meta_ok,total)+"% dos leads"],
+    ["Cobertura e-mail",pct(t.com_email,total)+"%",pretty(t.com_email)+" de "+pretty(total)],
+    ["Cobertura telefone",pct(t.com_telefone,total)+"%",pretty(t.com_telefone)+" de "+pretty(total)],
+    ["Cobertura nome",pct(t.com_nome,total)+"%",pretty(t.com_nome)+" de "+pretty(total)],
+    ["Com fbclid (atribuição)",pct(t.com_fbclid,total)+"%",pretty(t.com_fbclid)+" leads"]
+  ];
+  document.getElementById("healthKpis").innerHTML=kpis.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>'}).join("");
+  fbp.innerHTML=kvBars(d.by_fbp_source, total, "Sem dados no período.");
+  br.innerHTML=kvBars(d.by_browser, total, "Sem dados no período.");
+  bots.innerHTML=kvBars(d.by_bot, total, "Nenhum bot registrado no período.");
+}
+// adapta [{k,n}] pro barList({lbl,val,sub,w})
+function kvBars(rows, total, emptyMsg){
+  rows=rows||[];
+  if(!rows.length)return '<div class="empty">'+emptyMsg+'</div>';
+  var max=Math.max.apply(null,rows.map(function(x){return x.n||0}).concat([1]));
+  return barList(rows.map(function(x){
+    return {lbl:x.k, val:x.n, sub:total?pct(x.n,total)+"%":"", w:max?x.n/max:0};
+  }));
 }
 
 /* ---- Campanhas: de onde vêm os leads (origem, mídia, campanha, criativo) ---- */
