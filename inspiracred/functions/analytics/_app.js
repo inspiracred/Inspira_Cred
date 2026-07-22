@@ -109,6 +109,34 @@ async function handleTrack(request, env, cors, context) {
         if (!event.fbc && leadCookies._fbc) event.fbc = leadCookies._fbc;
         const fbpSource = leadCookies._fbp ? "edge_cookie" : "none";
         const fbcSource = leadCookies._fbc ? "edge_cookie" : "none";
+
+        // Identidade de sessão server-side (Fase A): cookies setados no edge pelo
+        // functions/_middleware.js. `_krob_eid` é o external_id ESTÁVEL do Meta
+        // (por-pessoa, sobrevive à limpeza do localStorage); fallback pro session_id
+        // do client pra leads em voo durante o rollout (antes de o visitante receber
+        // o cookie). `_krob_sid` liga o lead à linha `sessions`.
+        const krobSid = leadCookies._krob_sid || null;
+        const krobEid = leadCookies._krob_eid || null;
+        event.external_id = krobEid || event.session_id || null;
+
+        // Enriquece com a origem CRUA capturada no 1º acesso: a linha `sessions` vence
+        // quando o lead chegou sem o parâmetro (ex.: URL "limpa" antes do submit, ou
+        // navegação interna que perdeu fbclid/UTM). try/catch: se a tabela `sessions`
+        // ainda não existir (migration 0006 pendente), segue sem enriquecer.
+        if (krobSid) {
+          try {
+            const s = await env.DB.prepare("SELECT * FROM sessions WHERE session_id = ?").bind(krobSid).first();
+            if (s) {
+              if (!event.fbclid && s.fbclid) event.fbclid = s.fbclid;
+              if (!event.gclid && s.gclid) event.gclid = s.gclid;
+              if (!event.fbc && s.fbc) event.fbc = s.fbc;
+              if (!event.fbp && s.fbp) event.fbp = s.fbp;
+              ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"].forEach((k) => {
+                if (!event[k] && s[k]) event[k] = s[k];
+              });
+            }
+          } catch (e) { /* sessions ainda não existe (migration 0006 pendente) — ok */ }
+        }
         const leadInsert = await env.DB.prepare(
           `INSERT INTO leads (session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbp, fbc, fbclid, gclid, event_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         ).bind(event.session_id || null, event.name || null, event.phone || null, event.email || null,
@@ -142,6 +170,11 @@ async function handleTrack(request, env, cors, context) {
             await env.DB.prepare(`UPDATE leads SET fbp_source=?, fbc_source=? WHERE id=?`)
               .bind(fbpSource, fbcSource, leadId).run();
           } catch (e) { /* colunas ainda não existem (migration 0005 pendente) — ok */ }
+          // Liga o lead à linha `sessions` (migration 0007). UPDATE próprio: se a coluna
+          // ainda não existir, só isto falha — o resto do lead já foi gravado.
+          try {
+            await env.DB.prepare(`UPDATE leads SET krob_sid=? WHERE id=?`).bind(krobSid, leadId).run();
+          } catch (e) { /* coluna krob_sid ainda não existe (migration 0007 pendente) — ok */ }
         }
         if (leadId && context) {
           // Leads "não qualificados" (baixo_valor, descarte) ficam SÓ no nosso D1 —
@@ -352,7 +385,9 @@ async function sendLeadToMeta(event, env, leadId, ctx) {
   const ph = await sha256Hex(phoneDigits);
   const hfn = await sha256Hex(fn);
   const hln = await sha256Hex(ln);
-  const ext = await sha256Hex(event.session_id);
+  // external_id estável: _krob_eid (cookie de edge) resolvido no case "lead"; fallback
+  // pro session_id do client pra leads em voo durante o rollout (antes do cookie existir).
+  const ext = await sha256Hex(event.external_id || event.session_id);
   if (em) userData.em = [em];
   if (ph) userData.ph = [ph];
   if (hfn) userData.fn = [hfn];

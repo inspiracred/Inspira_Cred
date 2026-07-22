@@ -35,6 +35,16 @@
     try { return new URLSearchParams(window.location.search).get(name); } catch (e) { return null; }
   }
 
+  // Lê um cookie por nome (usado pra mandar o _fbp/_fbc que o Pixel/edge setaram
+  // junto no payload do lead — dá ao servidor a fonte "pixel_js" no fallback e
+  // permite calcular pixel_was_blocked na Fase B).
+  function cookieVal(name) {
+    try {
+      var m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
+      return m ? decodeURIComponent(m[1]) : null;
+    } catch (e) { return null; }
+  }
+
   // UTMs da URL (first-touch: guarda na sessão pra não perder em cliques posteriores
   // nem em navegação interna que chegue sem os parâmetros).
   var UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
@@ -235,6 +245,10 @@
       var p = { type: "lead", meta_events: metaEvents, event_id: metaEvents.length ? metaEvents[0].event_id : null, url: location.href };
       p.fbclid = urlParam("fbclid") || null;
       p.gclid = urlParam("gclid") || null;
+      // _fbp/_fbc lidos pelo navegador (Pixel ou cookie de edge). O servidor usa como
+      // 1ª opção da cadeia de fallback e pra saber se o Pixel foi bloqueado (Fase B).
+      p.fbp = cookieVal("_fbp") || null;
+      p.fbc = cookieVal("_fbc") || null;
       for (var k in data) if (k !== "meta_events") p[k] = data[k];
       // withUtm preenche utm_* de first-touch (localStorage) quando o payload não trouxe —
       // sem isso o lead perde a origem se a URL "limpou" as UTMs antes do envio (→ "direto").
