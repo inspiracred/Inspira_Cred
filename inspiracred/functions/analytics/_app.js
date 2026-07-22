@@ -101,10 +101,14 @@ async function handleTrack(request, env, cors, context) {
           event.success === false ? 0 : 1, event.completion_time_ms || null, event.page_name || "other").run();
         break;
       case "lead": {
-        // Enriquece fbp/fbc a partir dos cookies do Pixel (mesma origem) se o client não mandou
+        // fbp/fbc vêm do cookie 400d setado no edge por functions/_middleware.js
+        // (Fase 1 do plano de tracking — ver CLAUDE.md "Referência de tracking").
+        // O client não manda esses campos (nunca mandou) — o cookie é a única fonte.
         const leadCookies = parseCookies(request.headers.get("Cookie") || "");
         if (!event.fbp && leadCookies._fbp) event.fbp = leadCookies._fbp;
         if (!event.fbc && leadCookies._fbc) event.fbc = leadCookies._fbc;
+        const fbpSource = leadCookies._fbp ? "edge_cookie" : "none";
+        const fbcSource = leadCookies._fbc ? "edge_cookie" : "none";
         const leadInsert = await env.DB.prepare(
           `INSERT INTO leads (session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbp, fbc, fbclid, gclid, event_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         ).bind(event.session_id || null, event.name || null, event.phone || null, event.email || null,
@@ -133,6 +137,11 @@ async function handleTrack(request, env, cors, context) {
             await env.DB.prepare(`UPDATE leads SET lead_kind=? WHERE id=?`)
               .bind(event.lead_kind || null, leadId).run();
           } catch (e) { /* coluna lead_kind ainda não existe (migration 0004 pendente) — ok */ }
+          // Saúde do tracking (migration 0005): de onde vieram fbp/fbc usados na CAPI.
+          try {
+            await env.DB.prepare(`UPDATE leads SET fbp_source=?, fbc_source=? WHERE id=?`)
+              .bind(fbpSource, fbcSource, leadId).run();
+          } catch (e) { /* colunas ainda não existem (migration 0005 pendente) — ok */ }
         }
         if (leadId && context) {
           // Leads "não qualificados" (baixo_valor, descarte) ficam SÓ no nosso D1 —
@@ -459,7 +468,7 @@ async function handleLeads(request, env) {
   // existirem no D1, o 1º SELECT falha e caímos no fallback com as colunas antigas —
   // o dashboard nunca quebra por causa de migration pendente.
   const BASE = `id, session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, rd_status, meta_status, created_at`;
-  const QUAL = `, imovel_quitado, documentacao_ok, situacao_imovel, saldo_devedor, possui_imovel, possui_matricula, faixa_credito, city, lead_kind`;
+  const QUAL = `, imovel_quitado, documentacao_ok, situacao_imovel, saldo_devedor, possui_imovel, possui_matricula, faixa_credito, city, lead_kind, fbp_source, fbc_source`;
   const conds = [];
   const binds = [];
   if (page) { conds.push(`source = ?`); binds.push(page); }
@@ -1148,6 +1157,7 @@ function showLead(i,list){
   var isNaoQual=/não qualificado/i.test(LEAD_KIND_LABELS[l.lead_kind]||"");
   row("RD Station", isNaoQual ? '<span class="pill wait">não enviado (por design)</span>' : badge(l.rd_status));
   row("Meta CAPI",badge(l.meta_status));
+  if(l.fbp_source||l.fbc_source) row("Origem fbp/fbc", pretty(l.fbp_source)+" / "+pretty(l.fbc_source));
   document.getElementById("modalBody").innerHTML=h;
   var jb=document.getElementById("journeyBtn");
   document.getElementById("journey").innerHTML="";

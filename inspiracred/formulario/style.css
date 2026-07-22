@@ -365,36 +365,41 @@ a {
   color: rgba(255, 255, 255, 0.84);
   font-size: 13px;
   font-weight: 700;
-  text-align: center;
+  text-align: left;
 }
 
+/* Mesmo tratamento "glass" das .option (borda sutil + fundo translúcido +
+   radius 12px) — texto/placeholder à esquerda, como qualquer input padrão de
+   mercado, em vez do sublinhado centralizado (não lia como campo de formulário). */
 .input {
   width: 100%;
   min-height: 56px;
   padding: 0 16px;
-  border: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 0;
-  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
   color: #fff;
-  font-size: 19px;
-  font-weight: 700;
-  text-align: center;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: left;
   outline: none;
-  transition: border-color 180ms var(--ease), box-shadow 180ms var(--ease);
+  transition: border-color 180ms var(--ease), background 180ms var(--ease), box-shadow 180ms var(--ease);
 }
 
 .input::placeholder {
-  color: rgba(255, 255, 255, 0.46);
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 500;
 }
 
 .input:focus {
-  border-color: var(--orange);
-  box-shadow: 0 8px 0 -7px rgba(249, 115, 22, 0.8);
+  border-color: rgba(249, 115, 22, 0.78);
+  background: rgba(249, 115, 22, 0.08);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.18);
 }
 
 .input.is-invalid {
   border-color: #fca5a5;
+  background: rgba(252, 165, 165, 0.08);
 }
 
 .helper {

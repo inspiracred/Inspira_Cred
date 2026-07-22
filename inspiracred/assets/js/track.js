@@ -71,10 +71,21 @@
     window.fbq("init", META_PIXEL_ID);
     window.fbq("track", "PageView");
   }
+  // Eventos PADRÃO do Meta (fbq('track', ...)); qualquer outro nome (SimulacaoIniciada,
+  // LeadQualificado, LeadBaixoValor, LeadAuto...) precisa de fbq('trackCustom', ...) —
+  // chamar 'track' com nome não-padrão faz o Pixel SUPRIMIR o evento (confirmado no
+  // console: "non-standard event... The event was suppressed").
+  var STANDARD_PIXEL_EVENTS = {
+    PageView: 1, AddPaymentInfo: 1, AddToCart: 1, AddToWishlist: 1, CompleteRegistration: 1,
+    Contact: 1, CustomizeProduct: 1, Donate: 1, FindLocation: 1, InitiateCheckout: 1,
+    Lead: 1, Purchase: 1, Schedule: 1, Search: 1, StartTrial: 1, SubmitApplication: 1,
+    Subscribe: 1, ViewContent: 1,
+  };
   function pixel(name, data, eventId) {
     try {
       if (typeof window.fbq === "function") {
-        window.fbq("track", name, data || {}, eventId ? { eventID: eventId } : undefined);
+        var method = STANDARD_PIXEL_EVENTS[name] ? "track" : "trackCustom";
+        window.fbq(method, name, data || {}, eventId ? { eventID: eventId } : undefined);
       }
     } catch (e) {}
   }
