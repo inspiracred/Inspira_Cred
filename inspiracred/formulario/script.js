@@ -3,6 +3,7 @@
 
   var form = document.getElementById("typeform-home-equity");
   var shell = document.getElementById("question-shell");
+  var page = document.querySelector(".form-page");
   var nextButton = document.getElementById("next-button");
   var backButton = document.getElementById("back-button");
   var progressSteps = document.getElementById("progress-steps");
@@ -16,12 +17,41 @@
   var submitting = false;
 
   // Destinos das páginas de obrigado por tipo de lead.
-  var OBRIGADO = {
-    home_equity: "/obrigado/formulario/",
-    home_equity_mql: "/obrigado/formulario/",
-    baixo_valor: "/obrigado/nao-elegivel/",
-    auto: "/obrigado/auto/",
-    descarte: "/obrigado/nao-elegivel/",
+  var WHATSAPP_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.149-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.71.306 1.263.489 1.694.625.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.885-9.885 9.885M20.52 3.449C18.24 1.245 15.24 0 12.045 0 5.463 0 .104 5.334.101 11.892c0 2.096.549 4.14 1.595 5.945L0 24l6.335-1.652a12.062 12.062 0 005.71 1.447h.006c6.585 0 11.946-5.336 11.949-11.896 0-3.176-1.24-6.165-3.487-8.4"/></svg>';
+
+  var THANK_YOU = {
+    qualified: {
+      tone: "qualified",
+      eyebrow: "Etapa concluída",
+      title: "Muito obrigada por suas respostas!",
+      lead: "Terminamos por aqui. Nossa equipe já vai analisar o seu perfil e entrar em contato em breve para falar sobre as melhores condições para você.",
+      steps: [
+        ["Análise do seu perfil", "Revisamos tipo de imóvel, documentação e valor buscado."],
+        ["Contato pelo WhatsApp", "Entramos em contato para entender melhor a sua necessidade."],
+        ["Proposta personalizada", "Você recebe as condições disponíveis, sem compromisso."]
+      ],
+      whatsapp: "https://wa.me/5521977340731?text=Ol%C3%A1%2C%20acabei%20de%20fazer%20uma%20simula%C3%A7%C3%A3o%20no%20site%20da%20InspiraCred%20e%20gostaria%20de%20falar%20com%20um%20consultor%20sobre%20meu%20cr%C3%A9dito%20com%20garantia%20de%20im%C3%B3vel."
+    },
+    auto: {
+      tone: "qualified",
+      eyebrow: "Etapa concluída",
+      title: "Muito obrigada por suas respostas!",
+      lead: "Recebemos suas informações sobre o crédito com garantia de veículo. Nossa equipe já vai analisar o seu perfil e entrar em contato em breve para falar sobre as melhores condições para você.",
+      steps: [
+        ["Análise do seu perfil", "Revisamos o valor do veículo e o crédito buscado."],
+        ["Contato pelo WhatsApp", "Um especialista entra em contato para entender o seu momento."],
+        ["Condições sob medida", "Você recebe as opções disponíveis, sem compromisso."]
+      ],
+      whatsapp: "https://wa.me/5521977340731?text=Ol%C3%A1%2C%20fiz%20uma%20simula%C3%A7%C3%A3o%20no%20site%20da%20InspiraCred%20e%20gostaria%20de%20falar%20com%20um%20consultor%20sobre%20cr%C3%A9dito%20com%20garantia%20de%20ve%C3%ADculo."
+    },
+    notQualified: {
+      tone: "not-qualified",
+      eyebrow: "Respostas recebidas",
+      title: "Obrigada por responder!",
+      lead: "Pelo perfil que você indicou, talvez este não seja o momento ideal para o crédito com garantia de imóvel. Guardamos suas informações e, se surgir uma condição que faça sentido para o seu perfil, entramos em contato.",
+      steps: [],
+      whatsapp: null
+    }
   };
 
   // Eventos do Meta (Pixel + CAPI) por tipo de lead. Cada nome vira um evento
@@ -390,6 +420,56 @@
     return "descarte";
   }
 
+  function thankYouConfig(kind) {
+    if (kind === "baixo_valor" || kind === "descarte") return THANK_YOU.notQualified;
+    if (kind === "auto") return THANK_YOU.auto;
+    return THANK_YOU.qualified;
+  }
+
+  function renderThankYou(kind) {
+    var cfg = thankYouConfig(kind);
+    var steps = "";
+    if (cfg.steps && cfg.steps.length) {
+      steps = '<ol class="thank-you-steps">' + cfg.steps.map(function (item, index) {
+        return '<li><span class="step-index">' + String(index + 1).padStart(2, "0") + '</span><div>' +
+          '<strong>' + escapeHtml(item[0]) + '</strong>' +
+          '<span>' + escapeHtml(item[1]) + '</span>' +
+          '</div></li>';
+      }).join("") + '</ol>';
+    }
+
+    var cta = "";
+    if (cfg.whatsapp) {
+      cta += '<a class="thank-you-btn thank-you-btn-whatsapp" id="formulario-obrigado-whatsapp" href="' + cfg.whatsapp + '" target="_blank" rel="noopener noreferrer">' +
+        WHATSAPP_ICON + 'Falar com um consultor no WhatsApp</a>';
+      cta += '<a class="thank-you-btn thank-you-btn-ghost" id="formulario-obrigado-nova" href="/formulario/">Fazer uma nova simulação</a>';
+    } else {
+      cta += '<a class="thank-you-btn thank-you-btn-ghost" id="formulario-obrigado-site" href="/">Voltar para o site</a>';
+    }
+
+    if (page) {
+      page.classList.add("is-complete");
+      page.classList.toggle("is-not-qualified", cfg.tone === "not-qualified");
+    }
+    form.classList.add("is-complete");
+    shell.innerHTML = '<section class="thank-you thank-you-' + cfg.tone + '" aria-label="Respostas enviadas">' +
+      '<div class="thank-you-splash" aria-hidden="true"><div class="thank-you-splash-mark">' +
+      '<svg viewBox="0 0 56 56" width="132" height="132"><circle class="splash-ring" cx="28" cy="28" r="24"></circle><path class="splash-check" d="M17 29.5 24.3 36.5 39.5 20"></path></svg>' +
+      '</div></div>' +
+      '<span class="thank-you-mark" aria-hidden="true"><svg viewBox="0 0 56 56" width="30" height="30"><circle class="ring" cx="28" cy="28" r="24"></circle><path class="check" d="M17 29.5 24.3 36.5 39.5 20"></path></svg></span>' +
+      '<span class="thank-you-eyebrow">' + escapeHtml(cfg.eyebrow) + '</span>' +
+      '<h2>' + escapeHtml(cfg.title) + '</h2>' +
+      '<p class="thank-you-lead">' + escapeHtml(cfg.lead) + '</p>' +
+      steps +
+      '<div class="thank-you-cta">' + cta + '</div>' +
+      '<p class="thank-you-fine"><a href="/politica-de-privacidade.html" target="_blank" rel="noopener noreferrer">Política de Privacidade</a> · <a href="/termos-de-uso.html" target="_blank" rel="noopener noreferrer">Termos de Uso</a></p>' +
+      '</section>';
+
+    try {
+      if (window.inspiraTrack) window.inspiraTrack.event("thank_you_view", { source: "home_equity_form", lead_kind: kind, tone: cfg.tone });
+    } catch (e) {}
+  }
+
   function complete() {
     if (submitting) return;
     submitting = true;
@@ -443,19 +523,9 @@
     } catch (e) {}
 
     setProgress(5, 5);
-    shell.innerHTML = '<section class="success">' +
-      '<div class="success-inner">' +
-      '<span class="success-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>' +
-      '<h2>Muito obrigada por suas respostas!</h2>' +
-      '<p>Estamos te levando para a próxima etapa...</p>' +
-      '</div></section>';
     var nav = document.querySelector(".nav-actions");
     if (nav) nav.hidden = true;
-    // Redireciona pra página de obrigado do tipo de lead. O atraso deixa o beacon do
-    // lead + Pixel dispararem antes da navegação (a conversão já foi enviada; a página
-    // de obrigado não dispara evento de lead, pra não duplicar).
-    var dest = OBRIGADO[kind] || OBRIGADO.home_equity;
-    setTimeout(function () { window.location.href = dest; }, 900);
+    renderThankYou(kind);
   }
 
   function goNext() {

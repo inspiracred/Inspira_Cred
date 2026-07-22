@@ -91,11 +91,68 @@
     Lead: 1, Purchase: 1, Schedule: 1, Search: 1, StartTrial: 1, SubmitApplication: 1,
     Subscribe: 1, ViewContent: 1,
   };
+  var pixelFallbackImages = [];
+  function metaEventWasRequested(name, eventId) {
+    try {
+      if (!window.performance || !performance.getEntriesByType) return false;
+      var entries = performance.getEntriesByType("resource") || [];
+      for (var i = entries.length - 1; i >= 0; i--) {
+        var url = entries[i] && entries[i].name;
+        if (!url || url.indexOf("facebook.com/tr/") === -1) continue;
+        if (url.indexOf("ev=" + encodeURIComponent(name)) === -1) continue;
+        if (eventId && url.indexOf("eid=" + encodeURIComponent(eventId)) === -1) continue;
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+  function appendPixelParam(params, key, value) {
+    if (value == null || value === "") return;
+    params.push(encodeURIComponent(key) + "=" + encodeURIComponent(String(value)));
+  }
+  function sendPixelBrowserFallback(name, data, eventId) {
+    try {
+      if (!META_PIXEL_ID || metaEventWasRequested(name, eventId)) return;
+      var params = [];
+      appendPixelParam(params, "id", META_PIXEL_ID);
+      appendPixelParam(params, "ev", name);
+      appendPixelParam(params, "dl", location.href);
+      appendPixelParam(params, "rl", document.referrer || "");
+      appendPixelParam(params, "if", "false");
+      appendPixelParam(params, "ts", Date.now());
+      appendPixelParam(params, "sw", screen && screen.width);
+      appendPixelParam(params, "sh", screen && screen.height);
+      appendPixelParam(params, "v", "2.9");
+      appendPixelParam(params, "r", "stable");
+      if (eventId) appendPixelParam(params, "eid", eventId);
+      data = data || {};
+      for (var k in data) {
+        if (Object.prototype.hasOwnProperty.call(data, k) && data[k] != null) {
+          appendPixelParam(params, "cd[" + k + "]", data[k]);
+        }
+      }
+      var img = new Image();
+      pixelFallbackImages.push(img);
+      img.onload = img.onerror = function () {
+        var idx = pixelFallbackImages.indexOf(img);
+        if (idx > -1) pixelFallbackImages.splice(idx, 1);
+      };
+      img.src = "https://www.facebook.com/tr/?" + params.join("&");
+    } catch (e) {}
+  }
   function pixel(name, data, eventId) {
     try {
       if (typeof window.fbq === "function") {
         var method = STANDARD_PIXEL_EVENTS[name] ? "track" : "trackCustom";
         window.fbq(method, name, data || {}, eventId ? { eventID: eventId } : undefined);
+        // Em teste real (Chrome DevTools + Meta Pixel Helper), alguns eventos
+        // trackCustom foram chamados pelo fbq mas não viraram request /tr no browser.
+        // Mantemos o fbq oficial e, só se o request não apareceu, enviamos o mesmo
+        // evento direto no endpoint do Pixel. A CAPI recebe o mesmo event_id e a Meta
+        // deduplica browser + servidor normalmente.
+        if (!STANDARD_PIXEL_EVENTS[name]) {
+          setTimeout(function () { sendPixelBrowserFallback(name, data || {}, eventId); }, 160);
+        }
       }
     } catch (e) {}
   }
@@ -220,8 +277,23 @@
   // API para eventos manuais (usada pela landing na simulação/lead)
   window.inspiraTrack = {
     event: function (name, props) {
-      if (PIXEL_EVENT[name]) pixel(PIXEL_EVENT[name], props || {});
-      send({ type: "event", event_name: name, properties: props || {} });
+      props = props || {};
+      var pixelName = PIXEL_EVENT[name] || null;
+      var eventId = pixelName ? uuid() : null;
+      if (pixelName) pixel(pixelName, props, eventId);
+      var p = { type: "event", event_name: name, properties: props };
+      // Eventos de funil mapeados pro Meta também vão server-side (CAPI), usando
+      // o mesmo event_id do browser pra deduplicação.
+      if (pixelName) {
+        p.meta_event_name = pixelName;
+        p.event_id = eventId;
+        p.url = location.href;
+        p.fbclid = urlParam("fbclid") || null;
+        p.gclid = urlParam("gclid") || null;
+        p.fbp = cookieVal("_fbp") || null;
+        p.fbc = cookieVal("_fbc") || null;
+      }
+      send(withUtm(p));
     },
     lead: function (data) {
       data = data || {};

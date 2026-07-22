@@ -238,6 +238,21 @@ async function handleTrack(request, env, cors, context) {
           `INSERT INTO events (session_id, event_type, event_name, properties, page_name) VALUES (?,?,?,?,?)`
         ).bind(event.session_id, event.event_type || "custom", event.event_name || "custom",
           JSON.stringify(event.properties || {}), event.page_name || null).run();
+        if (event.meta_event_name && context) {
+          const eventCookies = parseCookies(request.headers.get("Cookie") || "");
+          const eventUA = request.headers.get("User-Agent") || "";
+          const bot = detectBot(eventUA);
+          if (!bot.isBot) {
+            event.external_id = eventCookies._krob_eid || event.session_id || null;
+            event.fbp = validateFbCookie(event.fbp) || validateFbCookie(eventCookies._fbp) || "";
+            event.fbc = validateFbCookie(event.fbc) || validateFbCookie(eventCookies._fbc) || "";
+            context.waitUntil(sendCustomEventToMeta(event, env, {
+              clientIp: request.headers.get("CF-Connecting-IP") || "",
+              userAgent: eventUA,
+              sourceUrl: event.url || request.headers.get("Referer") || "",
+            }));
+          }
+        }
         break;
       case "tap":
         await env.DB.prepare(
@@ -550,6 +565,54 @@ async function sendLeadToMeta(event, env, leadId, ctx) {
     await env.DB.prepare(`UPDATE leads SET meta_status = ? WHERE id = ?`).bind(status, leadId).run();
   } catch (e) {
     // falha de log não derruba o fan-out
+  }
+}
+
+async function sendCustomEventToMeta(event, env, ctx) {
+  if (!env.META_PIXEL_ID || !env.META_ACCESS_TOKEN || !event.meta_event_name) return;
+
+  let fbc = event.fbc || "";
+  if (!fbc && event.fbclid) fbc = `fb.2.${Date.now()}.${event.fbclid}`;
+
+  const userData = {
+    client_ip_address: ctx.clientIp || undefined,
+    client_user_agent: ctx.userAgent || undefined,
+    fbp: event.fbp || undefined,
+    fbc: fbc || undefined,
+  };
+  const ext = await sha256Hex(event.external_id || event.session_id);
+  if (ext) userData.external_id = [ext];
+
+  const customData = {};
+  const props = event.properties && typeof event.properties === "object" ? event.properties : {};
+  Object.keys(props).forEach((key) => {
+    const value = props[key];
+    if (value == null) return;
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      customData[key] = value;
+    }
+  });
+
+  const payload = {
+    data: [{
+      event_name: event.meta_event_name,
+      event_time: Math.floor(Date.now() / 1000),
+      event_id: event.event_id || undefined,
+      event_source_url: ctx.sourceUrl || undefined,
+      action_source: "website",
+      user_data: userData,
+      custom_data: customData,
+    }],
+  };
+  if (env.META_TEST_EVENT_CODE) payload.test_event_code = env.META_TEST_EVENT_CODE;
+
+  try {
+    await fetch(
+      `https://graph.facebook.com/v21.0/${env.META_PIXEL_ID}/events?access_token=${env.META_ACCESS_TOKEN}`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
+    );
+  } catch (e) {
+    // evento de funil não derruba a coleta nem o lead
   }
 }
 
