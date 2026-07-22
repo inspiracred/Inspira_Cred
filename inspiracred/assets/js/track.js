@@ -276,6 +276,23 @@
 
   // API para eventos manuais (usada pela landing na simulação/lead)
   window.inspiraTrack = {
+    meta: function (name, props) {
+      props = props || {};
+      var eventId = uuid();
+      pixel(name, props, eventId);
+      send(withUtm({
+        type: "event",
+        event_name: name,
+        properties: props,
+        meta_event_name: name,
+        event_id: eventId,
+        url: location.href,
+        fbclid: urlParam("fbclid") || null,
+        gclid: urlParam("gclid") || null,
+        fbp: cookieVal("_fbp") || null,
+        fbc: cookieVal("_fbc") || null,
+      }));
+    },
     event: function (name, props) {
       props = props || {};
       var pixelName = PIXEL_EVENT[name] || null;

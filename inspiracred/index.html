@@ -498,12 +498,10 @@
           window.dataLayer.push({ event: "inicio_simulacao" });
         } catch {}
         try {
-          if (typeof window.fbq === "function") {
-            window.fbq("track", "ViewContent");
+          if (window.inspiraTrack) {
+            window.inspiraTrack.meta("ViewContent");
+            window.inspiraTrack.event("simulation_start");
           }
-        } catch {}
-        try {
-          if (window.inspiraTrack) window.inspiraTrack.event("simulation_start");
         } catch {}
       };
 
@@ -520,20 +518,15 @@
           });
         } catch {}
         try {
-          if (typeof window.fbq === "function") {
-            window.fbq("trackCustom", "simulacao_concluida", {
+          if (window.inspiraTrack) {
+            var simulationMeta = {
               valor_credito: creditValue,
               valor_imovel: propertyValue,
               tipo_imovel: state.propertyType.toLowerCase()
-            });
+            };
+            window.inspiraTrack.meta("simulacao_concluida", simulationMeta);
+            window.inspiraTrack.event("simulation_complete", simulationMeta);
           }
-        } catch {}
-        try {
-          if (window.inspiraTrack) window.inspiraTrack.event("simulation_complete", {
-            valor_credito: creditValue,
-            valor_imovel: propertyValue,
-            tipo_imovel: state.propertyType.toLowerCase()
-          });
         } catch {}
       };
 
@@ -774,9 +767,7 @@
           window.dataLayer.push({ event: "lead" });
         } catch {}
         try {
-          if (typeof window.fbq === "function") {
-            window.fbq("track", "CompleteRegistration");
-          }
+          if (window.inspiraTrack) window.inspiraTrack.meta("CompleteRegistration");
         } catch {}
         try {
           // Antes o valor baixo travava o envio (ver validate acima). Agora sempre vira
