@@ -89,10 +89,10 @@
       if (!celDigits) { setError("celular", "Informe seu celular."); ok = false; }
       else if (celDigits.length < 10) { setError("celular", "Número inválido."); ok = false; }
       if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { setError("email", "E-mail inválido."); ok = false; }
-      if (parseMoney(data.valor_emprestimo) < MIN_EMP) { setError("valor_emprestimo", "Valor mínimo de R$ 100.000."); ok = false; }
+      if (!data.valor_emprestimo || parseMoney(data.valor_emprestimo) <= 0) { setError("valor_emprestimo", "Informe o valor do empréstimo."); ok = false; }
       if (!data.tipo_imovel) { setError("tipo_imovel", "Selecione o tipo de imóvel."); ok = false; }
       if (!data.situacao_imovel) { setError("situacao_imovel", "Selecione a situação do imóvel."); ok = false; }
-      if (parseMoney(data.valor_imovel) < MIN_IMOVEL) { setError("valor_imovel", "Valor mínimo de R$ 450.000."); ok = false; }
+      if (!data.valor_imovel || parseMoney(data.valor_imovel) <= 0) { setError("valor_imovel", "Informe o valor do imóvel."); ok = false; }
       return ok;
     }
 
@@ -119,6 +119,10 @@
       // server-side (Pages Function /analytics/track, ver inspiracred/functions/analytics/_app.js).
       try {
         if (window.inspiraTrack) {
+          // Antes valor abaixo de MIN_EMP/MIN_IMOVEL travava o envio. Agora sempre vira
+          // lead — só muda a classificação: abaixo do antigo limite (que era o corte de
+          // "lead bom") = baixo_valor, não dispara conversão padrão de Lead pro Meta.
+          var isLowValue = parseMoney(data.valor_emprestimo) < MIN_EMP || parseMoney(data.valor_imovel) < MIN_IMOVEL;
           window.inspiraTrack.lead(Object.assign({
             name: data.nome,
             phone: "+55" + data.celular.replace(/\D/g, ""),
@@ -127,7 +131,9 @@
             property_value: parseMoney(data.valor_imovel),
             credit_value: parseMoney(data.valor_emprestimo),
             situacao_imovel: data.situacao_imovel || null, // "Quitado"/"Financiado" -> normalizado p/ Sim/Não no RD cf_imovel_quitado (Negociação "Imóvel Quitado?")
-            source: "home_equity_lp"
+            source: "home_equity_lp",
+            lead_kind: isLowValue ? "baixo_valor" : "home_equity",
+            meta_events: isLowValue ? ["LeadBaixoValor"] : ["Lead"]
           }, getUtmParams()));
         }
       } catch (e) {}

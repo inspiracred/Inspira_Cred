@@ -211,13 +211,12 @@ async function handleTrack(request, env, cors, context) {
           } catch (e) { /* colunas 0008 ainda não existem — ok */ }
         }
         if (leadId && context) {
-          // Leads "não qualificados" (baixo_valor, descarte) ficam SÓ no nosso D1 —
-          // não vão pro RD/CRM. Continuam sendo salvos acima e ainda passam pela CAPI
-          // (que naturalmente não faz nada pra eles, já que META_EVENTS os manda com
-          // array vazio — ver formulario/script.js).
-          if (!NAO_QUALIFICADO.has(event.lead_kind)) {
-            context.waitUntil(sendLeadToRD(event, env, leadId));
-          }
+          // TODO lead vai pro RD agora (pivô 2026-07-22 — antes baixo_valor/descarte
+          // ficavam só no D1). A classificação vai junto no campo cf_classificacao_lead
+          // pra equipe filtrar/despriorizar dentro do próprio RD. Ainda passam pela CAPI
+          // (que naturalmente não faz nada pros kinds sem evento — ver META_EVENTS no
+          // formulario/script.js).
+          context.waitUntil(sendLeadToRD(event, env, leadId));
           // Filtro de bot (Fase B): crawler (WhatsApp/Slack/Facebook/curl/headless…) NÃO
           // vai pra CAPI — não polui o Pixel/otimização. O lead já foi salvo no D1 com
           // is_bot=1 (métrica de saúde correta). O RD NÃO é gateado por bot de propósito:
@@ -269,20 +268,25 @@ const RD_PAGE_CONFIG = {
   home_equity_form: { identificador: "home-equity-typeform" },
 };
 
-// Leads "não qualificados": ficam SÓ no nosso D1 (dashboard/CSV), NUNCA vão pro RD.
-// baixo_valor = tem imóvel mas crédito < 100 mil; descarte = sem imóvel e sem veículo
-// (mesmo assim vira lead — contato capturado — pra eventual reengajamento nosso).
-const NAO_QUALIFICADO = new Set(["baixo_valor", "descarte"]);
+// Rótulo legível da classificação — vai no campo de Lead cf_classificacao_lead (pivô
+// 2026-07-22: todo lead vai pro RD agora, inclusive baixo_valor/descarte; a equipe
+// filtra/despriorização DENTRO do RD por este campo, em vez de ficarem só no nosso D1).
+const LEAD_KIND_LABEL = {
+  home_equity: "Qualificado",
+  home_equity_mql: "Qualificado (MQL)",
+  auto: "Qualificado (garantia de veículo)",
+  baixo_valor: "Não qualificado — valor baixo",
+  descarte: "Não qualificado — sem imóvel/veículo",
+};
 
 // Identificador do RD por TIPO de lead do formulário (event.lead_kind). Home equity
-// (inclusive MQL) mantém o identificador base — que JÁ é gatilho do fluxo "Form nativo
-// > pipe" do cliente. Auto ganha identificador próprio pra NÃO cair no mesmo funil de
-// vendas (o dado é preservado no RD; se o cliente quiser roteá-lo, adiciona o
-// identificador a um fluxo dele, igual fez com os 3 atuais). baixo_valor/descarte nem
-// chegam aqui — são barrados antes de chamar sendLeadToRD (ver NAO_QUALIFICADO acima).
+// (inclusive MQL, baixo_valor, descarte) mantém o identificador base — que JÁ é gatilho
+// do fluxo "Form nativo > pipe" do cliente. Auto ganha identificador próprio pra NÃO
+// cair no mesmo funil de vendas (o dado é preservado no RD; se o cliente quiser roteá-lo,
+// adiciona o identificador a um fluxo dele, igual fez com os 3 atuais).
 function rdIdentificador(cfg, kind) {
   if (kind === "auto") return cfg.identificador + "-auto";
-  return cfg.identificador; // home_equity / home_equity_mql / indefinido
+  return cfg.identificador; // home_equity / home_equity_mql / baixo_valor / descarte / indefinido
 }
 
 async function sendLeadToRD(event, env, leadId) {
@@ -358,6 +362,22 @@ async function sendLeadToRD(event, env, leadId) {
     traffic_source: event.utm_source || undefined,
     traffic_medium: event.utm_medium || undefined,
     traffic_campaign: event.utm_campaign || undefined,
+    // Classificação do lead (pivô 2026-07-22) — TEXTO, pra equipe ver/filtrar dentro do
+    // RD. ⚠️ Depende de existir um campo de Lead com identificador EXATO
+    // "cf_classificacao_lead" na conta (senão o RD ignora silenciosamente, como sempre
+    // faz com cf_* desconhecido) — confirmar/criar antes de contar com isso no card.
+    cf_classificacao_lead: LEAD_KIND_LABEL[event.lead_kind] || undefined,
+    // UTMs individuais em campos de Lead PRÓPRIOS (além de traffic_source/medium/campaign
+    // nativos acima) — pedido pelo cliente pra mapear via Combinação de Campos pros 6
+    // campos novos que ele criou na Negociação (Origem/Campaign/Medium/Content/Term +
+    // Formulário de Origem). ⚠️ MESMA RESSALVA: precisam existir como campos de Lead
+    // TEXTO na conta com estes identificadores exatos, senão são descartados em silêncio.
+    // cf_anuncio (já existente, linha acima) cobre utm_content — não duplicar.
+    cf_utm_source: str(event.utm_source),
+    cf_utm_medium: str(event.utm_medium),
+    cf_utm_campaign: str(event.utm_campaign),
+    cf_utm_term: str(event.utm_term),
+    cf_formulario_origem: str(event.source),
   };
   Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
 
@@ -989,8 +1009,9 @@ const DASHBOARD_HTML = `<!doctype html>
         <button class="btn-sm" id="naoQualCsvBtn">Baixar CSV</button>
       </div>
       <p class="hint" style="display:block;margin:-6px 0 14px">
-        Imóvel com crédito abaixo de R$ 100 mil, ou sem imóvel e sem veículo — não entram
-        no funil de vendas nem vão pro RD Station. Ficam só aqui, pra contato futuro.
+        Imóvel com crédito abaixo de R$ 100 mil, ou sem imóvel e sem veículo — também
+        vão pro RD Station (marcados como não qualificados no card), mas ficam
+        agrupados aqui pra facilitar filtrar/ver de uma vez.
       </p>
       <div class="table-scroll"><div id="naoQual"></div></div>
     </div>
@@ -1338,7 +1359,7 @@ function renderNaoQual(d){
   document.getElementById("naoQualTitle").textContent="Leads não qualificados ("+n+")";
   var porTipo={};
   lastNaoQual.forEach(function(l){var k=l.lead_kind||"?";porTipo[k]=(porTipo[k]||0)+1;});
-  var kk=[["Total",pretty(n),"salvos, fora do RD Station"],["Baixo valor",pretty(porTipo.baixo_valor||0),"imóvel, crédito < R$ 100 mil"],["Sem imóvel/veículo",pretty(porTipo.descarte||0),"não qualificam pra nenhum funil"]];
+  var kk=[["Total",pretty(n),"também vão pro RD, marcados"],["Baixo valor",pretty(porTipo.baixo_valor||0),"imóvel, crédito < R$ 100 mil"],["Sem imóvel/veículo",pretty(porTipo.descarte||0),"não qualificam pra nenhum funil"]];
   document.getElementById("naoQualKpis").innerHTML=kk.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub">'+k[2]+'</div></div>'}).join("");
   if(!n){document.getElementById("naoQual").innerHTML='<div class="empty">Nenhum lead não qualificado no período.</div>';return}
   var html='<table><thead><tr><th>Data</th><th>Nome</th><th>Telefone</th><th>Tipo</th><th>Origem</th><th></th></tr></thead><tbody>';
@@ -1380,11 +1401,9 @@ function showLead(i,list){
   row("Criativo (utm_content)",pretty(l.utm_content));
   opt("Termo (utm_term)",l.utm_term);
   sec("Entrega");
-  // Não qualificado (baixo_valor/descarte) NUNCA vai pro RD por design — "pendente"
-  // (o badge padrão pra rd_status null) sugeriria "ainda vai acontecer", o que é
-  // enganoso aqui. Detecta pelo próprio label (evita duplicar a lista de lead_kind).
-  var isNaoQual=/não qualificado/i.test(LEAD_KIND_LABELS[l.lead_kind]||"");
-  row("RD Station", isNaoQual ? '<span class="pill wait">não enviado (por design)</span>' : badge(l.rd_status));
+  // Desde 2026-07-22 todo lead vai pro RD (inclusive baixo_valor/descarte) — a
+  // classificação vai junto no campo cf_classificacao_lead pra equipe filtrar lá dentro.
+  row("RD Station", badge(l.rd_status));
   row("Meta CAPI",badge(l.meta_status));
   if(l.fbp_source||l.fbc_source) row("Origem fbp/fbc", pretty(l.fbp_source)+" / "+pretty(l.fbc_source));
   document.getElementById("modalBody").innerHTML=h;

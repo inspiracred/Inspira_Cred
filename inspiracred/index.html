@@ -566,9 +566,6 @@
         if (!propertyInput.value.trim() || propertyValue <= 0) {
           setFieldError("propertyValue", "Informe o valor do imóvel.");
           isValid = false;
-        } else if (propertyValue < MIN_PROPERTY_VALUE) {
-          setFieldError("propertyValue", "Trabalhamos com imóveis a partir de R$ 300 mil.");
-          isValid = false;
         }
 
         if (!state.paid) {
@@ -583,9 +580,6 @@
 
         if (!creditInput.value.trim() || creditValue <= 0) {
           setFieldError("creditValue", "Informe o valor desejado.");
-          isValid = false;
-        } else if (creditValue < MIN_CREDIT_VALUE) {
-          setFieldError("creditValue", "Crédito mínimo: R$ 100 mil.");
           isValid = false;
         } else if (propertyValue > 0 && creditValue > propertyValue * creditLimit) {
           setFieldError("creditValue", `Crédito máximo para esse imóvel: ${Math.round(creditLimit * 100)}% do valor de avaliação.`);
@@ -785,6 +779,10 @@
           }
         } catch {}
         try {
+          // Antes o valor baixo travava o envio (ver validate acima). Agora sempre vira
+          // lead — só muda a classificação: abaixo do antigo limite (que era o corte de
+          // "lead bom") = baixo_valor, não dispara conversão padrão de Lead pro Meta.
+          var isLowValue = lastSimulation.propertyValue < MIN_PROPERTY_VALUE || lastSimulation.creditValue < MIN_CREDIT_VALUE;
           if (window.inspiraTrack && lastSimulation) window.inspiraTrack.lead(Object.assign({
             name: name,
             phone: "+55" + phone.replace(/\D/g, ""),
@@ -792,6 +790,8 @@
             property_value: lastSimulation.propertyValue,
             credit_value: lastSimulation.creditValue,
             source: "landing_page",
+            lead_kind: isLowValue ? "baixo_valor" : "home_equity",
+            meta_events: isLowValue ? ["LeadBaixoValor"] : ["Lead"],
             // já eram coletados na simulação (lastSimulation) mas nunca chegavam a
             // lugar nenhum — nem RD nem nosso banco. Ver sendLeadToRD em _app.js.
             imovel_quitado: lastSimulation.paid || null,
