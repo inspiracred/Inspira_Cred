@@ -397,11 +397,11 @@ async function sendLeadToRD(event, env, leadId) {
     // Mandar só pro cf_anuncio deixava o campo "UTM Content" da Negociação vazio.
     cf_utm_content: str(event.utm_content),
     cf_utm_term: str(event.utm_term),
-    // ⚠️ cf_formulario_origem NÃO EXISTE na conta (conferido 2026-07-23: busca por
-    // "formul"/"origem" nos campos personalizados não retorna nada). Enquanto o campo de
-    // Lead não for criado, o RD descarta isto em silêncio e "Formulário de Origem" da
-    // Negociação segue vazio. Mantido pra funcionar assim que o campo existir.
-    cf_formulario_origem: str(event.source),
+    // "Formulário de Origem" — campo de Lead CRIADO em 2026-07-23 + mapeado pra Negociação.
+    // ⚠️ O identificador tem "de": `cf_formulario_de_origem` (o RD gera o slug a partir do
+    // nome e MANTÉM as preposições). Enviar `cf_formulario_origem` seria descartado em
+    // silêncio. Valor = a página de origem (landing_page / home_equity_lp / home_equity_form).
+    cf_formulario_de_origem: str(event.source),
   };
   Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
 
