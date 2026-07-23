@@ -354,15 +354,14 @@
         docs: ""
       };
 
-      const MIN_PROPERTY_VALUE = 300000;
       const MIN_CREDIT_VALUE = 100000;
       const TERM_MONTHS = 180;
       const INTERNAL_RATE = 0.01;
       const DISPLAY_RATE = 0.0109;
       const PROPERTY_CREDIT_LIMITS = {
         Casa: 0.5,
-        Apartamento: 0.6,
-        Comercial: 0.4
+        Apartamento: 0.5,
+        Comercial: 0.5
       };
 
       const elements = {
@@ -549,7 +548,7 @@
         const propertyValue = parseCurrency(propertyInput.value);
         const creditValue = parseCurrency(creditInput.value);
         const debtValue = parseCurrency(debtInput.value);
-        const creditLimit = PROPERTY_CREDIT_LIMITS[state.propertyType] || 0.6;
+        const creditLimit = PROPERTY_CREDIT_LIMITS[state.propertyType] || 0.5;
         let isValid = true;
         let profileMessage = "";
 
@@ -598,7 +597,7 @@
       };
 
       const renderSimulationResult = (result) => {
-        const creditLimit = PROPERTY_CREDIT_LIMITS[state.propertyType] || 0.6;
+        const creditLimit = PROPERTY_CREDIT_LIMITS[state.propertyType] || 0.5;
         const maxPotential = result.propertyValue * creditLimit;
         const displayInstallment = calculateInstallment(result.creditValue, DISPLAY_RATE);
         const internalInstallment = calculateInstallment(result.creditValue, INTERNAL_RATE);
@@ -775,8 +774,9 @@
           // pro Meta (segue salvo no dashboard/RD). ⚠️ A conta está sob "configuração
           // básica" da Meta (categoria serviço financeiro): evento PERSONALIZADO não é
           // registrado — mandar só custom equivale a não enviar nada.
-          var isLowValue = lastSimulation.propertyValue < MIN_PROPERTY_VALUE || lastSimulation.creditValue < MIN_CREDIT_VALUE;
-          var isMql = !isLowValue && lastSimulation.docs === "Sim" && lastSimulation.creditValue >= 300000;
+          var isLowValue = lastSimulation.creditValue < MIN_CREDIT_VALUE;
+          var docsOk = lastSimulation.docs === "Sim";
+          var isMql = !isLowValue && docsOk && lastSimulation.creditValue >= 200000;
           if (window.inspiraTrack && lastSimulation) window.inspiraTrack.lead(Object.assign({
             name: name,
             phone: "+55" + phone.replace(/\D/g, ""),
@@ -785,7 +785,7 @@
             credit_value: lastSimulation.creditValue,
             source: "landing_page",
             lead_kind: isLowValue ? "baixo_valor" : (isMql ? "home_equity_mql" : "home_equity"),
-            meta_events: isLowValue ? [] : (isMql ? ["Lead", "LeadQualificado"] : ["Lead"]),
+            meta_events: (!isLowValue && docsOk) ? (isMql ? ["Lead", "LeadQualificado"] : ["Lead"]) : [],
             // já eram coletados na simulação (lastSimulation) mas nunca chegavam a
             // lugar nenhum — nem RD nem nosso banco. Ver sendLeadToRD em _app.js.
             imovel_quitado: lastSimulation.paid || null,

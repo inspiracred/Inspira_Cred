@@ -44,30 +44,27 @@ campo fixo `cf_variante_pagina = "redesign-2026"`, pra dar pro cliente um jeito 
 Confirmar com o cliente/agência que já cuida do RD Station se esses `cf_*` já existem ou
 se algum tem nome diferente do que as páginas antigas usam.
 
-## Fase 2 (Meta Pixel + CAPI) — JÁ CONSTRUÍDA, DORMINDO (código pronto, não ligada)
+## Fase 2 (Meta Pixel + CAPI) — LIGADA
 
 Pixel (navegador) e CAPI (servidor) já estão no código, disparando o **mesmo evento
-`Lead` com o mesmo `event_id`** (Meta deduplica). Fica **inerte** até ligar.
+`Lead` com o mesmo `event_id`** (Meta deduplica). O Pixel/Dataset em uso é
+`3021870508000260`, o mesmo ID configurado no Cloudflare para a CAPI.
 
 - **Pixel** — `assets/js/track.js`: carrega o Pixel só se a constante `META_PIXEL_ID`
-  (topo do arquivo) estiver preenchida. Hoje **vazia = desligado**. Dispara `PageView`,
+  (topo do arquivo) estiver preenchida. Dispara `PageView`,
   `Lead` (com `value`=valor do empréstimo, `currency`=BRL, `content_category`=tipo de
   imóvel) e eventos custom `SimulacaoIniciada`/`SimulacaoCompleta`.
 - **CAPI** — `functions/analytics/_app.js` `sendLeadToMeta`: server-side, hash SHA-256 de
   e-mail/telefone/nome, `external_id`=hash do session_id, `fbp`/`fbc` lidos do cookie do
-  Pixel. Só dispara se os secrets `META_PIXEL_ID` + `META_ACCESS_TOKEN` existirem. Grava
+  Pixel. Só dispara se `META_PIXEL_ID` + `META_ACCESS_TOKEN` existirem no Pages. Grava
   `leads.meta_status`.
 
-**Passo a passo pra LIGAR (segunda, depois de confirmar o Pixel ID):**
-1. Preencher `META_PIXEL_ID` no topo de `inspiracred/assets/js/track.js` com o ID confirmado.
-2. Setar secrets no Pages `inspira-cred`: `META_PIXEL_ID` (mesmo ID) + `META_ACCESS_TOKEN`
-   (System User token do Business Manager). Opcional: `META_TEST_EVENT_CODE` p/ testar.
-3. `git push` + retriggar o deploy (secret novo não pega em deploy antigo).
-4. Validar na aba **Testar eventos** do Meta: um Lead de teste deve aparecer 1x (pixel e
+**Checklist de manutenção:**
+1. Manter o `META_PIXEL_ID` no topo de `inspiracred/assets/js/track.js` igual ao
+   `META_PIXEL_ID` do Cloudflare Pages.
+2. Manter `META_ACCESS_TOKEN` somente como secret no Pages; nunca versionar token no repo.
+3. Validar na aba **Testar eventos** do Meta: um Lead de teste deve aparecer 1x (pixel e
    CAPI deduplicados pelo `event_id`), com e-mail/telefone casados por Advanced Matching.
-
-⚠️ **Pixel ID a confirmar**: doc antigo dizia `588064149882794`; cliente enviou depois
-`3021870508000260`. Confirmar qual antes de ligar.
 
 ## O que ainda falta (fases seguintes)
 

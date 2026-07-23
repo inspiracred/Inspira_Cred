@@ -80,7 +80,7 @@
       };
     }
 
-    var MIN_EMP = 100000, MIN_IMOVEL = 450000;
+    var MIN_EMP = 100000;
 
     function validate(data) {
       var ok = true;
@@ -89,10 +89,16 @@
       if (!celDigits) { setError("celular", "Informe seu celular."); ok = false; }
       else if (celDigits.length < 10) { setError("celular", "Número inválido."); ok = false; }
       if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { setError("email", "E-mail inválido."); ok = false; }
-      if (!data.valor_emprestimo || parseMoney(data.valor_emprestimo) <= 0) { setError("valor_emprestimo", "Informe o valor do empréstimo."); ok = false; }
+      var creditValue = parseMoney(data.valor_emprestimo);
+      var propertyValue = parseMoney(data.valor_imovel);
+      if (!data.valor_emprestimo || creditValue <= 0) { setError("valor_emprestimo", "Informe o valor do empréstimo."); ok = false; }
       if (!data.tipo_imovel) { setError("tipo_imovel", "Selecione o tipo de imóvel."); ok = false; }
       if (!data.situacao_imovel) { setError("situacao_imovel", "Selecione a situação do imóvel."); ok = false; }
-      if (!data.valor_imovel || parseMoney(data.valor_imovel) <= 0) { setError("valor_imovel", "Informe o valor do imóvel."); ok = false; }
+      if (!data.valor_imovel || propertyValue <= 0) { setError("valor_imovel", "Informe o valor do imóvel."); ok = false; }
+      else if (creditValue > 0 && creditValue > propertyValue * 0.5) {
+        setError("valor_emprestimo", "O crédito máximo é de 50% do valor do imóvel.");
+        ok = false;
+      }
       return ok;
     }
 
@@ -119,12 +125,14 @@
       // server-side (Pages Function /analytics/track, ver inspiracred/functions/analytics/_app.js).
       try {
         if (window.inspiraTrack) {
-          // A Meta só recebe Lead quando for MQL. Os demais leads continuam salvos no
-          // dashboard/RD, mas não treinam a campanha como conversão principal.
+          // < R$100 mil não vira conversão Meta. De R$100 mil a R$199 mil manda
+          // Lead; de R$200 mil pra cima manda Lead + LeadQualificado, sempre com
+          // imóvel quitado/documentação ok.
           var creditValue = parseMoney(data.valor_emprestimo);
           var propertyValue = parseMoney(data.valor_imovel);
-          var isLowValue = creditValue < MIN_EMP || propertyValue < MIN_IMOVEL;
-          var isMql = !isLowValue && data.situacao_imovel === "Quitado" && creditValue >= 300000;
+          var isLowValue = creditValue < MIN_EMP;
+          var docsOk = data.situacao_imovel === "Quitado";
+          var isMql = !isLowValue && docsOk && creditValue >= 200000;
           window.inspiraTrack.lead(Object.assign({
             name: data.nome,
             phone: "+55" + data.celular.replace(/\D/g, ""),
@@ -135,7 +143,7 @@
             situacao_imovel: data.situacao_imovel || null, // "Quitado"/"Financiado" -> normalizado p/ Sim/Não no RD cf_imovel_quitado (Negociação "Imóvel Quitado?")
             source: "home_equity_lp",
             lead_kind: isLowValue ? "baixo_valor" : (isMql ? "home_equity_mql" : "home_equity"),
-            meta_events: isLowValue ? [] : (isMql ? ["Lead", "LeadQualificado"] : ["Lead"])
+            meta_events: (!isLowValue && docsOk) ? (isMql ? ["Lead", "LeadQualificado"] : ["Lead"]) : []
           }, getUtmParams()));
         }
       } catch (e) {}

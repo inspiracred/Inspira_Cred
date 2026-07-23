@@ -5,15 +5,15 @@
  *   <script>window.IC_PAGE="landing_page";</script>
  *   <script src="assets/js/track.js" defer></script>
  *
- * META PIXEL: preencha META_PIXEL_ID abaixo com o ID confirmado do cliente pra
- * LIGAR o Pixel (hoje vazio = desligado, seguro no ar). O Pixel dispara PageView
- * e Lead no navegador; o servidor dispara o MESMO Lead via CAPI com o mesmo
+ * META PIXEL: o Pixel do navegador usa o mesmo Pixel/Dataset ID configurado no
+ * Cloudflare para a CAPI. O Pixel dispara PageView e Lead no navegador; o
+ * servidor dispara o MESMO Lead via CAPI com o mesmo
  * event_id (o Meta deduplica). O ID do Pixel é público (aparece no navegador),
  * então pode ficar aqui — o TOKEN da CAPI é que é secret, fica no Cloudflare.
  * ⚠️ Este ID (client) e o secret META_PIXEL_ID (server) precisam ser IGUAIS.
  */
 (function () {
-  var META_PIXEL_ID = "588064149882794"; // Pixel/Dataset ID — trocado a pedido do cliente (2026-07-15)
+  var META_PIXEL_ID = "3021870508000260"; // Pixel/Dataset ID — precisa bater com o META_PIXEL_ID do Cloudflare/CAPI
 
   var ENDPOINT = "https://nova.inspiracred.com.br/analytics/track";
   var PAGE = window.IC_PAGE || "other";

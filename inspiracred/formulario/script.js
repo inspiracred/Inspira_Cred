@@ -54,19 +54,15 @@
     }
   };
 
-  // Eventos do Meta (Pixel + CAPI) por tipo de lead. Regra de otimização:
-  // só MQL dispara Lead/LeadQualificado; os demais ficam no D1/RD sem conversão Meta.
-  // ⚠️ A conta está sob "configuração básica" da Meta (categoria serviço financeiro —
-  // ver banner no Events Manager): eventos PERSONALIZADOS não são registrados/usados.
-  // Na prática só o `Lead` PADRÃO otimiza campanha. Por isso todo lead qualificado
-  // manda `Lead`; os custom (LeadQualificado/LeadAuto) vão junto só como marcação
-  // para segmentação futura, nunca sozinhos — sozinhos equivaleriam a não enviar nada.
+  // Eventos do Meta (Pixel + CAPI) por tipo de lead:
+  // < R$100 mil = sem evento Meta; R$100-199 mil = Lead; R$200 mil+ = Lead + LeadQualificado,
+  // sempre exigindo documentação/matrícula ok no ramo de imóvel.
   var META_EVENTS = {
-    home_equity: ["Lead"],                         // qualificado (não-MQL): conta como conversão
-    home_equity_mql: ["Lead", "LeadQualificado"],  // MQL: o foco da otimização
-    auto: ["Lead", "LeadAuto"],                    // garantia de veículo — também é lead qualificado
-    baixo_valor: [],                               // valor abaixo do piso — desqualificado, não vai pro Meta
-    descarte: [],                                  // sem imóvel nem veículo — não conta como conversão de ads
+    home_equity: ["Lead"],
+    home_equity_mql: ["Lead", "LeadQualificado"],
+    auto: ["Lead"],
+    baixo_valor: [],
+    descarte: [],
   };
 
   var steps = [
@@ -107,13 +103,25 @@
       showIf: function () { return answers.possui_imovel === "sim"; }
     },
     {
+      id: "valor_imovel",
+      type: "fields",
+      kicker: "Valor do imóvel",
+      title: "Qual é o valor aproximado do seu imóvel?",
+      subtitle: "O crédito disponível pode chegar a até 50% do valor do bem.",
+      fields: [
+        { id: "valor_imovel", label: "Valor aproximado do imóvel", type: "text", inputmode: "numeric", placeholder: "Ex.: R$ 200.000", required: true }
+      ],
+      showIf: function () { return answers.possui_imovel === "sim"; }
+    },
+    {
       id: "faixa_credito",
       type: "choice",
       kicker: "Crédito desejado",
       title: "Qual valor do crédito você está buscando?",
       options: [
         { label: "Menos de R$ 100 mil", value: "menos_100k", amount: 75000 },
-        { label: "De R$ 100 mil a R$ 300 mil", value: "100k_300k", amount: 200000 },
+        { label: "De R$ 100 mil a R$ 200 mil", value: "100k_200k", amount: 150000 },
+        { label: "De R$ 200 mil a R$ 300 mil", value: "200k_300k", amount: 250000 },
         { label: "De R$ 300 mil a R$ 600 mil", value: "300k_600k", amount: 450000 },
         { label: "De R$ 600 mil a R$ 900 mil", value: "600k_900k", amount: 750000 },
         { label: "Acima de R$ 900 mil", value: "acima_900k", amount: 1000000 }
@@ -144,6 +152,17 @@
       options: [
         { label: "Sim", value: "sim" },
         { label: "Não", value: "nao" }
+      ],
+      showIf: function () { return answers.possui_imovel === "nao" && answers.possui_automovel === "sim"; }
+    },
+    {
+      id: "valor_automovel",
+      type: "fields",
+      kicker: "Valor do veículo",
+      title: "Qual é o valor aproximado do seu automóvel?",
+      subtitle: "O crédito disponível pode chegar a até 50% do valor do bem.",
+      fields: [
+        { id: "valor_automovel", label: "Valor aproximado do automóvel", type: "text", inputmode: "numeric", placeholder: "Ex.: R$ 120.000", required: true }
       ],
       showIf: function () { return answers.possui_imovel === "nao" && answers.possui_automovel === "sim"; }
     },
@@ -224,16 +243,19 @@
       if (answers.possui_imovel !== "sim") {
         delete answers.tipo_imovel;
         delete answers.possui_matricula;
+        delete answers.valor_imovel;
         delete answers.faixa_credito;
       }
       if (answers.possui_imovel !== "nao") {
         delete answers.possui_automovel;
         delete answers.automovel_quitado;
+        delete answers.valor_automovel;
         delete answers.faixa_emprestimo_auto;
       }
     }
     if (changedId === "possui_automovel" && answers.possui_automovel !== "sim") {
       delete answers.automovel_quitado;
+      delete answers.valor_automovel;
       delete answers.faixa_emprestimo_auto;
     }
   }
@@ -251,10 +273,9 @@
 
   function updateProgress() {
     var visible = visibleSteps();
-    // Os dois ramos que geram lead têm 5 passos (imóvel: possui/tipo/matrícula/faixa/contato;
-    // auto: possui/automóvel/quitado/faixa/contato). Projeta 5 pra barra não pular nem
+    // Os ramos que geram lead têm até 6 passos. Projeta 6 pra barra não pular nem
     // encher no passo 1 enquanto o ramo ainda não foi escolhido (showIf esconde os demais).
-    var total = Math.max(visible.length, 5);
+    var total = Math.max(visible.length, 6);
     var current = Math.min(stepIndex + 1, total);
     setProgress(current, total);
     backButton.hidden = stepIndex === 0;
@@ -316,6 +337,13 @@
         input.addEventListener("input", function () {
           startTracking();
           if (field.id === "whatsapp") input.value = formatPhone(input.value);
+          if (field.id === "valor_imovel" || field.id === "valor_automovel") {
+            input.value = formatMoney(input.value);
+            if (input.value) {
+              var pos = input.value.length - 3;
+              try { input.setSelectionRange(pos, pos); } catch (e) {}
+            }
+          }
           answers[field.id] = input.value.trim();
           setHiddenInputs();
           clearFieldError(field.id);
@@ -333,6 +361,17 @@
     if (digits.length <= 6) return "(" + digits.slice(0, 2) + ") " + digits.slice(2);
     if (digits.length <= 10) return "(" + digits.slice(0, 2) + ") " + digits.slice(2, 6) + "-" + digits.slice(6);
     return "(" + digits.slice(0, 2) + ") " + digits.slice(2, 7) + "-" + digits.slice(7);
+  }
+
+  function parseMoney(value) {
+    var digits = String(value || "").replace(/\D/g, "");
+    return digits ? Number(digits) / 100 : 0;
+  }
+
+  function formatMoney(value) {
+    var digits = String(value || "").replace(/,\d*$/, "").replace(/\D/g, "").slice(0, 10);
+    if (!digits) return "";
+    return "R$ " + Number(digits).toLocaleString("pt-BR") + ",00";
   }
 
   function clearFieldError(id) {
@@ -359,6 +398,12 @@
     if (step.type === "choice") {
       var error = document.getElementById("step-error");
       var ok = !!answers[step.id];
+      if (ok && (step.id === "faixa_credito" || step.id === "faixa_emprestimo_auto") && exceedsAssetLimit()) {
+        if (error) error.textContent = "O crédito escolhido ultrapassa 50% do valor do bem informado.";
+        ok = false;
+      } else if (error) {
+        error.textContent = "Escolha uma opção para continuar.";
+      }
       if (error) error.classList.toggle("is-visible", !ok);
       return ok;
     }
@@ -382,6 +427,10 @@
         setFieldError(field.id, "Informe um e-mail válido.");
         okFields = false;
       }
+      if ((field.id === "valor_imovel" || field.id === "valor_automovel") && parseMoney(value) <= 0) {
+        setFieldError(field.id, "Informe um valor válido.");
+        okFields = false;
+      }
     });
     setHiddenInputs();
     return okFields;
@@ -394,7 +443,7 @@
     return step.options.filter(function (o) { return o.value === value; })[0] || null;
   }
 
-  // rótulos legíveis pra mandar pro RD (em vez de slugs tipo "sim"/"100k_300k")
+  // rótulos legíveis pra mandar pro RD (em vez de slugs tipo "sim"/"100k_200k")
   function labelFor(stepId, value) {
     if (!value) return null;
     var opt = optionFor(stepId, value);
@@ -405,21 +454,42 @@
     return opt ? opt.amount : null;
   }
 
+  function selectedCreditValue() {
+    if (answers.possui_imovel === "sim") return amountFor("faixa_credito", answers.faixa_credito);
+    return amountFor("faixa_emprestimo_auto", answers.faixa_emprestimo_auto);
+  }
+
+  function selectedAssetValue() {
+    if (answers.possui_imovel === "sim") return parseMoney(answers.valor_imovel);
+    return parseMoney(answers.valor_automovel);
+  }
+
+  function exceedsAssetLimit() {
+    var assetValue = selectedAssetValue();
+    var creditValue = selectedCreditValue();
+    return assetValue > 0 && creditValue > 0 && creditValue > assetValue * 0.5;
+  }
+
   // Classifica o lead pelo que foi respondido.
   //  baixo_valor      = tem imóvel, mas crédito < 100 mil
-  //  home_equity_mql  = tem imóvel + matrícula + crédito >= 300 mil (lead mais quente)
+  //  home_equity_mql  = tem imóvel + matrícula + crédito >= 200 mil (lead mais quente)
   //  home_equity      = tem imóvel (demais casos)
   //  auto             = não tem imóvel, mas tem automóvel (garantia de veículo)
   function classifyLead() {
     if (answers.possui_imovel === "sim") {
       if (answers.faixa_credito === "menos_100k") return "baixo_valor";
-      var faixaAlta = answers.faixa_credito === "300k_600k" ||
+      if (exceedsAssetLimit()) return "descarte";
+      var faixaAlta = answers.faixa_credito === "200k_300k" ||
+        answers.faixa_credito === "300k_600k" ||
         answers.faixa_credito === "600k_900k" ||
         answers.faixa_credito === "acima_900k";
       if (answers.possui_matricula === "sim" && faixaAlta) return "home_equity_mql";
       return "home_equity";
     }
-    if (answers.possui_automovel === "sim") return "auto";
+    if (answers.possui_automovel === "sim") {
+      if (answers.automovel_quitado !== "sim" || exceedsAssetLimit()) return "descarte";
+      return "auto";
+    }
     // sem imóvel e sem automóvel — não qualificado pra nenhum funil, mas ainda vira
     // lead (contato já foi capturado): fica só no nosso banco, ver META_EVENTS/_app.js.
     return "descarte";
@@ -482,31 +552,39 @@
     nextButton.textContent = "Enviando...";
 
     var kind = classifyLead();
-    var isAuto = kind === "auto";
+    var isAutoBranch = answers.possui_imovel === "nao" && answers.possui_automovel === "sim";
     var phoneDigits = (answers.whatsapp || "").replace(/\D/g, "");
-    var creditValue = isAuto
-      ? amountFor("faixa_emprestimo_auto", answers.faixa_emprestimo_auto)
-      : amountFor("faixa_credito", answers.faixa_credito);
+    var assetValue = selectedAssetValue();
+    var creditValue = selectedCreditValue();
+    var metaEvents = META_EVENTS[kind] || [];
+    if (kind === "home_equity" && answers.possui_matricula !== "sim") metaEvents = [];
+    if (kind === "auto") {
+      if (answers.automovel_quitado !== "sim" || creditValue < 100000) metaEvents = [];
+      else if (creditValue >= 200000) metaEvents = ["Lead", "LeadQualificado"];
+      else metaEvents = ["Lead"];
+    }
 
     var payload = {
       name: answers.nome || null,
       phone: phoneDigits ? "+55" + phoneDigits : null,
       email: answers.email || null,
-      property_type: isAuto ? null : labelFor("tipo_imovel", answers.tipo_imovel),
-      property_value: null,
+      property_type: isAutoBranch ? null : labelFor("tipo_imovel", answers.tipo_imovel),
+      property_value: assetValue || null,
       credit_value: creditValue,
       source: "home_equity_form",
       lead_kind: kind,
       possui_imovel: labelFor("possui_imovel", answers.possui_imovel),      // "Sim" / "Não"
       possui_matricula: labelFor("possui_matricula", answers.possui_matricula),
-      faixa_credito: isAuto ? null : labelFor("faixa_credito", answers.faixa_credito),
+      valor_imovel: isAutoBranch ? null : assetValue,
+      faixa_credito: isAutoBranch ? null : labelFor("faixa_credito", answers.faixa_credito),
       // ramo auto (garantia de veículo)
       possui_automovel: labelFor("possui_automovel", answers.possui_automovel),
       automovel_quitado: labelFor("automovel_quitado", answers.automovel_quitado),
-      faixa_emprestimo: isAuto ? labelFor("faixa_emprestimo_auto", answers.faixa_emprestimo_auto) : null,
+      valor_automovel: isAutoBranch ? assetValue : null,
+      faixa_emprestimo: isAutoBranch ? labelFor("faixa_emprestimo_auto", answers.faixa_emprestimo_auto) : null,
       city: answers.cidade || null,
       // nomes dos eventos do Meta pra este lead (o track.js gera 1 event_id por nome)
-      meta_events: META_EVENTS[kind] || ["Lead"],
+      meta_events: metaEvents,
     };
 
     try {
@@ -517,9 +595,11 @@
           possui_imovel: answers.possui_imovel || null,
           tipo_imovel: answers.tipo_imovel || null,
           possui_matricula: answers.possui_matricula || null,
+          valor_imovel: isAutoBranch ? null : assetValue,
           faixa_credito: answers.faixa_credito || null,
           possui_automovel: answers.possui_automovel || null,
           automovel_quitado: answers.automovel_quitado || null,
+          valor_automovel: isAutoBranch ? assetValue : null,
           faixa_emprestimo_auto: answers.faixa_emprestimo_auto || null,
           city: answers.cidade || null
         });
@@ -527,7 +607,7 @@
       }
     } catch (e) {}
 
-    setProgress(5, 5);
+    setProgress(6, 6);
     var nav = document.querySelector(".nav-actions");
     if (nav) nav.hidden = true;
     renderThankYou(kind);
