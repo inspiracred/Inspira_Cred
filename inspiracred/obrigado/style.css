@@ -199,6 +199,19 @@ h1 {
   animation: enterUp 560ms var(--ease) 1500ms forwards;
 }
 
+/* Chamada curta logo acima dos botões — empurra pro WhatsApp sem competir com o
+   .lead. Entra na cascata entre o último passo (1800ms) e o .cta (1920ms). */
+.cta-nudge {
+  margin: 26px auto 0;
+  font-size: 15px;
+  line-height: 1.5;
+  font-weight: 600;
+  color: rgb(var(--accent-rgb));
+  text-wrap: pretty;
+  opacity: 0;
+  animation: enterUp 520ms var(--ease) 1860ms forwards;
+}
+
 /* ---------- Próximos passos: cards numerados "glass", igual ao .option do
    /formulario/ (mesmo fundo translúcido + borda sutil). */
 .next-steps {
