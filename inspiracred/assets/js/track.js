@@ -167,7 +167,7 @@
     if (!payload.page_name) payload.page_name = PAGE;
     try {
       var body = JSON.stringify(payload);
-      // text/plain evita preflight CORS em requisições cross-subdomain (links/bio -> nova)
+      // text/plain evita preflight CORS em requisições cross-subdomain (links -> nova)
       var blob = new Blob([body], { type: "text/plain;charset=UTF-8" });
       if (navigator.sendBeacon && navigator.sendBeacon(ENDPOINT, blob)) return;
       fetch(ENDPOINT, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: body, keepalive: true, mode: "cors" });
