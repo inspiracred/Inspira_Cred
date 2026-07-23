@@ -135,7 +135,7 @@
             situacao_imovel: data.situacao_imovel || null, // "Quitado"/"Financiado" -> normalizado p/ Sim/Não no RD cf_imovel_quitado (Negociação "Imóvel Quitado?")
             source: "home_equity_lp",
             lead_kind: isLowValue ? "baixo_valor" : (isMql ? "home_equity_mql" : "home_equity"),
-            meta_events: isMql ? ["Lead", "LeadQualificado"] : []
+            meta_events: isLowValue ? [] : (isMql ? ["Lead", "LeadQualificado"] : ["Lead"])
           }, getUtmParams()));
         }
       } catch (e) {}

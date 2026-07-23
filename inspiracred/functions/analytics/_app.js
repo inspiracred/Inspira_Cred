@@ -383,15 +383,24 @@ async function sendLeadToRD(event, env, leadId) {
     // faz com cf_* desconhecido) — confirmar/criar antes de contar com isso no card.
     cf_classificacao_lead: LEAD_KIND_LABEL[event.lead_kind] || undefined,
     // UTMs individuais em campos de Lead PRÓPRIOS (além de traffic_source/medium/campaign
-    // nativos acima) — pedido pelo cliente pra mapear via Combinação de Campos pros 6
-    // campos novos que ele criou na Negociação (Origem/Campaign/Medium/Content/Term +
-    // Formulário de Origem). ⚠️ MESMA RESSALVA: precisam existir como campos de Lead
-    // TEXTO na conta com estes identificadores exatos, senão são descartados em silêncio.
-    // cf_anuncio (já existente, linha acima) cobre utm_content — não duplicar.
+    // nativos acima). Os nativos traffic_* NÃO sobem pra Negociação — só campo de Lead
+    // personalizado é mapeável na "Combinação de Campos" (De→Para, texto→texto). Por isso
+    // o card da Negociação vinha com UTM vazio.
+    // ✅ Identificadores CONFERIDOS ao vivo na conta do cliente (RD > Converter > Campos
+    // personalizados, 2026-07-23): cf_utm_source, cf_utm_medium, cf_utm_campaign,
+    // cf_utm_content, cf_utm_term — os 5 existem. NUNCA usar o ID interno hex do campo:
+    // a API de conversão só aceita o "identificador" cf_*, e descarta em silêncio o resto.
     cf_utm_source: str(event.utm_source),
     cf_utm_medium: str(event.utm_medium),
     cf_utm_campaign: str(event.utm_campaign),
+    // ⚠️ cf_utm_content É NECESSÁRIO: o cf_anuncio (acima) é um campo SEPARADO ("Anúncio").
+    // Mandar só pro cf_anuncio deixava o campo "UTM Content" da Negociação vazio.
+    cf_utm_content: str(event.utm_content),
     cf_utm_term: str(event.utm_term),
+    // ⚠️ cf_formulario_origem NÃO EXISTE na conta (conferido 2026-07-23: busca por
+    // "formul"/"origem" nos campos personalizados não retorna nada). Enquanto o campo de
+    // Lead não for criado, o RD descarta isto em silêncio e "Formulário de Origem" da
+    // Negociação segue vazio. Mantido pra funcionar assim que o campo existir.
     cf_formulario_origem: str(event.source),
   };
   Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);

@@ -770,8 +770,11 @@
           if (window.inspiraTrack) window.inspiraTrack.meta("CompleteRegistration");
         } catch {}
         try {
-          // A Meta só recebe Lead quando for MQL. Os demais leads continuam salvos no
-          // dashboard/RD, mas não treinam a campanha como conversão principal.
+          // Lead qualificado manda `Lead` (conversão que a Meta de fato usa); MQL manda
+          // `Lead` + `LeadQualificado`. Valor abaixo do piso = desqualificado, não vai
+          // pro Meta (segue salvo no dashboard/RD). ⚠️ A conta está sob "configuração
+          // básica" da Meta (categoria serviço financeiro): evento PERSONALIZADO não é
+          // registrado — mandar só custom equivale a não enviar nada.
           var isLowValue = lastSimulation.propertyValue < MIN_PROPERTY_VALUE || lastSimulation.creditValue < MIN_CREDIT_VALUE;
           var isMql = !isLowValue && lastSimulation.docs === "Sim" && lastSimulation.creditValue >= 300000;
           if (window.inspiraTrack && lastSimulation) window.inspiraTrack.lead(Object.assign({
@@ -782,7 +785,7 @@
             credit_value: lastSimulation.creditValue,
             source: "landing_page",
             lead_kind: isLowValue ? "baixo_valor" : (isMql ? "home_equity_mql" : "home_equity"),
-            meta_events: isMql ? ["Lead", "LeadQualificado"] : [],
+            meta_events: isLowValue ? [] : (isMql ? ["Lead", "LeadQualificado"] : ["Lead"]),
             // já eram coletados na simulação (lastSimulation) mas nunca chegavam a
             // lugar nenhum — nem RD nem nosso banco. Ver sendLeadToRD em _app.js.
             imovel_quitado: lastSimulation.paid || null,

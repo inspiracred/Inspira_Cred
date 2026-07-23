@@ -56,11 +56,16 @@
 
   // Eventos do Meta (Pixel + CAPI) por tipo de lead. Regra de otimização:
   // só MQL dispara Lead/LeadQualificado; os demais ficam no D1/RD sem conversão Meta.
+  // ⚠️ A conta está sob "configuração básica" da Meta (categoria serviço financeiro —
+  // ver banner no Events Manager): eventos PERSONALIZADOS não são registrados/usados.
+  // Na prática só o `Lead` PADRÃO otimiza campanha. Por isso todo lead qualificado
+  // manda `Lead`; os custom (LeadQualificado/LeadAuto) vão junto só como marcação
+  // para segmentação futura, nunca sozinhos — sozinhos equivaleriam a não enviar nada.
   var META_EVENTS = {
-    home_equity: [],
-    home_equity_mql: ["Lead", "LeadQualificado"],
-    baixo_valor: [],
-    auto: [],
+    home_equity: ["Lead"],                         // qualificado (não-MQL): conta como conversão
+    home_equity_mql: ["Lead", "LeadQualificado"],  // MQL: o foco da otimização
+    auto: ["Lead", "LeadAuto"],                    // garantia de veículo — também é lead qualificado
+    baixo_valor: [],                               // valor abaixo do piso — desqualificado, não vai pro Meta
     descarte: [],                                  // sem imóvel nem veículo — não conta como conversão de ads
   };
 
