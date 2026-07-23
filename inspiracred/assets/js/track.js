@@ -82,7 +82,7 @@
     window.fbq("track", "PageView");
   }
   // Eventos PADRÃO do Meta (fbq('track', ...)); qualquer outro nome (SimulacaoIniciada,
-  // LeadQualificado, LeadBaixoValor, LeadAuto...) precisa de fbq('trackCustom', ...) —
+  // LeadQualificado etc.) precisa de fbq('trackCustom', ...) —
   // chamar 'track' com nome não-padrão faz o Pixel SUPRIMIR o evento (confirmado no
   // console: "non-standard event... The event was suppressed").
   var STANDARD_PIXEL_EVENTS = {

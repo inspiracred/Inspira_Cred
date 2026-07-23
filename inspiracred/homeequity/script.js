@@ -119,21 +119,23 @@
       // server-side (Pages Function /analytics/track, ver inspiracred/functions/analytics/_app.js).
       try {
         if (window.inspiraTrack) {
-          // Antes valor abaixo de MIN_EMP/MIN_IMOVEL travava o envio. Agora sempre vira
-          // lead — só muda a classificação: abaixo do antigo limite (que era o corte de
-          // "lead bom") = baixo_valor, não dispara conversão padrão de Lead pro Meta.
-          var isLowValue = parseMoney(data.valor_emprestimo) < MIN_EMP || parseMoney(data.valor_imovel) < MIN_IMOVEL;
+          // A Meta só recebe Lead quando for MQL. Os demais leads continuam salvos no
+          // dashboard/RD, mas não treinam a campanha como conversão principal.
+          var creditValue = parseMoney(data.valor_emprestimo);
+          var propertyValue = parseMoney(data.valor_imovel);
+          var isLowValue = creditValue < MIN_EMP || propertyValue < MIN_IMOVEL;
+          var isMql = !isLowValue && data.situacao_imovel === "Quitado" && creditValue >= 300000;
           window.inspiraTrack.lead(Object.assign({
             name: data.nome,
             phone: "+55" + data.celular.replace(/\D/g, ""),
             email: data.email || null,
             property_type: data.tipo_imovel.toLowerCase(),
-            property_value: parseMoney(data.valor_imovel),
-            credit_value: parseMoney(data.valor_emprestimo),
+            property_value: propertyValue,
+            credit_value: creditValue,
             situacao_imovel: data.situacao_imovel || null, // "Quitado"/"Financiado" -> normalizado p/ Sim/Não no RD cf_imovel_quitado (Negociação "Imóvel Quitado?")
             source: "home_equity_lp",
-            lead_kind: isLowValue ? "baixo_valor" : "home_equity",
-            meta_events: isLowValue ? ["LeadBaixoValor"] : ["Lead"]
+            lead_kind: isLowValue ? "baixo_valor" : (isMql ? "home_equity_mql" : "home_equity"),
+            meta_events: isMql ? ["Lead", "LeadQualificado"] : []
           }, getUtmParams()));
         }
       } catch (e) {}

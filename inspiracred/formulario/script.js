@@ -54,13 +54,13 @@
     }
   };
 
-  // Eventos do Meta (Pixel + CAPI) por tipo de lead. Cada nome vira um evento
-  // deduplicado (o track.js gera um event_id por evento e o servidor reenvia igual).
+  // Eventos do Meta (Pixel + CAPI) por tipo de lead. Regra de otimização:
+  // só MQL dispara Lead/LeadQualificado; os demais ficam no D1/RD sem conversão Meta.
   var META_EVENTS = {
-    home_equity: ["Lead"],
-    home_equity_mql: ["Lead", "LeadQualificado"], // continua sendo Lead + evento próprio de MQL p/ otimização
-    baixo_valor: ["LeadBaixoValor"],               // fora da otimização principal de Lead
-    auto: ["LeadAuto"],                            // garantia de veículo — funil separado
+    home_equity: [],
+    home_equity_mql: ["Lead", "LeadQualificado"],
+    baixo_valor: [],
+    auto: [],
     descarte: [],                                  // sem imóvel nem veículo — não conta como conversão de ads
   };
 

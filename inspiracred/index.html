@@ -770,10 +770,10 @@
           if (window.inspiraTrack) window.inspiraTrack.meta("CompleteRegistration");
         } catch {}
         try {
-          // Antes o valor baixo travava o envio (ver validate acima). Agora sempre vira
-          // lead — só muda a classificação: abaixo do antigo limite (que era o corte de
-          // "lead bom") = baixo_valor, não dispara conversão padrão de Lead pro Meta.
+          // A Meta só recebe Lead quando for MQL. Os demais leads continuam salvos no
+          // dashboard/RD, mas não treinam a campanha como conversão principal.
           var isLowValue = lastSimulation.propertyValue < MIN_PROPERTY_VALUE || lastSimulation.creditValue < MIN_CREDIT_VALUE;
+          var isMql = !isLowValue && lastSimulation.docs === "Sim" && lastSimulation.creditValue >= 300000;
           if (window.inspiraTrack && lastSimulation) window.inspiraTrack.lead(Object.assign({
             name: name,
             phone: "+55" + phone.replace(/\D/g, ""),
@@ -781,8 +781,8 @@
             property_value: lastSimulation.propertyValue,
             credit_value: lastSimulation.creditValue,
             source: "landing_page",
-            lead_kind: isLowValue ? "baixo_valor" : "home_equity",
-            meta_events: isLowValue ? ["LeadBaixoValor"] : ["Lead"],
+            lead_kind: isLowValue ? "baixo_valor" : (isMql ? "home_equity_mql" : "home_equity"),
+            meta_events: isMql ? ["Lead", "LeadQualificado"] : [],
             // já eram coletados na simulação (lastSimulation) mas nunca chegavam a
             // lugar nenhum — nem RD nem nosso banco. Ver sendLeadToRD em _app.js.
             imovel_quitado: lastSimulation.paid || null,
