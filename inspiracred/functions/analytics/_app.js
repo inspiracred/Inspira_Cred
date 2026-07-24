@@ -42,6 +42,12 @@ export async function onRequest(context) {
     return handleTrack(request, env, cors, context);
   }
 
+  // Webhook do RD Station CRM (venda ganha) — PÚBLICO, mas protegido por token na URL
+  // (RD não manda Basic Auth). Precisa rodar antes do guard do dashboard.
+  if (sub === "/rd-webhook" && request.method === "POST") {
+    return handleRdWebhook(request, env, context);
+  }
+
   // Login próprio (tela nossa) — o POST tem que rodar ANTES do guard de autenticação.
   if (sub === "/login" && request.method === "POST") return handleLogin(request, env);
   if (sub === "/logout") return handleLogout();
@@ -55,6 +61,7 @@ export async function onRequest(context) {
   }
 
   if (sub === "/api/overview" && request.method === "GET") return handleOverview(request, env);
+  if (sub === "/api/sales" && request.method === "GET") return handleSales(request, env);
   if (sub === "/api/leads" && request.method === "GET") return handleLeads(request, env);
   if (sub === "/api/journey" && request.method === "GET") return handleJourney(request, env);
   if (sub === "/api/heatmap" && request.method === "GET") return handleHeatmap(request, env);
@@ -1160,6 +1167,117 @@ async function handleHealth(request, env) {
   } catch (e) { /* ok */ }
 
   return json({ range: { start, end }, page: page || "all", totals: totals || {}, by_fbp_source, by_browser, by_bot });
+}
+
+/* ---- WEBHOOK DO RD STATION CRM: venda ganha -> faturamento ----
+ * Objetivo final do funil: saber quais leads viraram CLIENTE e quanto faturaram.
+ * O RD CRM dispara este webhook quando uma Negociação muda de etapa/é marcada como
+ * ganha; a gente grava na tabela `rd_sales` e casa com o lead por e-mail/telefone.
+ *
+ * Decisões de projeto:
+ *  - PÚBLICO (RD não manda Basic Auth) mas com TOKEN na URL, comparado ao secret
+ *    `RD_WEBHOOK_TOKEN`. Sem o secret configurado o endpoint responde 503 (não abrimos
+ *    uma porta de escrita sem senha no D1). O token vai no `?token=` da URL cadastrada
+ *    no RD — nunca no repo (público).
+ *  - GUARDA O PAYLOAD CRU (`raw`) sempre. Não conheço de antemão o formato exato que o
+ *    RD manda; guardar o JSON inteiro deixa a 1ª venda real nos ensinar o shape e
+ *    ajustar o parse depois, sem perder nada. O parse dos campos é BEST-EFFORT.
+ *  - Idempotente-ish: se vier `deal_id`, evita duplicar a MESMA etapa do MESMO negócio.
+ */
+async function handleRdWebhook(request, env, context) {
+  const token = new URL(request.url).searchParams.get("token") || "";
+  if (!env.RD_WEBHOOK_TOKEN) {
+    return json({ ok: false, error: "RD_WEBHOOK_TOKEN não configurado no Pages" }, 503);
+  }
+  if (!safeEqual(token, env.RD_WEBHOOK_TOKEN)) {
+    return json({ ok: false, error: "token inválido" }, 401);
+  }
+
+  let body = {};
+  try { body = await request.json(); } catch (e) {
+    try { body = Object.fromEntries((await request.formData()).entries()); } catch (e2) { body = {}; }
+  }
+
+  // procura um valor em vários caminhos comuns (o RD pode aninhar em deal/negociacao)
+  const dig = (obj, keys) => {
+    for (const path of keys) {
+      let cur = obj, ok = true;
+      for (const seg of path.split(".")) { if (cur && typeof cur === "object" && seg in cur) cur = cur[seg]; else { ok = false; break; } }
+      if (ok && cur != null && cur !== "") return cur;
+    }
+    return null;
+  };
+  const num = (x) => { if (x == null) return null; const n = Number(String(x).replace(/[^\d.,-]/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", ".")); return isFinite(n) ? n : null; };
+
+  const deal = body.deal || body.negociacao || body;
+  const dealId = dig(body, ["deal.id", "deal_id", "negociacao.id", "id"]);
+  const dealName = dig(body, ["deal.name", "deal_name", "negociacao.nome", "name"]);
+  const stage = dig(body, ["deal.stage.name", "deal_stage", "stage", "etapa", "deal.deal_stage.name"]);
+  const value = num(dig(body, ["deal.amount_total", "deal.amount_montly", "deal.value", "deal_value", "amount", "valor", "negociacao.valor"]));
+  const won = /ganh|won|vendid|fechad/i.test(String(stage || "") + " " + String(dig(body, ["deal.win", "win", "status"]) || "")) ? 1 : 0;
+  const email = dig(body, ["deal.contacts.0.emails.0.email", "contact.email", "email", "lead.email", "deal.email"]);
+  const phone = dig(body, ["deal.contacts.0.phones.0.phone", "contact.phone", "phone", "telefone", "lead.phone"]);
+
+  try {
+    // tenta casar com um lead nosso: e-mail exato, senão sufixo do telefone (8+ dígitos)
+    let matchedLeadId = null;
+    try {
+      if (email) {
+        const r = await env.DB.prepare(`SELECT id FROM leads WHERE lower(email)=lower(?) ORDER BY created_at DESC LIMIT 1`).bind(String(email)).first();
+        if (r) matchedLeadId = r.id;
+      }
+      if (!matchedLeadId && phone) {
+        const digits = String(phone).replace(/\D/g, "").slice(-8);
+        if (digits.length >= 8) {
+          const r = await env.DB.prepare(`SELECT id FROM leads WHERE replace(replace(replace(replace(phone,'(',''),')',''),'-',''),' ','') LIKE ? ORDER BY created_at DESC LIMIT 1`).bind("%" + digits).first();
+          if (r) matchedLeadId = r.id;
+        }
+      }
+    } catch (e) { /* matching é best-effort */ }
+
+    // dedup leve: mesma etapa do mesmo negócio não grava 2x
+    if (dealId) {
+      try {
+        const dup = await env.DB.prepare(`SELECT id FROM rd_sales WHERE deal_id=? AND COALESCE(stage,'')=COALESCE(?,'') LIMIT 1`).bind(String(dealId), stage ? String(stage) : null).first();
+        if (dup) return json({ ok: true, dedup: true });
+      } catch (e) { /* tabela pode não existir ainda */ }
+    }
+
+    await env.DB.prepare(
+      `INSERT INTO rd_sales (deal_id, deal_name, stage, value, won, contact_email, contact_phone, matched_lead_id, raw)
+       VALUES (?,?,?,?,?,?,?,?,?)`
+    ).bind(
+      dealId ? String(dealId) : null, dealName ? String(dealName) : null, stage ? String(stage) : null,
+      value, won, email ? String(email) : null, phone ? String(phone) : null, matchedLeadId,
+      JSON.stringify(body).slice(0, 8000)
+    ).run();
+  } catch (e) {
+    // tabela ausente (migration 0009 pendente) ou outro erro: responde 200 assim mesmo
+    // pra o RD não ficar re-tentando em loop, mas sinaliza que precisa aplicar a migration
+    return json({ ok: false, stored: false, hint: "aplicar migration 0009_rd_sales ou verificar payload", parsed: { dealId, stage, value, won, email: !!email, phone: !!phone } }, 200);
+  }
+  return json({ ok: true, stored: true, parsed: { dealId, dealName, stage, value, won, matched: null } });
+}
+
+/* Leitura do faturamento pro dashboard (atrás do Basic Auth como o resto da API). */
+async function handleSales(request, env) {
+  const { start, end } = params(request.url);
+  try {
+    const totals = await env.DB.prepare(
+      `SELECT COUNT(*) eventos,
+              SUM(CASE WHEN won=1 THEN 1 ELSE 0 END) vendas,
+              SUM(CASE WHEN won=1 THEN COALESCE(value,0) ELSE 0 END) faturamento,
+              SUM(CASE WHEN won=1 AND matched_lead_id IS NOT NULL THEN 1 ELSE 0 END) vendas_casadas
+       FROM rd_sales WHERE DATE(received_at) BETWEEN ? AND ?`
+    ).bind(start, end).first();
+    const recent = (await env.DB.prepare(
+      `SELECT id, deal_name, stage, value, won, contact_email, matched_lead_id, received_at
+       FROM rd_sales WHERE DATE(received_at) BETWEEN ? AND ? ORDER BY received_at DESC LIMIT 50`
+    ).bind(start, end).all()).results || [];
+    return json({ range: { start, end }, pendente: false, totals: totals || {}, recent });
+  } catch (e) {
+    return json({ range: { start, end }, pendente: true, totals: {}, recent: [] });
+  }
 }
 
 /* ---- TESTE META ADS (diagnóstico temporário) ----
