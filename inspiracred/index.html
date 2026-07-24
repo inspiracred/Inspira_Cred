@@ -610,10 +610,10 @@
         if (!creditInput.value.trim() || creditValue <= 0) {
           setFieldError("creditValue", "Informe o valor desejado.");
           isValid = false;
-        } else if (propertyValue > 0 && creditValue > propertyValue * creditLimit) {
-          setFieldError("creditValue", `Crédito máximo para esse bem: ${Math.round(creditLimit * 100)}% do valor de avaliação.`);
-          isValid = false;
         }
+        // Sem trava de teto de crédito: a pessoa pode pedir o valor que quiser. Quem diz
+        // se é qualificado é a classificação (nossos eventos), não um bloqueio no
+        // formulário — travar aqui só fazia perder o contato. (cliente, 24/07/2026)
 
         if (!isValid) {
           return { valid: false, propertyValue, creditValue, debtValue };

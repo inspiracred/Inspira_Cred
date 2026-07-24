@@ -56,6 +56,19 @@
       i.addEventListener("input", function () { clearError(i.name); });
     });
 
+    // "Simulação iniciada": dispara UMA vez, no primeiro toque em qualquer campo do
+    // formulário. É o mesmo evento que a landing (index.html) e o formulário multi-step
+    // já mandam — assim o funil "visita → simulação iniciada → lead" existe nas TRÊS
+    // páginas. Sem isso, a Home Equity ficava sem a etapa do meio no dashboard.
+    var simStarted = false;
+    function markSimStart() {
+      if (simStarted) return;
+      simStarted = true;
+      try { if (window.inspiraTrack) window.inspiraTrack.event("simulation_start", { source: "home_equity_lp" }); } catch (e) {}
+    }
+    form.addEventListener("input", markSimStart, true);
+    form.addEventListener("change", markSimStart, true);
+
     function setError(name, msg) {
       var el = form.querySelector('[data-error="' + name + '"]');
       var input = form.querySelector('[name="' + name + '"]');
@@ -104,7 +117,7 @@
       }
       if (situacaoLabel) situacaoLabel.innerHTML = isAuto ? 'Situação atual do automóvel <span class="req">*</span>' : 'Situação atual do imóvel <span class="req">*</span>';
       if (valorBemLabel) valorBemLabel.innerHTML = isAuto ? 'Valor aproximado do automóvel <span class="req">*</span>' : 'Valor aproximado do imóvel <span class="req">*</span>';
-      if (valorBemInput) valorBemInput.placeholder = isAuto ? "Valor do automóvel" : "Valor mínimo R$ 400.000";
+      if (valorBemInput) valorBemInput.placeholder = isAuto ? "Valor do automóvel" : "Valor do imóvel";
       clearError("tipo_imovel");
       clearError("situacao_imovel");
       clearError("valor_imovel");
@@ -133,10 +146,9 @@
       if (!isAuto && !data.tipo_imovel) { setError("tipo_imovel", "Selecione o tipo de imóvel."); ok = false; }
       if (!data.situacao_imovel) { setError("situacao_imovel", isAuto ? "Selecione a situação do automóvel." : "Selecione a situação do imóvel."); ok = false; }
       if (!data.valor_imovel || propertyValue <= 0) { setError("valor_imovel", isAuto ? "Informe o valor do automóvel." : "Informe o valor do imóvel."); ok = false; }
-      else if (creditValue > 0 && creditValue > propertyValue * 0.5) {
-        setError("valor_emprestimo", "O crédito máximo é de 50% do valor do bem.");
-        ok = false;
-      }
+      // Sem trava de valor: a pessoa pode pedir o quanto quiser. Quem decide se é
+      // qualificado é a classificação (nossos eventos), não um bloqueio no formulário —
+      // travar aqui só fazia a gente perder o contato. (decisão do cliente, 24/07/2026)
       return ok;
     }
 
