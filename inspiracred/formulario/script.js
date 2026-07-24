@@ -13,6 +13,7 @@
 
   var answers = {};
   var stepIndex = 0;
+  var stepSeen = {};
   var started = false;
   var submitting = false;
   var MIN_CREDIT_VALUE = 200000;
@@ -228,6 +229,39 @@
     } catch (e) {}
   }
 
+  // Etapa vista (1x por pergunta/sessão) — vira o funil "pergunta a pergunta" do
+  // dashboard: quanta gente chega em cada pergunta e onde desiste. Vai pela tabela
+  // `events` (coluna properties), sem precisar de coluna nova no D1.
+  function trackStepView(step) {
+    if (!step || stepSeen[step.id]) return;
+    stepSeen[step.id] = true;
+    try {
+      if (window.inspiraTrack) {
+        window.inspiraTrack.event("form_step", {
+          step: stepIndex + 1,
+          id: step.id,
+          title: step.title,
+          total: Math.max(visibleSteps().length, 6)
+        });
+      }
+    } catch (e) {}
+  }
+
+  // Opção escolhida numa pergunta de múltipla escolha — mostra QUAL resposta cada
+  // etapa recebeu (ex.: quantos responderam "não" em "possui imóvel").
+  function trackStepChoice(step, value) {
+    try {
+      if (window.inspiraTrack) {
+        window.inspiraTrack.event("form_step_choice", {
+          step: stepIndex + 1,
+          id: step.id,
+          value: value,
+          label: (labelFor(step.id, value) || value)
+        });
+      }
+    } catch (e) {}
+  }
+
   function setHiddenInputs() {
     form.querySelectorAll('[data-answer-input="true"]').forEach(function (el) { el.remove(); });
     Object.keys(answers).forEach(function (key) {
@@ -315,6 +349,7 @@
     var step = currentStep();
     if (!step) return;
     updateProgress();
+    trackStepView(step);
     shell.innerHTML = '<section class="question">' +
       '<h2 class="question-title">' + escapeHtml(step.title) + '</h2>' +
       (step.subtitle ? '<p class="question-subtitle">' + escapeHtml(step.subtitle) + '</p>' : '') +
@@ -326,6 +361,7 @@
         button.addEventListener("click", function () {
           startTracking();
           var value = button.getAttribute("data-value");
+          trackStepChoice(step, value);
           answers[step.id] = value;
           normalizeAnswers(step.id);
           setHiddenInputs();

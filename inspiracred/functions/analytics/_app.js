@@ -48,6 +48,7 @@ export async function onRequest(context) {
   if (sub === "/api/leads" && request.method === "GET") return handleLeads(request, env);
   if (sub === "/api/journey" && request.method === "GET") return handleJourney(request, env);
   if (sub === "/api/heatmap" && request.method === "GET") return handleHeatmap(request, env);
+  if (sub === "/api/pagemap" && request.method === "GET") return handlePageMap(request, env);
   if (sub === "/api/campaigns" && request.method === "GET") return handleCampaigns(request, env);
   if (sub === "/api/health" && request.method === "GET") return handleHealth(request, env);
   if (sub === "/api/meta-test" && request.method === "GET") return handleMetaTest(request, env);
@@ -787,43 +788,141 @@ async function handleLeads(request, env) {
   return json({ leads: rows, count: rows.length });
 }
 
-/* ---- CAMPANHAS (de onde vêm os leads: origem, mídia, campanha, criativo) ----
- * Tudo sai da tabela `leads`, agrupado pelos utm_*. `utm_content` é onde Meta/Google
- * costumam mandar o criativo/anúncio — só aparece se o anúncio enviar o parâmetro.
- * `valor` = soma do crédito solicitado, pra saber qual campanha traz ticket maior.
+/* ---- CAMPANHAS (hierarquia igual à do Gerenciador de Anúncios do Meta) ----
+ * Os 3 níveis do Meta chegam pra gente pelas UTMs dos anúncios (ver CLAUDE.md):
+ *   utm_campaign = CAMPANHA · utm_medium = CONJUNTO · utm_content = ANÚNCIO ({{ad.name}}).
+ * Devolvemos as combinações CRUAS (uma linha por src/camp/med/cont) e o dashboard
+ * agrega no nível que o usuário está olhando — assim a navegação campanha → conjunto
+ * → anúncio é instantânea, sem refetch a cada clique.
+ *
+ * VISITAS vêm da tabela `sessions` (cookie de edge `_krob_sid`, Fase A): é o que
+ * permite calcular taxa de conversão por campanha/conjunto/anúncio. Duas ressalvas
+ * honestas, devolvidas na resposta pro dashboard avisar em vez de mentir:
+ *   - `visits_since`: sessions só existe a partir do deploy da Fase A (22/07/2026);
+ *     período anterior a isso tem lead sem visita e a taxa fica inflada.
+ *   - `visits_page_scoped: false`: sessão é do SITE, não de uma página — com filtro
+ *     de página ligado, os leads filtram mas as visitas não.
+ * NÃO temos gasto/CPA/impressão/idade/gênero: isso exige `ads_read` na conta de
+ * anúncios do cliente, que segue bloqueado (CLAUDE.md). O painel de público usa o
+ * que É nosso: dispositivo, navegador, cidade, faixa de crédito e tipo de imóvel.
  */
 async function handleCampaigns(request, env) {
   const { start, end, page } = params(request.url);
   const sc = page ? " AND source = ?" : "";
   const b = page ? [start, end, page] : [start, end];
   const many = async (sql) => (await env.DB.prepare(sql).bind(...b).all()).results || [];
+  const manyS = async (sql) => (await env.DB.prepare(sql).bind(start, end).all()).results || [];
 
   const SRC = "COALESCE(NULLIF(utm_source,''),'direto')";
   const CAMP = "COALESCE(NULLIF(utm_campaign,''),'(sem campanha)')";
   const CONT = "COALESCE(NULLIF(utm_content,''),'(sem criativo)')";
-  const MED = "COALESCE(NULLIF(utm_medium,''),'(sem mídia)')";
+  const MED = "COALESCE(NULLIF(utm_medium,''),'(sem conjunto)')";
   const WHERE = `WHERE DATE(created_at) BETWEEN ? AND ?${sc}`;
-  const AGG = "COUNT(*) leads, SUM(COALESCE(credit_value,0)) valor";
+  // sessions.created_at é INTEGER (unix seconds) — precisa do 'unixepoch'.
+  const SWHERE = `WHERE DATE(created_at,'unixepoch') BETWEEN ? AND ?`;
+  const AGG = `COUNT(*) leads,
+               SUM(CASE WHEN lead_kind='home_equity_mql' THEN 1 ELSE 0 END) mql,
+               SUM(CASE WHEN lead_kind IN ('baixo_valor','descarte') THEN 1 ELSE 0 END) desq,
+               SUM(COALESCE(credit_value,0)) valor`;
 
-  const [by_source, by_medium, by_campaign, by_content, totals] = await Promise.all([
-    many(`SELECT ${SRC} k, ${AGG} FROM leads ${WHERE} GROUP BY k ORDER BY leads DESC`),
-    many(`SELECT ${MED} k, ${AGG} FROM leads ${WHERE} GROUP BY k ORDER BY leads DESC`),
-    many(`SELECT ${CAMP} k, ${SRC} src, ${MED} med, ${AGG} FROM leads ${WHERE} GROUP BY k, src, med ORDER BY leads DESC`),
-    many(`SELECT ${CONT} k, ${CAMP} camp, ${SRC} src, ${AGG} FROM leads ${WHERE} GROUP BY k, camp, src ORDER BY leads DESC`),
+  const [rows, totals, daily] = await Promise.all([
+    many(`SELECT ${SRC} src, ${CAMP} camp, ${MED} med, ${CONT} cont, ${AGG} FROM leads ${WHERE} GROUP BY src,camp,med,cont ORDER BY leads DESC`),
     env.DB.prepare(
       `SELECT COUNT(*) total,
               SUM(CASE WHEN COALESCE(utm_source,'')<>'' THEN 1 ELSE 0 END) com_utm,
+              SUM(CASE WHEN lead_kind='home_equity_mql' THEN 1 ELSE 0 END) mql,
               SUM(COALESCE(credit_value,0)) valor
        FROM leads ${WHERE}`
     ).bind(...b).first(),
+    many(`SELECT DATE(created_at) d, ${CAMP} camp, COUNT(*) n FROM leads ${WHERE} GROUP BY d, camp ORDER BY d`),
   ]);
+
+  // Visitas/sessões (tabela da Fase A). Se ainda não existir no banco, o dashboard
+  // simplesmente não mostra taxa de conversão em vez de quebrar.
+  let visits = [], daily_visits = [], visits_since = null;
+  try {
+    [visits, daily_visits, visits_since] = await Promise.all([
+      manyS(`SELECT ${SRC} src, ${CAMP} camp, ${MED} med, ${CONT} cont, COUNT(*) n FROM sessions ${SWHERE} GROUP BY src,camp,med,cont`),
+      manyS(`SELECT DATE(created_at,'unixepoch') d, ${CAMP} camp, COUNT(*) n FROM sessions ${SWHERE} GROUP BY d, camp ORDER BY d`),
+      env.DB.prepare(`SELECT MIN(DATE(created_at,'unixepoch')) d FROM sessions`).first().then((r) => (r && r.d) || null),
+    ]);
+  } catch (e) { /* sessions ainda não criada */ }
+
+  // Público POSSÍVEL (não é demografia do Meta): sai das colunas que já gravamos no
+  // lead. `camp` vai junto pra o dashboard filtrar quando você entra numa campanha.
+  let audience = [];
+  try {
+    const dims = [
+      ["Dispositivo", "CASE WHEN is_mobile=1 THEN 'Celular' WHEN is_mobile=0 THEN 'Computador' ELSE '(sem dado)' END"],
+      ["Navegador", "COALESCE(NULLIF(browser,''),'(sem dado)')"],
+      ["Cidade", "COALESCE(NULLIF(city,''),'(não informada)')"],
+      ["Faixa de crédito", "COALESCE(NULLIF(faixa_credito,''),'(não informada)')"],
+      ["Tipo de imóvel", "COALESCE(NULLIF(property_type,''),'(não informado)')"],
+    ];
+    const parts = await Promise.all(dims.map(([dim, expr]) =>
+      many(`SELECT '${dim}' dim, ${expr} k, ${CAMP} camp, COUNT(*) n FROM leads ${WHERE} GROUP BY k, camp`)
+    ));
+    audience = parts.flat();
+  } catch (e) { /* colunas das migrations 0003/0008 ausentes */ }
 
   const t = totals || {};
   const total = t.total || 0, com_utm = t.com_utm || 0;
   return json({
     range: { start, end }, page: page || "all",
-    totals: { total, com_utm, direto: total - com_utm, valor: t.valor || 0 },
-    by_source, by_medium, by_campaign, by_content,
+    totals: { total, com_utm, direto: total - com_utm, valor: t.valor || 0, mql: t.mql || 0 },
+    rows, daily, visits, daily_visits, visits_since,
+    visits_page_scoped: false,
+    audience,
+    ads_api: false, // sem ads_read: nada de gasto/CPA/idade/gênero vindo do Meta
+  });
+}
+
+/* ---- MAPA DA PÁGINA (o que alimenta as visões novas do mapa de calor) ----
+ * Quatro leituras da MESMA página, todas já existentes no D1:
+ *   - profundidade: evento `scroll_depth` (marcos 25/50/75/100, 1x por sessão)
+ *   - seções lidas: evento `section_view` (atributo data-section nos HTMLs)
+ *   - elementos: tabela `clicks` (o que foi clicado, com texto do elemento)
+ *   - etapas: eventos `form_step` / `form_step_choice` do formulário multi-step
+ * O denominador de tudo é a quantidade de SESSÕES com page_view na página.
+ */
+async function handlePageMap(request, env) {
+  const p = new URL(request.url).searchParams;
+  const pageName = p.get("page");
+  if (!pageName) return json({ error: "page obrigatório" }, 400);
+  const today = new Date().toISOString().slice(0, 10);
+  const past = new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10);
+  const start = p.get("start") || past;
+  const end = p.get("end") || today;
+  const b = [pageName, start, end];
+  const many = async (sql) => (await env.DB.prepare(sql).bind(...b).all()).results || [];
+  const RANGE = `page_name=? AND DATE(created_at) BETWEEN ? AND ?`;
+
+  const [sess, scroll, sections, elements, steps, choices] = await Promise.all([
+    env.DB.prepare(`SELECT COUNT(DISTINCT session_id) n, COUNT(*) views FROM page_views WHERE ${RANGE}`).bind(...b).first(),
+    many(`SELECT CAST(json_extract(properties,'$.pct') AS INTEGER) pct, COUNT(DISTINCT session_id) n
+          FROM events WHERE event_name='scroll_depth' AND ${RANGE} GROUP BY pct ORDER BY pct`),
+    many(`SELECT json_extract(properties,'$.section') k, COUNT(DISTINCT session_id) n
+          FROM events WHERE event_name='section_view' AND ${RANGE} GROUP BY k ORDER BY n DESC`),
+    many(`SELECT COALESCE(NULLIF(element_text,''), NULLIF(element_id,''), '(sem identificação)') k,
+                 COALESCE(NULLIF(element_id,''),'') id, COALESCE(NULLIF(link_type,''),'') tipo,
+                 COUNT(*) n, COUNT(DISTINCT session_id) s
+          FROM clicks WHERE ${RANGE} GROUP BY k, id, tipo ORDER BY n DESC LIMIT 24`),
+    many(`SELECT json_extract(properties,'$.id') k,
+                 MIN(CAST(json_extract(properties,'$.step') AS INTEGER)) ord,
+                 MAX(json_extract(properties,'$.title')) title,
+                 COUNT(DISTINCT session_id) n
+          FROM events WHERE event_name='form_step' AND ${RANGE} GROUP BY k ORDER BY ord`),
+    many(`SELECT json_extract(properties,'$.id') step_id,
+                 COALESCE(json_extract(properties,'$.label'), json_extract(properties,'$.value')) k,
+                 COUNT(*) n
+          FROM events WHERE event_name='form_step_choice' AND ${RANGE} GROUP BY step_id, k ORDER BY n DESC`),
+  ]);
+
+  const s = sess || {};
+  return json({
+    page: pageName, range: { start, end },
+    sessions: s.n || 0, views: s.views || 0,
+    scroll, sections, elements, steps, choices,
   });
 }
 
@@ -1099,7 +1198,88 @@ const DASHBOARD_HTML = `<!doctype html>
   .event-dot.skip{background:var(--orange-soft);color:var(--orange);border-color:rgba(249,115,22,.24)}
   .event-dot.off{background:var(--surface);color:var(--muted);border-color:var(--border)}
   .event-dot.err{background:var(--red-soft);color:var(--red-ink);border-color:rgba(239,68,68,.22)}
+  .event-dot.bot{background:#eef2ff;color:#4338ca;border-color:rgba(67,56,202,.20)}
   .event-legend{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+  /* ---- Campanhas: navegador de 3 níveis no espírito do Gerenciador do Meta ---- */
+  .am-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:0 0 16px;padding:12px 14px;background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}
+  .am-crumb{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);min-width:0}
+  .am-crumb button{padding:5px 10px;border-radius:10px;font-size:12.5px;font-weight:750;color:var(--blue);background:var(--surface);border:1px solid var(--border)}
+  .am-crumb button:hover{border-color:var(--orange);color:var(--orange)}
+  .am-crumb .now{padding:5px 10px;border-radius:10px;background:var(--orange-soft);color:#9a3412;font-weight:800;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .am-crumb .sep{color:var(--border);font-weight:800}
+  .am-levels{display:flex;gap:6px;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:14px}
+  .am-level{display:flex;align-items:center;gap:7px;padding:8px 13px;border:0;border-radius:11px;background:transparent;color:var(--muted);font-size:13px;font-weight:750}
+  .am-level b{font-family:"Instrument Sans","Inter",sans-serif;font-size:12px;padding:1px 7px;border-radius:99px;background:#fff;border:1px solid var(--border);color:var(--blue)}
+  .am-level:hover{color:var(--blue)}
+  .am-level.active{background:var(--blue);color:#fff;box-shadow:0 6px 16px rgba(11,45,114,.22)}
+  .am-level.active b{background:rgba(255,255,255,.16);border-color:transparent;color:#fff}
+  .camp-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(300px,.85fr);gap:18px;align-items:start;margin-bottom:18px}
+  .am-row{display:grid;grid-template-columns:34px minmax(0,1fr) repeat(4,minmax(64px,86px)) 26px;align-items:center;gap:12px;width:100%;padding:13px 14px;border:1px solid var(--border);border-radius:15px;background:#fff;text-align:left;margin-bottom:9px;transition:border-color .15s,box-shadow .15s,transform .15s}
+  .am-row:hover{border-color:rgba(249,115,22,.45);box-shadow:0 10px 24px rgba(6,26,66,.09);transform:translateY(-1px)}
+  .am-row.is-flat{cursor:default}
+  .am-row.is-flat:hover{transform:none;border-color:var(--border);box-shadow:none}
+  .am-rank{width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:var(--surface);border:1px solid var(--border);font-family:"Instrument Sans","Inter",sans-serif;font-size:12px;font-weight:850;color:var(--muted)}
+  .am-row:first-child .am-rank{background:var(--orange-soft);border-color:rgba(249,115,22,.24);color:var(--orange)}
+  /* .am-main e .am-metric são filhos diretos do grid (já viram bloco); o que está
+     DENTRO deles continua inline por padrão — por isso o display:block explícito,
+     senão a barra de share não ganha altura. */
+  .am-main{display:block;min-width:0}
+  .am-name{display:block;font-size:13.5px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .am-tags{display:flex;gap:6px;flex-wrap:wrap;margin:5px 0 7px}
+  .am-tag{font-size:10.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:99px;padding:2px 8px}
+  .am-track{display:block;height:7px;border-radius:999px;background:#eef0f3;overflow:hidden}
+  .am-track span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--blue),var(--orange))}
+  .am-metric{text-align:right}
+  .am-metric b{display:block;font-family:"Instrument Sans","Inter",sans-serif;font-size:17px;font-weight:850;color:var(--blue);letter-spacing:-.02em;line-height:1.1}
+  .am-metric small{display:block;margin-top:2px;font-size:10.5px;font-weight:750;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .am-metric.hot b{color:var(--orange)}
+  .am-go{font-size:19px;color:var(--muted);text-align:center}
+  .am-row:hover .am-go{color:var(--orange)}
+  .am-head{display:grid;grid-template-columns:34px minmax(0,1fr) repeat(4,minmax(64px,86px)) 26px;gap:12px;padding:0 14px 9px;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .am-head span:nth-child(n+3){text-align:right}
+  .aud-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px}
+  .aud-card{border:1px solid var(--border);border-radius:15px;padding:13px;background:var(--surface)}
+  .aud-card h3{margin:0 0 10px;font-family:"Instrument Sans","Inter",sans-serif;font-size:12px;font-weight:850;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  /* ---- Mapa de calor: modos ---- */
+  .hm-modes{display:flex;gap:6px;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:14px;flex-wrap:wrap}
+  .hm-mode{padding:8px 13px;border:0;border-radius:11px;background:transparent;color:var(--muted);font-size:13px;font-weight:750}
+  .hm-mode:hover{color:var(--blue)}
+  .hm-mode.active{background:var(--orange);color:#fff;box-shadow:0 6px 16px rgba(249,115,22,.26)}
+  .hm-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,340px);gap:18px;align-items:start}
+  .depth-scale{display:flex;flex-direction:column;gap:8px}
+  .depth-band{position:relative;border:1px solid var(--border);border-radius:13px;padding:11px 13px;overflow:hidden;background:#fff}
+  .depth-band .bg{position:absolute;inset:0;opacity:.16}
+  .depth-band .row{position:relative;display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .depth-band .who{font-size:12.5px;font-weight:800;color:var(--text)}
+  .depth-band .pc{font-family:"Instrument Sans","Inter",sans-serif;font-size:20px;font-weight:850;color:var(--blue)}
+  .depth-band .sub{position:relative;margin-top:4px;font-size:11.5px;color:var(--muted)}
+  .fold-note{margin-top:12px;padding:11px 13px;border-radius:13px;background:var(--orange-soft);color:#9a3412;font-size:12px;line-height:1.45}
+  .step-row{display:grid;grid-template-columns:30px minmax(0,1fr) 74px;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)}
+  .step-row:last-child{border-bottom:0}
+  .step-n{width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:var(--blue);color:#fff;font-family:"Instrument Sans","Inter",sans-serif;font-size:12px;font-weight:850}
+  .step-q{display:block;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .step-bar{display:block;height:9px;border-radius:999px;background:#eef0f3;overflow:hidden}
+  .step-bar span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--blue),#3b82f6)}
+  .step-drop{font-size:11px;font-weight:800;color:var(--red-ink);margin-top:5px}
+  .step-side{text-align:right}
+  .step-side b{display:block;font-family:"Instrument Sans","Inter",sans-serif;font-size:17px;font-weight:850;color:var(--blue)}
+  .step-side small{font-size:10.5px;color:var(--muted);font-weight:750}
+  .choice-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+  .choice-chip{font-size:11px;font-weight:750;color:var(--blue);background:var(--surface);border:1px solid var(--border);border-radius:99px;padding:3px 9px}
+  .choice-chip b{color:var(--orange);font-weight:850}
+  /* ---- Saúde do tracking: medidores ---- */
+  .gauge-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+  .gauge{border:1px solid var(--border);border-radius:17px;padding:15px;background:#fff;box-shadow:var(--shadow);text-align:center}
+  .gauge .ring{position:relative;width:118px;height:118px;margin:2px auto 10px;border-radius:50%}
+  .gauge .ring i{position:absolute;inset:11px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;flex-direction:column;font-style:normal}
+  .gauge .ring b{font-family:"Instrument Sans","Inter",sans-serif;font-size:26px;font-weight:850;color:var(--blue);letter-spacing:-.03em;line-height:1}
+  .gauge .ring small{font-size:10.5px;color:var(--muted);font-weight:750;margin-top:2px}
+  .gauge h3{margin:0 0 4px;font-family:"Instrument Sans","Inter",sans-serif;font-size:14px;font-weight:800;color:var(--text)}
+  .gauge p{margin:0;font-size:11.5px;line-height:1.45;color:var(--muted)}
+  .verdict{display:inline-flex;align-items:center;gap:6px;margin-top:9px;padding:4px 10px;border-radius:99px;font-size:11px;font-weight:800}
+  .verdict.good{background:var(--green-soft);color:var(--green-ink)}
+  .verdict.warn{background:var(--orange-soft);color:#9a3412}
+  .verdict.bad{background:var(--red-soft);color:var(--red-ink)}
   /* tabela-resumo por página */
   .sumtable{width:100%;border-collapse:collapse;font-size:13px}
   .sumtable th{text-align:right;color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:0 10px 9px;border-bottom:1px solid var(--border)}
@@ -1177,8 +1357,9 @@ const DASHBOARD_HTML = `<!doctype html>
   #hmFrame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
   #hmCanvas{position:absolute;inset:0;pointer-events:none}
   @media(max-width:1180px){.overview-modules{grid-template-columns:repeat(3,minmax(0,1fr))}}
-  @media(max-width:980px){body{padding-left:76px}.tabs{width:76px;padding:12px 9px}.side-mark{padding:6px 4px 12px}.side-mark .brand{font-size:0}.side-mark .brand:before{content:"IC";font-size:18px}.side-mark small,.side-help,.tab .txt{display:none}.tab{justify-content:center;padding:12px 8px}.tab .ico{width:28px;height:28px}.overview-grid,.lead-visual-grid{grid-template-columns:1fr}.metric-strip{grid-template-columns:repeat(2,minmax(0,1fr))}.dash-hero{align-items:flex-start;flex-direction:column}.hero-meta{justify-content:flex-start}}
-  @media(max-width:760px){.grid,.traffic-top,.signal-grid{grid-template-columns:1fr}.overview-modules{grid-template-columns:1fr}.wrap{padding:18px 16px}header{padding:12px 16px}.controls{width:100%}.controls select{max-width:100%}}
+  @media(max-width:980px){body{padding-left:76px}.tabs{width:76px;padding:12px 9px}.side-mark{padding:6px 4px 12px}.side-mark .brand{font-size:0}.side-mark .brand:before{content:"IC";font-size:18px}.side-mark small,.side-help,.tab .txt{display:none}.tab{justify-content:center;padding:12px 8px}.tab .ico{width:28px;height:28px}.overview-grid,.lead-visual-grid,.camp-grid,.hm-split{grid-template-columns:1fr}.metric-strip{grid-template-columns:repeat(2,minmax(0,1fr))}.dash-hero{align-items:flex-start;flex-direction:column}.hero-meta{justify-content:flex-start}}
+  @media(max-width:760px){.grid,.traffic-top,.signal-grid{grid-template-columns:1fr}.overview-modules{grid-template-columns:1fr}.wrap{padding:18px 16px}header{padding:12px 16px}.controls{width:100%}.controls select{max-width:100%}
+    .am-head{display:none}.am-row{grid-template-columns:28px minmax(0,1fr) repeat(2,minmax(56px,1fr));row-gap:9px}.am-row .am-go{display:none}.am-row .am-main{grid-column:2/-1}.am-levels{width:100%}.am-level{flex:1;justify-content:center}}
 </style>
 </head>
 <body>
@@ -1207,7 +1388,6 @@ const DASHBOARD_HTML = `<!doctype html>
   <button class="tab" id="tabbtn-overview" onclick="showTab('overview')"><span class="ico">▦</span><span class="txt">Visão geral</span></button>
   <button class="tab" id="tabbtn-leads" onclick="showTab('leads')"><span class="ico">◉</span><span class="txt">Leads</span></button>
   <button class="tab" id="tabbtn-campaigns" onclick="showTab('campaigns')"><span class="ico">↗</span><span class="txt">Campanhas</span></button>
-  <button class="tab" id="tabbtn-traffic" onclick="showTab('traffic')"><span class="ico">≋</span><span class="txt">Tráfego</span></button>
   <button class="tab" id="tabbtn-heatmap" onclick="showTab('heatmap')"><span class="ico">⌖</span><span class="txt">Mapa de calor</span></button>
   <button class="tab" id="tabbtn-health" onclick="showTab('health')"><span class="ico">✓</span><span class="txt">Saúde do tracking</span></button>
   <div class="side-help">Visão executiva primeiro, detalhe operacional nas abas. Bom pra abrir na TV e bater o olho sem garimpar tabela.</div>
@@ -1286,35 +1466,47 @@ const DASHBOARD_HTML = `<!doctype html>
   </section>
 
   <section class="tab-section" id="tab-campaigns">
-    <div class="kpis" id="campKpis"></div>
-    <div class="traffic-top">
-      <div class="card">
-        <div class="h2row"><h2>Origem</h2><span class="hint">utm_source</span></div>
-        <div id="campSources"></div>
-      </div>
-      <div class="card">
-        <div class="h2row"><h2>Mídia</h2><span class="hint">utm_medium</span></div>
-        <div id="campMediums"></div>
+    <div class="kpis metric-strip" id="campKpis"></div>
+    <div class="am-bar">
+      <div class="am-crumb" id="campCrumb"></div>
+      <div class="am-levels">
+        <button class="am-level" id="lvl-campaign" onclick="setCampLevel('campaign')">Campanhas <b id="lvlnCampaign">0</b></button>
+        <button class="am-level" id="lvl-adset" onclick="setCampLevel('adset')">Conjuntos <b id="lvlnAdset">0</b></button>
+        <button class="am-level" id="lvl-ad" onclick="setCampLevel('ad')">Anúncios <b id="lvlnAd">0</b></button>
       </div>
     </div>
-    <div class="card" style="margin-top:18px">
-      <div class="h2row"><h2>Campanhas</h2><span class="hint">utm_campaign · leads e crédito solicitado</span></div>
-      <div class="table-scroll" id="campTable"></div>
+    <div class="camp-grid">
+      <div class="card">
+        <div class="h2row"><h2 id="campChartTitle">Visitas e leads por dia</h2><span class="hint" id="campChartHint"></span></div>
+        <div class="chart-box chart-tall"><canvas id="campChart"></canvas></div>
+      </div>
+      <div class="card donut-card">
+        <div class="h2row"><h2>Mix de origem</h2><span class="hint" id="campSourceHint"></span></div>
+        <div class="donut-wrap"><canvas id="campSourceChart"></canvas></div>
+        <div class="legend-list" id="campSourceLegend"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="h2row"><h2 id="campRowsTitle">Campanhas</h2><span class="hint" id="campRowsHint"></span></div>
+      <div class="am-head"><span></span><span>Nome</span><span>Leads</span><span>Conversão</span><span>Crédito</span><span>Qualif.</span><span></span></div>
+      <div id="campRows"></div>
     </div>
     <div class="card" style="margin-top:18px">
-      <div class="h2row"><h2>Criativos / anúncios</h2><span class="hint">utm_content — só aparece se o anúncio enviar esse parâmetro</span></div>
-      <div class="table-scroll" id="campContent"></div>
+      <div class="h2row"><h2>Público dos leads</h2><span class="hint" id="campAudienceHint"></span></div>
+      <div class="aud-grid" id="campAudience"></div>
+      <p class="hint" style="display:block;margin:14px 0 0;line-height:1.5">
+        Idade, gênero e localização do Meta exigem a permissão <b>ads_read</b> na conta de
+        anúncios do cliente, que ainda não temos — quando liberar, entra aqui. O que está
+        acima é o público real dos <b>nossos</b> leads, medido no nosso banco.
+      </p>
     </div>
-  </section>
-
-  <section class="tab-section" id="tab-traffic">
-    <div class="traffic-top">
+    <div class="traffic-top" style="margin-top:18px">
       <div class="card">
         <div class="h2row"><h2>Origem dos leads</h2><span class="hint" id="sourcesHint"></span></div>
         <div id="sourcesList"></div>
       </div>
       <div class="card">
-        <div class="h2row"><h2>Resumo por página</h2></div>
+        <div class="h2row"><h2>Tráfego por página</h2><span class="hint">acessos do período</span></div>
         <div id="pagesSummary"></div>
       </div>
     </div>
@@ -1325,54 +1517,103 @@ const DASHBOARD_HTML = `<!doctype html>
   </section>
 
   <section class="tab-section" id="tab-heatmap">
-    <div class="card">
-      <div class="h2row">
-        <h2>Mapa de calor de cliques</h2>
-        <div class="controls">
-          <select id="hmPageSel">
-            <option value="link_bio">Link na bio</option>
-            <option value="landing_page">Simulação</option>
-            <option value="home_equity_lp">Home Equity</option>
-            <option value="home_equity_form">Typeform</option>
-          </select>
-          <select id="hmDevice"><option value="mobile" selected>Mobile</option><option value="tablet">Tablet</option><option value="desktop">Desktop</option></select>
-          <button id="hmLoad" class="primary">Carregar</button>
-        </div>
+    <div class="am-bar">
+      <div class="hm-modes">
+        <button class="hm-mode" id="hmmode-clicks" onclick="setHmMode('clicks')">Mapa de cliques</button>
+        <button class="hm-mode" id="hmmode-depth" onclick="setHmMode('depth')">Profundidade de rolagem</button>
+        <button class="hm-mode" id="hmmode-elements" onclick="setHmMode('elements')">Elementos clicados</button>
+        <button class="hm-mode" id="hmmode-steps" onclick="setHmMode('steps')">Etapas do formulário</button>
       </div>
-      <div class="hm-note" id="hmNote">Escolha a página e clique em <b>Carregar</b>. As manchas mostram onde as pessoas mais clicaram/tocaram. Role a página para ver o mapa inteiro.</div>
-      <div class="hm-stage" id="hmStage">
-        <div class="hm-viewport" id="hmViewport">
-          <div class="hm-inner" id="hmInner">
-            <div class="hm-sticky" id="hmSticky">
-              <iframe id="hmFrame" title="Página"></iframe>
-              <canvas id="hmCanvas"></canvas>
+      <div class="controls">
+        <select id="hmPageSel">
+          <option value="link_bio">Link na bio</option>
+          <option value="landing_page">Simulação</option>
+          <option value="home_equity_lp">Home Equity</option>
+          <option value="home_equity_form">Typeform</option>
+        </select>
+        <select id="hmDevice"><option value="mobile" selected>Mobile</option><option value="tablet">Tablet</option><option value="desktop">Desktop</option></select>
+        <button id="hmLoad" class="primary">Carregar</button>
+      </div>
+    </div>
+    <div class="kpis metric-strip" id="hmKpis"></div>
+
+    <div id="hmview-clicks">
+      <div class="card">
+        <div class="h2row"><h2>Onde as pessoas clicam</h2><span class="hint">quanto mais quente, mais toques naquele ponto</span></div>
+        <div class="hm-note" id="hmNote">Escolha a página e clique em <b>Carregar</b>. As manchas mostram onde as pessoas mais clicaram/tocaram. Role a página para ver o mapa inteiro.</div>
+        <div class="hm-stage" id="hmStage">
+          <div class="hm-viewport" id="hmViewport">
+            <div class="hm-inner" id="hmInner">
+              <div class="hm-sticky" id="hmSticky">
+                <iframe id="hmFrame" title="Página"></iframe>
+                <canvas id="hmCanvas"></canvas>
+              </div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="hmview-depth">
+      <div class="hm-split">
+        <div class="card">
+          <div class="h2row"><h2>Até onde a página é vista</h2><span class="hint">% de quem chegou em cada trecho</span></div>
+          <div class="depth-scale" id="depthBands"></div>
+          <div class="fold-note" id="depthNote"></div>
+        </div>
+        <div class="card">
+          <div class="h2row"><h2>Seções realmente lidas</h2><span class="hint">bloco a bloco</span></div>
+          <div id="depthSections"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="hmview-elements">
+      <div class="card">
+        <div class="h2row"><h2>Elementos mais clicados</h2><span class="hint">botões e links, do mais para o menos clicado</span></div>
+        <div id="elemBars"></div>
+      </div>
+    </div>
+
+    <div id="hmview-steps">
+      <div class="hm-split">
+        <div class="card">
+          <div class="h2row"><h2>Funil pergunta a pergunta</h2><span class="hint">quem chega em cada etapa e onde desiste</span></div>
+          <div id="stepFunnel"></div>
+        </div>
+        <div class="card">
+          <div class="h2row"><h2>Respostas escolhidas</h2><span class="hint">o que as pessoas respondem em cada pergunta</span></div>
+          <div id="stepChoices"></div>
         </div>
       </div>
     </div>
   </section>
 
   <section class="tab-section" id="tab-health">
-    <div class="kpis" id="healthKpis"></div>
-    <p class="hint" style="display:block;margin:-4px 0 16px">
-      Diagnóstico do rastreamento dos leads no período. Mostra quanto o nosso cookie de
-      edge (400 dias) resgatou do que o Safari/ITP teria cortado, quantos bots foram
-      barrados antes de sujar o Pixel, e a cobertura de dados que o Meta usa pra casar o
-      lead (Advanced Matching). Só vale pra leads capturados depois do deploy da Fase B.
-    </p>
-    <div class="traffic-top">
+    <div class="dash-hero">
+      <div>
+        <h1 id="healthVerdict">Saúde do rastreamento</h1>
+        <p id="healthSummary">Quanto dos seus leads chega inteiro no Meta e no RD.</p>
+      </div>
+      <div class="hero-meta" id="healthMeta"></div>
+    </div>
+    <div class="gauge-grid" id="healthGauges"></div>
+    <div class="card" style="margin-top:18px">
+      <div class="h2row"><h2>O que está acontecendo</h2><span class="hint">tradução dos números acima</span></div>
+      <div class="signal-grid" id="healthSignals"></div>
+    </div>
+    <div class="traffic-top" style="margin-top:18px">
       <div class="card">
-        <div class="h2row"><h2>Origem do fbp</h2><span class="hint">de onde veio o identificador do Meta</span></div>
+        <div class="h2row"><h2>De onde veio o identificador do Meta</h2><span class="hint">quem salvou o cookie</span></div>
         <div id="healthFbp"></div>
       </div>
       <div class="card">
-        <div class="h2row"><h2>Navegador</h2><span class="hint">dos leads do período</span></div>
+        <div class="h2row"><h2>Navegador dos leads</h2><span class="hint">onde eles preencheram</span></div>
         <div id="healthBrowser"></div>
       </div>
     </div>
     <div class="card" style="margin-top:18px">
-      <div class="h2row"><h2>Bots barrados</h2><span class="hint">crawlers que NÃO foram enviados à CAPI</span></div>
+      <div class="h2row"><h2>Robôs barrados</h2><span class="hint">crawlers que NÃO foram enviados à CAPI</span></div>
       <div id="healthBots"></div>
     </div>
   </section>
@@ -1407,7 +1648,7 @@ function badge(s){if(s==="ok")return '<span class="pill ok">entregue</span>';if(
 
 function showTab(name){
   activeTab=name;
-  ["overview","leads","campaigns","traffic","heatmap","health"].forEach(function(t){
+  ["overview","leads","campaigns","heatmap","health"].forEach(function(t){
     document.getElementById("tab-"+t).style.display=(t===name)?"block":"none";
     document.getElementById("tabbtn-"+t).classList.toggle("active",t===name);
   });
@@ -1429,6 +1670,7 @@ function loadAll(){
   var p2=fetch("${API}/leads"+qs+"&limit=500"+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderLeads);
   var p3=fetch("${API}/campaigns"+qs+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderCampaigns);
   var p5=fetch("${API}/health"+qs+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderHealth);
+  if(hmPageLoaded)loadPageMap(); // mantém o mapa da página em sincronia com o período
   Promise.all([p1,p2,p3,p5]).then(function(){
     document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--green-ink)">atualizado às '+new Date().toLocaleTimeString("pt-BR")+'</span>';
   }).catch(function(e){console.error(e);document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--red-ink)">erro ao carregar</span>';})
@@ -1477,7 +1719,7 @@ function renderOverviewModules(d){
   var cards=[
     {tab:"leads",ico:"◉",tag:"Leads",val:pretty(t.leads||0),sub:pretty(mql)+" qualificados · "+pretty(rdOk)+" entregues ao RD"},
     {tab:"campaigns",ico:"↗",tag:"Campanhas",val:pretty(withUtm),sub:pct(withUtm,sourceTotal)+"% com UTM · "+pretty(direct)+" sem UTM"},
-    {tab:"traffic",ico:"≋",tag:"Tráfego",val:pretty(t.visitors||0),sub:pretty(views)+" views · topo: "+topPage},
+    {tab:"campaigns",ico:"≋",tag:"Tráfego",val:pretty(t.visitors||0),sub:pretty(views)+" views · topo: "+topPage},
     {tab:"heatmap",ico:"⌖",tag:"Mapa de calor",val:pretty(clicks),sub:"cliques/taps mapeados nas páginas"},
     {tab:"health",ico:"✓",tag:"Saúde",val:pretty(metaOk),sub:"Meta ok · "+pretty(metaSkip)+" sem Lead por regra"}
   ];
@@ -1618,28 +1860,72 @@ function renderFunnel(steps){
 }
 
 /* ---- Saúde do tracking (Fase B): resgate ITP, bots, cobertura de PII ---- */
+/* ---- Saúde do tracking: medidores em vez de parede de número ----
+   Cada anel responde UMA pergunta em português e já vem com o veredito (bom/atenção/
+   ruim), pra não precisar saber o que é ITP ou Advanced Matching pra usar a aba. */
+function gaugeCard(title,valuePct,inner,desc,verdictTxt,verdict){
+  var color=verdict==="good"?"#10b981":(verdict==="warn"?"#f59e0b":"#ef4444");
+  var deg=Math.max(0,Math.min(100,valuePct))*3.6;
+  return '<div class="gauge">'+
+    '<div class="ring" style="background:conic-gradient('+color+' '+deg+'deg,#eef0f3 0)">'+
+      '<i><b>'+valuePct+'%</b><small>'+esc(inner)+'</small></i></div>'+
+    '<h3>'+esc(title)+'</h3><p>'+desc+'</p>'+
+    '<span class="verdict '+verdict+'">'+esc(verdictTxt)+'</span>'+
+  '</div>';
+}
+function verdictOf(v,good,warn){return v>=good?"good":(v>=warn?"warn":"bad");}
+
 function renderHealth(d){
   var t=(d&&d.totals)||{}, total=t.total||0;
+  var g=document.getElementById("healthGauges"), sig=document.getElementById("healthSignals");
   var fbp=document.getElementById("healthFbp"), br=document.getElementById("healthBrowser"), bots=document.getElementById("healthBots");
   if(d&&d.pendente){
-    document.getElementById("healthKpis").innerHTML='<div class="kpi"><div class="label">Aguardando migration 0008</div><div class="val">—</div><div class="sub"><b>rode o SQL 0008 no Console do D1 pra ligar o painel</b></div></div>';
-    fbp.innerHTML=br.innerHTML=bots.innerHTML='';
+    document.getElementById("healthVerdict").textContent="Painel aguardando a migration 0008";
+    document.getElementById("healthSummary").textContent="Rode o SQL 0008 no Console do D1 para ligar o diagnóstico de rastreamento.";
+    g.innerHTML=''; sig.innerHTML=''; fbp.innerHTML=br.innerHTML=bots.innerHTML='';
     return;
   }
-  var kpis=[
-    ["Leads no período",pretty(total),""],
-    ["Resgatados pelo cookie de edge",pretty(t.itp_recuperado),pct(t.itp_recuperado,total)+"% — fbp/fbc que o ITP teria cortado"],
-    ["Bots barrados",pretty(t.bots),"não foram enviados à CAPI"],
-    ["Enviados ao Meta (ok)",pretty(t.meta_ok),pct(t.meta_ok,total)+"% dos leads"],
-    ["Cobertura e-mail",pct(t.com_email,total)+"%",pretty(t.com_email)+" de "+pretty(total)],
-    ["Cobertura telefone",pct(t.com_telefone,total)+"%",pretty(t.com_telefone)+" de "+pretty(total)],
-    ["Cobertura nome",pct(t.com_nome,total)+"%",pretty(t.com_nome)+" de "+pretty(total)],
-    ["Com fbclid (atribuição)",pct(t.com_fbclid,total)+"%",pretty(t.com_fbclid)+" leads"]
-  ];
-  document.getElementById("healthKpis").innerHTML=kpis.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>'}).join("");
+  var entrega=pct(t.meta_ok,total);
+  var pii=Math.round((pct(t.com_email,total)+pct(t.com_telefone,total)+pct(t.com_nome,total))/3);
+  var atrib=pct(t.com_fbclid,total);
+  var limpo=total?100-pct(t.bots,total):100;
+
+  var vEnt=verdictOf(entrega,85,60), vPii=verdictOf(pii,80,55), vAtr=verdictOf(atrib,50,20), vLimpo=verdictOf(limpo,95,85);
+  var piores=[vEnt,vPii,vAtr,vLimpo];
+  var geral=piores.indexOf("bad")>=0?"bad":(piores.indexOf("warn")>=0?"warn":"good");
+  document.getElementById("healthVerdict").textContent=
+    geral==="good"?"Rastreamento saudável":(geral==="warn"?"Rastreamento funcionando, com pontos de atenção":"Rastreamento com problema");
+  document.getElementById("healthSummary").textContent=
+    "De "+total+" lead"+(total===1?"":"s")+" no período, "+pretty(t.meta_ok)+" chegaram no Meta e "+
+    pretty(t.itp_recuperado)+" só foram atribuídos porque o nosso cookie de servidor resgatou a origem.";
+  document.getElementById("healthMeta").innerHTML=
+    '<span class="chip">'+(d.page==="all"?"Todas as páginas":label(d.page||"all"))+'</span>'+
+    '<span class="chip">'+(d.range?d.range.start+" → "+d.range.end:"")+'</span>';
+
+  g.innerHTML=
+    gaugeCard("Entrega no Meta",entrega,"dos leads",
+      "Quantos leads a Meta aceitou pela CAPI. O que não chega aqui não vira conversão nem otimiza campanha.",
+      vEnt==="good"?"Entregando bem":(vEnt==="warn"?"Perdendo alguns":"Muita perda"),vEnt)+
+    gaugeCard("Dados para casar a pessoa",pii,"de cobertura",
+      "Média de e-mail, telefone e nome enviados. Quanto mais completo, maior a chance da Meta reconhecer quem é e dar o crédito da venda ao anúncio certo.",
+      vPii==="good"?"Boa qualidade":(vPii==="warn"?"Dá pra melhorar":"Cobertura baixa"),vPii)+
+    gaugeCard("Origem identificada",atrib,"com clique",
+      "Leads que chegaram com o identificador de clique do anúncio (fbclid). Sem ele a Meta não sabe qual anúncio trouxe a pessoa.",
+      vAtr==="good"?"Atribuição forte":(vAtr==="warn"?"Parcial":"Pouca atribuição"),vAtr)+
+    gaugeCard("Tráfego limpo",limpo,"humanos",
+      "Parte dos leads que veio de gente de verdade. Os robôs identificados são bloqueados antes de sujar o Pixel.",
+      vLimpo==="good"?"Sem poluição":(vLimpo==="warn"?"Alguns robôs":"Muito robô"),vLimpo);
+
+  sig.innerHTML=signalCards([
+    {name:"Resgatados pelo cookie",n:t.itp_recuperado||0,sub:"leads que o Safari/ITP teria feito perder a origem e o nosso cookie de servidor salvou",hot:true},
+    {name:"Robôs barrados",n:t.bots||0,sub:"crawlers bloqueados antes de virarem conversão falsa no Pixel"},
+    {name:"Sem cookie do Meta",n:t.sem_cookie_meta||0,sub:"navegador chegou sem cookie do Pixel no envio (bloqueador ou navegação privada)"},
+    {name:"Entregues no Meta",n:t.meta_ok||0,sub:"eventos aceitos pela CAPI no período",hot:true}
+  ],Math.max(total,1));
+
   fbp.innerHTML=kvBars(d.by_fbp_source, total, "Sem dados no período.");
   br.innerHTML=kvBars(d.by_browser, total, "Sem dados no período.");
-  bots.innerHTML=kvBars(d.by_bot, total, "Nenhum bot registrado no período.");
+  bots.innerHTML=kvBars(d.by_bot, total, "Nenhum robô registrado no período.");
 }
 // adapta [{k,n}] pro barList({lbl,val,sub,w})
 function kvBars(rows, total, emptyMsg){
@@ -1651,57 +1937,234 @@ function kvBars(rows, total, emptyMsg){
   }));
 }
 
-/* ---- Campanhas: de onde vêm os leads (origem, mídia, campanha, criativo) ---- */
+/* ---- Campanhas: navegação campanha > conjunto > anúncio, no espírito do
+   Gerenciador de Anúncios do Meta (as UTMs dos anúncios carregam exatamente esses
+   3 níveis: utm_campaign / utm_medium / utm_content). A API manda as combinações
+   cruas; a agregação por nível é feita aqui, então trocar de nível é instantâneo. */
+var campData=null, campChart=null, campSourceChart=null;
+var campLevel="campaign", campSel={camp:null,med:null};
+var LEVEL_NAME={campaign:"Campanhas",adset:"Conjuntos de anúncios",ad:"Anúncios"};
+var LEVEL_ONE={campaign:"campanha",adset:"conjunto",ad:"anúncio"};
+
+function brlShort(v){
+  v=Number(v||0);
+  if(v>=1e6)return "R$ "+(v/1e6).toFixed(v>=1e7?0:1).replace(".",",")+" mi";
+  if(v>=1e3)return "R$ "+Math.round(v/1e3)+" mil";
+  return "R$ "+v;
+}
+function campKeyOf(r,level){return level==="campaign"?r.camp:(level==="adset"?r.med:r.cont);}
+function campInScope(r,level){
+  if(campSel.camp&&r.camp!==campSel.camp)return false;
+  if(level==="ad"&&campSel.med&&r.med!==campSel.med)return false;
+  return true;
+}
+function campAggregate(level){
+  var map={};
+  ((campData&&campData.rows)||[]).forEach(function(r){
+    if(!campInScope(r,level))return;
+    var k=campKeyOf(r,level);
+    if(!map[k])map[k]={k:k,leads:0,mql:0,desq:0,valor:0,srcs:{},kids:{}};
+    var m=map[k];
+    m.leads+=Number(r.leads||0); m.mql+=Number(r.mql||0);
+    m.desq+=Number(r.desq||0);   m.valor+=Number(r.valor||0);
+    m.srcs[r.src]=1;
+    m.kids[level==="campaign"?r.med:r.cont]=1;
+  });
+  return Object.keys(map).map(function(k){
+    var m=map[k]; m.srcList=Object.keys(m.srcs); m.kidsN=Object.keys(m.kids).length; return m;
+  }).sort(function(a,b){return b.leads-a.leads});
+}
+function campVisitsMap(level){
+  var map={};
+  ((campData&&campData.visits)||[]).forEach(function(r){
+    if(!campInScope(r,level))return;
+    map[campKeyOf(r,level)]=(map[campKeyOf(r,level)]||0)+Number(r.n||0);
+  });
+  return map;
+}
+function campCount(level){
+  var seen={},n=0;
+  ((campData&&campData.rows)||[]).forEach(function(r){
+    if(!campInScope(r,level))return;
+    var k=campKeyOf(r,level);
+    if(!seen[k]){seen[k]=1;n++;}
+  });
+  return n;
+}
+function setCampLevel(level){ campLevel=level; renderCampScope(); }
+function campDrill(level,key){
+  if(level==="campaign"){campSel.camp=key;campSel.med=null;campLevel="adset";}
+  else if(level==="adset"){campSel.med=key;campLevel="ad";}
+  renderCampScope();
+}
+function campReset(to){
+  if(to==="all"){campSel.camp=null;campSel.med=null;campLevel="campaign";}
+  else if(to==="camp"){campSel.med=null;campLevel="adset";}
+  renderCampScope();
+}
+
 function renderCampaigns(d){
-  var t=d.totals||{total:0,com_utm:0,direto:0,valor:0};
+  campData=d||{};
+  // se a seleção antiga sumiu do novo período, volta pro topo em vez de mostrar vazio
+  var rows=campData.rows||[];
+  var hasCamp=!campSel.camp||rows.some(function(r){return r.camp===campSel.camp});
+  var hasMed=!campSel.med||rows.some(function(r){return r.camp===campSel.camp&&r.med===campSel.med});
+  if(!hasCamp){campSel.camp=null;campSel.med=null;campLevel="campaign";}
+  else if(!hasMed){campSel.med=null;if(campLevel==="ad")campLevel="adset";}
+
+  var t=campData.totals||{total:0,com_utm:0,direto:0,valor:0,mql:0};
+  var visitsTotal=(campData.visits||[]).reduce(function(a,x){return a+Number(x.n||0)},0);
   var kpis=[
-    ["Total de leads",pretty(t.total),""],
-    ["Vindos de campanha",pretty(t.com_utm),pct(t.com_utm,t.total)+"% do total"],
-    ["Diretos / sem UTM",pretty(t.direto),pct(t.direto,t.total)+"% do total"],
-    ["Crédito solicitado",brl(t.valor),"soma dos leads do período"]
+    ["Leads no período",pretty(t.total),pretty(t.com_utm)+" vieram de campanha"],
+    ["Visitas rastreadas",pretty(visitsTotal),visitsTotal?"sessões no site":"sem sessões no período"],
+    ["Conversão do site",visitsTotal?pct(t.total,visitsTotal)+"%":"—","visita → lead"],
+    ["Crédito solicitado",brlShort(t.valor),"soma dos leads"],
+    ["Qualificados",pretty(t.mql),pct(t.mql,t.total)+"% dos leads"]
   ];
   document.getElementById("campKpis").innerHTML=kpis.map(function(k){
-    return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub">'+k[2]+'</div></div>';
+    return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>';
   }).join("");
-
-  barsInto("campSources", d.by_source||[], "Nenhum lead no período.");
-  barsInto("campMediums", d.by_medium||[], "Nenhum lead no período.");
-
-  // Campanhas: campanha | origem | mídia | leads | crédito | ticket
-  var camps=d.by_campaign||[];
-  document.getElementById("campTable").innerHTML = !camps.length
-    ? '<div class="empty">Nenhuma campanha no período.</div>'
-    : '<table class="sumtable"><thead><tr><th>Campanha</th><th style="text-align:left">Origem</th><th style="text-align:left">Mídia</th><th>Leads</th><th>Crédito</th><th>Ticket médio</th></tr></thead><tbody>'+
-      camps.map(function(c){
-        return '<tr><td title="'+esc(c.k)+'">'+esc(c.k)+'</td>'+
-          '<td style="text-align:left;font-weight:500;color:var(--text)">'+esc(c.src)+'</td>'+
-          '<td style="text-align:left;font-weight:500;color:var(--muted)" title="'+esc(c.med)+'">'+esc(c.med)+'</td>'+
-          '<td class="num">'+c.leads+'</td><td class="num">'+brl(c.valor)+'</td>'+
-          '<td class="num">'+(c.leads?brl(Math.round(c.valor/c.leads)):"-")+'</td></tr>';
-      }).join("")+'</tbody></table>';
-
-  // Criativos (utm_content)
-  var conts=d.by_content||[];
-  var semCriativo=conts.length===1&&conts[0].k==="(sem criativo)";
-  document.getElementById("campContent").innerHTML = (!conts.length||semCriativo)
-    ? '<div class="empty">Nenhum criativo identificado. Os anúncios precisam enviar <b>utm_content</b> no link para essa quebra funcionar.</div>'
-    : '<table class="sumtable"><thead><tr><th>Criativo</th><th style="text-align:left">Campanha</th><th style="text-align:left">Origem</th><th>Leads</th><th>Crédito</th></tr></thead><tbody>'+
-      conts.map(function(c){
-        return '<tr><td title="'+esc(c.k)+'">'+esc(c.k)+'</td>'+
-          '<td style="text-align:left;font-weight:500;color:var(--muted)" title="'+esc(c.camp)+'">'+esc(c.camp)+'</td>'+
-          '<td style="text-align:left;font-weight:500;color:var(--text)">'+esc(c.src)+'</td>'+
-          '<td class="num">'+c.leads+'</td><td class="num">'+brl(c.valor)+'</td></tr>';
-      }).join("")+'</tbody></table>';
+  renderCampScope();
 }
-// lista de barras a partir de [{k, leads, valor}]
-function barsInto(id, rows, emptyMsg){
-  var box=document.getElementById(id);
-  if(!rows.length){box.innerHTML='<div class="empty">'+emptyMsg+'</div>';return}
-  var total=rows.reduce(function(a,x){return a+(x.leads||0)},0);
-  var max=Math.max.apply(null,rows.map(function(x){return x.leads||0}));
-  box.innerHTML=barList(rows.map(function(x){
-    return {lbl:x.k, val:x.leads, sub:total?Math.round(x.leads/total*100)+"%":"", w:max?x.leads/max:0};
-  }));
+
+function renderCampScope(){
+  if(!campData)return;
+  ["campaign","adset","ad"].forEach(function(l){
+    var btn=document.getElementById("lvl-"+l);
+    if(btn)btn.classList.toggle("active",l===campLevel);
+  });
+  document.getElementById("lvlnCampaign").textContent=campCount("campaign");
+  document.getElementById("lvlnAdset").textContent=campCount("adset");
+  document.getElementById("lvlnAd").textContent=campCount("ad");
+
+  // Trilha (breadcrumb): mostra onde você está e deixa voltar um nível por vez.
+  var crumb='<button onclick="campReset(\\'all\\')">Todas as campanhas</button>';
+  if(campSel.camp){
+    crumb+='<span class="sep">›</span>';
+    crumb+=campSel.med?'<button onclick="campReset(\\'camp\\')">'+esc(campSel.camp)+'</button>'
+                      :'<span class="now" title="'+esc(campSel.camp)+'">'+esc(campSel.camp)+'</span>';
+  }
+  if(campSel.med){crumb+='<span class="sep">›</span><span class="now" title="'+esc(campSel.med)+'">'+esc(campSel.med)+'</span>';}
+  document.getElementById("campCrumb").innerHTML=crumb;
+
+  renderCampRows();
+  renderCampChart();
+  renderCampSources();
+  renderCampAudience();
+}
+
+function renderCampRows(){
+  var level=campLevel;
+  var rows=campAggregate(level), visits=campVisitsMap(level);
+  var box=document.getElementById("campRows");
+  document.getElementById("campRowsTitle").textContent=LEVEL_NAME[level];
+  var totalLeads=rows.reduce(function(a,x){return a+x.leads},0);
+  var scopeTxt=campSel.med?("conjunto "+campSel.med):(campSel.camp?("campanha "+campSel.camp):"todo o período");
+  document.getElementById("campRowsHint").textContent=rows.length+" "+(rows.length===1?LEVEL_ONE[level]:LEVEL_ONE[level]+"s")+" · "+scopeTxt;
+  if(!rows.length){
+    box.innerHTML='<div class="empty">Nenhum '+LEVEL_ONE[level]+' com lead neste recorte.'+
+      (level==="ad"?' Os anúncios só aparecem quando o link do Meta manda <b>utm_content</b> com o nome do criativo.':'')+'</div>';
+    return;
+  }
+  var max=Math.max.apply(null,rows.map(function(x){return x.leads}).concat([1]));
+  var drillable=level!=="ad";
+  box.innerHTML=rows.map(function(r,i){
+    var v=visits[r.k]||0;
+    var conv=v?pct(r.leads,v)+"%":"—";
+    var kidsTxt=level==="campaign"?(r.kidsN+" conjunto"+(r.kidsN===1?"":"s")):(level==="adset"?(r.kidsN+" anúncio"+(r.kidsN===1?"":"s")):"");
+    var tags='<span class="am-tag">'+esc(r.srcList.slice(0,2).join(" · "))+'</span>'+
+             (kidsTxt?'<span class="am-tag">'+kidsTxt+'</span>':'')+
+             (v?'<span class="am-tag">'+v+' visitas</span>':'');
+    return '<button class="am-row'+(drillable?'':' is-flat')+'"'+(drillable?' onclick="campDrill(\\''+level+'\\',this.dataset.k)"':'')+
+      ' data-k="'+esc(r.k)+'">'+
+      '<span class="am-rank">'+(i+1)+'</span>'+
+      '<span class="am-main">'+
+        '<span class="am-name" title="'+esc(r.k)+'">'+esc(r.k)+'</span>'+
+        '<span class="am-tags">'+tags+'</span>'+
+        '<span class="am-track"><span style="width:'+Math.max(4,Math.round(r.leads/max*100))+'%"></span></span>'+
+      '</span>'+
+      '<span class="am-metric"><b>'+r.leads+'</b><small>leads</small></span>'+
+      '<span class="am-metric'+(v?' hot':'')+'"><b>'+conv+'</b><small>conversão</small></span>'+
+      '<span class="am-metric"><b>'+brlShort(r.valor)+'</b><small>crédito</small></span>'+
+      '<span class="am-metric"><b>'+pct(r.mql,r.leads)+'%</b><small>qualif.</small></span>'+
+      '<span class="am-go">'+(drillable?'›':'')+'</span>'+
+    '</button>';
+  }).join("")+(totalLeads?'':'');
+}
+
+function renderCampChart(){
+  var byDay={};
+  ((campData&&campData.daily)||[]).forEach(function(r){
+    if(campSel.camp&&r.camp!==campSel.camp)return;
+    byDay[r.d]=byDay[r.d]||{l:0,v:0}; byDay[r.d].l+=Number(r.n||0);
+  });
+  ((campData&&campData.daily_visits)||[]).forEach(function(r){
+    if(campSel.camp&&r.camp!==campSel.camp)return;
+    byDay[r.d]=byDay[r.d]||{l:0,v:0}; byDay[r.d].v+=Number(r.n||0);
+  });
+  var days=Object.keys(byDay).sort();
+  var ctx=document.getElementById("campChart");
+  if(campChart){campChart.destroy();campChart=null;}
+  document.getElementById("campChartTitle").textContent=campSel.med?("Conjunto: "+campSel.med):(campSel.camp?("Campanha: "+campSel.camp):"Visitas e leads por dia");
+  var since=(campData&&campData.visits_since)||null;
+  document.getElementById("campChartHint").textContent=since?("visitas contadas desde "+since.split("-").reverse().join("/")):"";
+  if(!days.length){
+    ctx.parentNode.innerHTML='<div class="empty">Sem movimento no período.</div>';
+    return;
+  }
+  campChart=new Chart(ctx,{type:"line",data:{labels:days.map(function(d){return d.slice(5)}),datasets:[
+    {label:"Visitas",data:days.map(function(d){return byDay[d].v}),borderColor:"rgba(11,45,114,.32)",backgroundColor:"rgba(11,45,114,.06)",fill:true,tension:.38,pointRadius:0,borderWidth:3},
+    {label:"Leads",data:days.map(function(d){return byDay[d].l}),borderColor:"#f97316",backgroundColor:"rgba(249,115,22,.10)",fill:false,tension:.38,pointRadius:2,pointBackgroundColor:"#f97316",borderWidth:3}
+  ]},options:{maintainAspectRatio:false,interaction:{intersect:false,mode:"index"},plugins:{legend:{display:true,position:"bottom",labels:{boxWidth:22,usePointStyle:true,pointStyle:"line",color:"#6b7280",font:{family:"Inter",size:12,weight:"600"}}}},scales:{x:{ticks:{color:"#9ca3af"},grid:{display:false}},y:{beginAtZero:true,ticks:{color:"#9ca3af"},grid:{color:"#eef0f3"}}}}});
+}
+
+function renderCampSources(){
+  var map={};
+  ((campData&&campData.rows)||[]).forEach(function(r){
+    if(campSel.camp&&r.camp!==campSel.camp)return;
+    if(campSel.med&&r.med!==campSel.med)return;
+    var k=(!r.src||r.src==="direto")?"Sem UTM / direto":r.src;
+    map[k]=(map[k]||0)+Number(r.leads||0);
+  });
+  var keys=Object.keys(map).sort(function(a,b){return map[b]-map[a]}).slice(0,6);
+  var total=keys.reduce(function(a,k){return a+map[k]},0);
+  document.getElementById("campSourceHint").textContent=total?(total+(total===1?" lead":" leads")):"";
+  var ctx=document.getElementById("campSourceChart");
+  if(campSourceChart){campSourceChart.destroy();campSourceChart=null;}
+  var legend=document.getElementById("campSourceLegend");
+  if(!keys.length){legend.innerHTML='<div class="empty">Sem leads neste recorte.</div>';return;}
+  campSourceChart=new Chart(ctx,{type:"doughnut",data:{labels:keys,datasets:[{data:keys.map(function(k){return map[k]}),backgroundColor:CHART_PALETTE,borderColor:"#fff",borderWidth:4,hoverOffset:4}]},options:{maintainAspectRatio:false,cutout:"66%",plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return " "+c.label+": "+c.raw+" ("+pct(c.raw,total)+"%)";}}}}}});
+  legend.innerHTML=keys.map(function(k,i){
+    return '<div class="legend-item"><span class="legend-dot" style="background:'+CHART_PALETTE[i%CHART_PALETTE.length]+'"></span>'+
+      '<span class="name" title="'+esc(k)+'">'+esc(k)+'</span><span class="num">'+map[k]+' · '+pct(map[k],total)+'%</span></div>';
+  }).join("");
+}
+
+/* Público POSSÍVEL: o que sabemos dos nossos próprios leads (dispositivo, navegador,
+   cidade, faixa de crédito, tipo de imóvel). Idade/gênero do Meta exigiriam ads_read. */
+function renderCampAudience(){
+  var box=document.getElementById("campAudience");
+  var dims={};
+  ((campData&&campData.audience)||[]).forEach(function(r){
+    if(campSel.camp&&r.camp!==campSel.camp)return;
+    dims[r.dim]=dims[r.dim]||{};
+    dims[r.dim][r.k]=(dims[r.dim][r.k]||0)+Number(r.n||0);
+  });
+  var names=Object.keys(dims);
+  document.getElementById("campAudienceHint").textContent=campSel.camp?("campanha "+campSel.camp):"todos os leads do período";
+  if(!names.length){
+    box.innerHTML='<div class="empty">Sem dados de público no período. Dispositivo e navegador só existem para leads capturados depois de 22/07/2026; cidade só vem do formulário completo.</div>';
+    return;
+  }
+  box.innerHTML=names.map(function(dim){
+    var m=dims[dim];
+    var keys=Object.keys(m).sort(function(a,b){return m[b]-m[a]}).slice(0,5);
+    var total=Object.keys(m).reduce(function(a,k){return a+m[k]},0);
+    var max=Math.max.apply(null,keys.map(function(k){return m[k]}).concat([1]));
+    return '<div class="aud-card"><h3>'+esc(dim)+'</h3>'+
+      barList(keys.map(function(k){return {lbl:k,val:m[k],sub:pct(m[k],total)+"%",w:m[k]/max};}))+
+    '</div>';
+  }).join("");
 }
 
 function renderTraffic(d){
@@ -1768,29 +2231,50 @@ function leadHasMetaLead(l){
   return (l.lead_kind==="home_equity"||l.lead_kind==="home_equity_mql"||l.lead_kind==="auto")&&l.meta_status==="ok";
 }
 function leadHasMql(l){return l.lead_kind==="home_equity_mql"&&l.meta_status==="ok";}
-function eventDot(label,state){
-  var cls=state==="sent"?"sent":(state==="skip"?"skip":(state==="err"?"err":"off"));
-  return '<span class="event-dot '+cls+'">'+label+'</span>';
+function eventDot(label,state,title){
+  var ok={sent:1,skip:1,err:1,bot:1,off:1};
+  var cls=ok[state]?state:"off";
+  return '<span class="event-dot '+cls+'"'+(title?' title="'+esc(title)+'"':'')+'>'+label+'</span>';
+}
+/* Traduz o status cru gravado no D1 pro selo colorido. Cada cor tem UM significado:
+   verde = entregue · laranja = não enviado de propósito (regra) · roxo = robô barrado
+   antes de sujar o Pixel · vermelho = FALHA de verdade (a API recusou/deu erro) ·
+   cinza = não se aplica a este tipo de lead. O status cru vai no title (hover). */
+function statusDot(label,status,applies,skipWhy){
+  if(!applies)return eventDot(label,"off","Não se aplica a este tipo de lead");
+  if(status==="ok")return eventDot(label,"sent","Entregue com sucesso");
+  if(status==="nao_enviado")return eventDot(label,"skip",skipWhy||"Não enviado por regra de qualificação");
+  if(status==="bot_skip")return eventDot(label,"bot","Acesso identificado como robô — não enviado de propósito");
+  if(status==null||status==="")return eventDot(label,"off",skipWhy||"Sem registro de envio");
+  return eventDot(label,"err","Falha no envio — resposta da API: "+status);
 }
 function leadEventDot(l,type){
+  var kind=l.lead_kind||"";
   if(type==="rd"){
-    if(l.rd_status==="ok")return eventDot("RD","sent");
-    if(l.rd_status==="nao_enviado")return eventDot("RD","skip");
-    if(l.rd_status&&l.rd_status!=="")return eventDot("RD","err");
-    return eventDot("RD","off");
+    // descarte (sem imóvel e sem veículo) nunca é enviado: é decisão de arquitetura,
+    // não erro — por isso laranja "por regra" e não cinza/vermelho.
+    if(kind==="descarte")return statusDot("RD",l.rd_status||"nao_enviado",true,"Sem imóvel e sem veículo — fica só no nosso banco");
+    return statusDot("RD",l.rd_status,true);
   }
   if(type==="lead"){
-    if(leadHasMetaLead(l))return eventDot("Lead","sent");
-    if(l.meta_status==="nao_enviado")return eventDot("Lead","skip");
-    if(l.meta_status&&l.meta_status!=="")return eventDot("Lead","err");
-    return eventDot("Lead","off");
+    var appliesLead=kind==="home_equity"||kind==="home_equity_mql"||kind==="auto";
+    return statusDot("Lead",l.meta_status,appliesLead||!!l.meta_status,
+      appliesLead?null:"Lead desqualificado não dispara evento de conversão no Meta");
   }
   if(type==="mql"){
-    if(leadHasMql(l))return eventDot("MQL","sent");
-    if(l.lead_kind==="home_equity_mql")return l.meta_status==="nao_enviado"?eventDot("MQL","skip"):eventDot("MQL","err");
-    return eventDot("MQL","off");
+    if(kind!=="home_equity_mql")return eventDot("MQL","off","Só leads qualificados disparam MQL");
+    return statusDot("MQL",l.meta_status,true);
   }
   return eventDot(type,"off");
+}
+function eventLegend(){
+  return '<div class="event-legend">'+
+    eventDot("entregue","sent","Chegou no destino")+
+    eventDot("não enviado por regra","skip","De propósito: o lead não se qualifica para esse envio")+
+    eventDot("robô barrado","bot","Crawler detectado — bloqueado antes de sujar o Pixel")+
+    eventDot("falha no envio","err","A API respondeu com erro — vale investigar")+
+    eventDot("não se aplica","off","Esse envio não existe para este tipo de lead")+
+  '</div>';
 }
 function pageLeadLink(source){
   var u=PAGE_URLS[source], txt=label(source);
@@ -1809,7 +2293,7 @@ function renderLeads(d){
   document.getElementById("leadKpis").innerHTML=lk.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub">'+k[2]+'</div></div>'}).join("");
   renderLeadVisuals(lastLeads);
   if(!n){document.getElementById("leads").innerHTML='<div class="empty">Nenhum lead para este filtro.</div>';return}
-  var html='<div class="event-legend">'+eventDot("enviado","sent")+eventDot("não enviado por regra","skip")+eventDot("não aplicável","off")+'</div>';
+  var html=eventLegend();
   html+='<table><thead><tr><th>Data</th><th>Nome</th><th>Classificação</th><th>Página</th><th>Crédito</th><th>RD</th><th>Meta Lead</th><th>MQL</th><th></th></tr></thead><tbody>';
   lastLeads.forEach(function(l,i){
     html+='<tr><td>'+(l.created_at||"").slice(0,16)+'</td>'+
@@ -2064,15 +2548,176 @@ function loadHeatmap(){
 }
 function pdataGuard(p){return p.then(function(d){return d}).catch(function(){return null});}
 
+/* ---- Mapa de calor: os outros 3 modos ----
+   Tudo sai do /api/pagemap, que lê o que já gravamos: evento scroll_depth (marcos
+   25/50/75/100), section_view (blocos com data-section), tabela clicks (elementos)
+   e os eventos form_step/form_step_choice do formulário multi-step. */
+var hmMode="clicks", hmPageData=null, hmPageLoaded="";
+var HM_VIEWS=["clicks","depth","elements","steps"];
+
+function setHmMode(mode){
+  hmMode=mode;
+  HM_VIEWS.forEach(function(m){
+    var v=document.getElementById("hmview-"+m);
+    if(v)v.style.display=(m===mode)?"block":"none";
+    var b=document.getElementById("hmmode-"+m);
+    if(b)b.classList.toggle("active",m===mode);
+  });
+  var pageNow=document.getElementById("hmPageSel").value;
+  if(mode!=="clicks"&&hmPageLoaded!==pageNow)loadPageMap();
+  if(mode==="clicks"){ if(!hmH0)loadHeatmap(); else setTimeout(measureAndLayout,30); }
+}
+
+function loadPageMap(){
+  var page=document.getElementById("hmPageSel").value;
+  var days=document.getElementById("rangeSel").value;
+  var qs="?page="+encodeURIComponent(page)+"&start="+daysAgo(parseInt(days)-1)+"&end="+new Date().toISOString().slice(0,10);
+  document.getElementById("hmKpis").innerHTML='<div class="kpi"><div class="label">Carregando…</div><div class="val">—</div><div class="sub"></div></div>';
+  fetch("${API}/pagemap"+qs+"&_="+Date.now()).then(function(r){return r.json()}).then(function(d){
+    hmPageData=d; hmPageLoaded=page;
+    renderPageMapKpis(d); renderDepth(d); renderSections(d); renderElements(d); renderSteps(d);
+  }).catch(function(){
+    document.getElementById("hmKpis").innerHTML='<div class="kpi"><div class="label">Erro</div><div class="val">—</div><div class="sub">não consegui carregar</div></div>';
+  });
+}
+
+function scrollReach(d){
+  var m={25:0,50:0,75:0,100:0};
+  (d.scroll||[]).forEach(function(r){ if(m[r.pct]!==undefined)m[r.pct]=Number(r.n||0); });
+  return m;
+}
+function avgDepth(d){
+  // aproximação honesta: cada pessoa conta pelo marco MAIS FUNDO que atingiu.
+  var m=scrollReach(d), s=d.sessions||0;
+  if(!s)return 0;
+  var only25=Math.max(0,m[25]-m[50]), only50=Math.max(0,m[50]-m[75]), only75=Math.max(0,m[75]-m[100]);
+  var nunca=Math.max(0,s-m[25]);
+  var soma=nunca*12+only25*37+only50*62+only75*87+m[100]*100;
+  return Math.round(soma/s);
+}
+
+function renderPageMapKpis(d){
+  var m=scrollReach(d), s=d.sessions||0;
+  var clicks=(d.elements||[]).reduce(function(a,x){return a+Number(x.n||0)},0);
+  var steps=(d.steps||[]).length;
+  var kpis=[
+    ["Sessões na página",pretty(s),pretty(d.views)+" acessos"],
+    ["Rolagem média",s?avgDepth(d)+"%":"—","da altura da página"],
+    ["Chegaram ao fim",s?pct(m[100],s)+"%":"—",pretty(m[100])+" pessoas"],
+    ["Cliques registrados",pretty(clicks),(d.elements||[]).length+" elementos diferentes"],
+    [steps?"Etapas medidas":"Seções lidas",steps?String(steps):String((d.sections||[]).length),steps?"perguntas do formulário":"blocos com data-section"]
+  ];
+  document.getElementById("hmKpis").innerHTML=kpis.map(function(k){
+    return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>';
+  }).join("");
+}
+
+function renderDepth(d){
+  var box=document.getElementById("depthBands"), note=document.getElementById("depthNote");
+  var s=d.sessions||0, m=scrollReach(d);
+  if(!s){box.innerHTML='<div class="empty">Sem acessos nesta página no período.</div>';note.textContent="";return;}
+  var bands=[
+    ["Primeira dobra (topo)",s,"todo mundo que abriu a página"],
+    ["Passou de 25%",m[25],"rolou para além do início"],
+    ["Chegou na metade",m[50],"metade da página"],
+    ["Chegou em 75%",m[75],"trecho final"],
+    ["Chegou ao fim",m[100],"viu o rodapé"]
+  ];
+  box.innerHTML=bands.map(function(b){
+    var p=pct(b[1],s);
+    // a barra de fundo É o dado: quanto mais larga e quente, mais gente chegou ali
+    var color=p>=70?"#10b981":(p>=40?"#f59e0b":"#ef4444");
+    return '<div class="depth-band">'+
+      '<span class="bg" style="background:linear-gradient(90deg,'+color+' '+p+'%,transparent '+p+'%)"></span>'+
+      '<span class="row"><span class="who">'+esc(b[0])+'</span><span class="pc">'+p+'%</span></span>'+
+      '<div class="sub">'+pretty(b[1])+' de '+s+' sessões · '+esc(b[2])+'</div>'+
+    '</div>';
+  }).join("");
+  var perdaTopo=100-pct(m[25],s);
+  note.innerHTML='<b>Leitura rápida:</b> '+perdaTopo+'% das pessoas não passam do topo da página — '+
+    'é o trecho que precisa segurar a atenção. A rolagem média é de <b>'+avgDepth(d)+'%</b> da altura total. '+
+    'Os marcos são 25/50/75/100%, contados uma vez por sessão.';
+}
+
+function renderSections(d){
+  var box=document.getElementById("depthSections");
+  var rows=(d.sections||[]).filter(function(r){return r.k});
+  var s=d.sessions||0;
+  if(!rows.length){box.innerHTML='<div class="empty">Esta página não tem blocos marcados com <b>data-section</b>.</div>';return;}
+  var max=Math.max.apply(null,rows.map(function(r){return r.n}).concat([1]));
+  box.innerHTML=barList(rows.map(function(r){
+    return {lbl:r.k,val:r.n,sub:s?pct(r.n,s)+"%":"",w:r.n/max};
+  }));
+}
+
+function renderElements(d){
+  var box=document.getElementById("elemBars");
+  var rows=d.elements||[];
+  if(!rows.length){box.innerHTML='<div class="empty">Nenhum clique registrado nesta página no período.</div>';return;}
+  var total=rows.reduce(function(a,r){return a+Number(r.n||0)},0);
+  var max=Math.max.apply(null,rows.map(function(r){return r.n}).concat([1]));
+  box.innerHTML='<div class="hint" style="display:block;margin:0 0 12px">'+total+' cliques em '+rows.length+' elementos · o rótulo é o texto do botão/link</div>'+
+    barList(rows.map(function(r){
+      var extra=(r.tipo?r.tipo:(r.id?"#"+r.id:""));
+      return {lbl:r.k+(extra?"  ("+extra+")":""),val:r.n,sub:r.s+" sessões",w:r.n/max};
+    }));
+}
+
+function renderSteps(d){
+  var funil=document.getElementById("stepFunnel"), esc2=document.getElementById("stepChoices");
+  var steps=(d.steps||[]).filter(function(r){return r.k});
+  if(!steps.length){
+    var msg=(d.page==="home_equity_form")
+      ? 'Ainda sem dados de etapa. O rastreio pergunta a pergunta entrou agora — os números aparecem conforme as pessoas usarem o formulário.'
+      : 'Esta página não tem etapas: é uma página única, sem perguntas em sequência. Use os outros modos.';
+    funil.innerHTML='<div class="empty">'+msg+'</div>';
+    esc2.innerHTML='<div class="empty">Sem respostas registradas.</div>';
+    return;
+  }
+  var first=Number(steps[0].n||0);
+  funil.innerHTML=steps.map(function(st,i){
+    var n=Number(st.n||0);
+    var prev=i?Number(steps[i-1].n||0):n;
+    var drop=prev?Math.max(0,prev-n):0;
+    return '<div class="step-row">'+
+      '<span class="step-n">'+(i+1)+'</span>'+
+      '<span><span class="step-q" title="'+esc(st.title||st.k)+'">'+esc(st.title||st.k)+'</span>'+
+        '<span class="step-bar"><span style="width:'+Math.max(3,pct(n,first||1))+'%"></span></span>'+
+        (drop?'<div class="step-drop">−'+drop+' pessoa'+(drop===1?'':'s')+' desistiram aqui ('+pct(drop,prev)+'%)</div>':'')+
+      '</span>'+
+      '<span class="step-side"><b>'+n+'</b><small>'+pct(n,first||1)+'% do início</small></span>'+
+    '</div>';
+  }).join("");
+
+  var byStep={};
+  (d.choices||[]).forEach(function(c){ if(!c.k)return; (byStep[c.step_id]=byStep[c.step_id]||[]).push(c); });
+  var keys=steps.map(function(s){return s.k}).filter(function(k){return byStep[k]});
+  if(!keys.length){esc2.innerHTML='<div class="empty">Ainda sem respostas registradas neste período.</div>';return;}
+  esc2.innerHTML=keys.map(function(k){
+    var st=steps.filter(function(s){return s.k===k})[0]||{};
+    var list=byStep[k].sort(function(a,b){return b.n-a.n});
+    var tot=list.reduce(function(a,c){return a+Number(c.n||0)},0);
+    return '<div style="margin-bottom:14px">'+
+      '<div class="step-q" title="'+esc(st.title||k)+'">'+esc(st.title||k)+'</div>'+
+      '<div class="choice-chips">'+list.map(function(c){
+        return '<span class="choice-chip">'+esc(c.k)+' <b>'+c.n+'</b> <small>('+pct(c.n,tot)+'%)</small></span>';
+      }).join("")+'</div>'+
+    '</div>';
+  }).join("");
+}
+
 document.getElementById("refresh").addEventListener("click",loadAll);
 document.getElementById("rangeSel").addEventListener("change",loadAll);
 document.getElementById("pageSel").addEventListener("change",loadAll);
 document.getElementById("openPage").addEventListener("click",function(){var u=PAGE_URLS[currentPage()];if(u)window.open(u,"_blank","noopener");});
 document.getElementById("csvBtn").addEventListener("click",exportCSV);
 document.getElementById("leadEventFilter").addEventListener("change",function(){renderLeads();});
-document.getElementById("hmLoad").addEventListener("click",loadHeatmap);
-document.getElementById("hmDevice").addEventListener("change",loadHeatmap);
-document.getElementById("hmPageSel").addEventListener("change",loadHeatmap);
+document.getElementById("hmLoad").addEventListener("click",function(){loadHeatmap();loadPageMap();});
+document.getElementById("hmDevice").addEventListener("change",function(){if(hmMode==="clicks")loadHeatmap();});
+document.getElementById("hmPageSel").addEventListener("change",function(){
+  hmPageLoaded="";
+  if(hmMode==="clicks")loadHeatmap(); else loadPageMap();
+});
 document.getElementById("hmViewport").addEventListener("scroll",function(){if(!hmTick){hmTick=true;requestAnimationFrame(drawSlice);}},{passive:true});
 // Roda do mouse controla EXPLICITAMENTE o scroll do viewport (não depende do iframe
 // deixar o evento passar). Só "prende" o scroll enquanto ainda dá pra rolar o mapa;
@@ -2084,6 +2729,7 @@ document.getElementById("hmViewport").addEventListener("wheel",function(e){
 },{passive:false});
 document.getElementById("modalClose").addEventListener("click",closeModal);
 document.getElementById("leadModal").addEventListener("click",function(e){if(e.target.id==="leadModal")closeModal()});
+setHmMode("clicks");
 showTab("overview");
 loadAll();
 </script>
