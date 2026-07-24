@@ -81,7 +81,17 @@ export async function onRequest(context) {
  * própria senha como chave. Sem a senha não dá pra forjar, e o token morre sozinho.
  */
 const SESSION_COOKIE = "ic_dash";
+// Marca "saiu no navegador". Existe por um motivo prático: quem já entrou pelo popup
+// de Basic Auth alguma vez tem a senha guardada NO NAVEGADOR e o header vai junto em
+// toda requisição, pra sempre. Sem esta marca, clicar em "Sair" limpava o cookie e o
+// Basic cacheado logava de novo na hora — que é exatamente o que estava acontecendo.
+// curl/monitoramento não mandam cookie, então continuam entrando por Basic normalmente.
+const LOGOUT_COOKIE = "ic_out";
 const SESSION_TTL = 60 * 60 * 12; // 12 horas
+
+function setCookie(name, value, maxAge) {
+  return name + "=" + value + "; Path=/analytics; Max-Age=" + maxAge + "; HttpOnly; Secure; SameSite=Lax";
+}
 
 async function hmacHex(key, msg) {
   const enc = new TextEncoder();
@@ -111,8 +121,11 @@ async function sessionTokenOk(env, token) {
 async function isAuthorized(request, env) {
   const pw = env.DASHBOARD_PASSWORD;
   if (!pw) return false;
-  const cookie = parseCookies(request.headers.get("Cookie"))[SESSION_COOKIE];
+  const cookies = parseCookies(request.headers.get("Cookie"));
+  const cookie = cookies[SESSION_COOKIE];
   if (cookie && (await sessionTokenOk(env, cookie))) return true;
+  // saiu de propósito neste navegador: ignora o Basic Auth que ficou em cache
+  if (cookies[LOGOUT_COOKIE] === "1") return false;
   const header = request.headers.get("Authorization") || "";
   if (!header.startsWith("Basic ")) return false;
   let decoded = "";
@@ -135,22 +148,16 @@ async function handleLogin(request, env) {
     return new Response(null, { status: 303, headers: { Location: "/analytics/login?erro=1" } });
   }
   const token = await makeSessionToken(env);
-  return new Response(null, {
-    status: 303,
-    headers: {
-      Location: "/analytics/dashboard",
-      "Set-Cookie": SESSION_COOKIE + "=" + token + "; Path=/analytics; Max-Age=" + SESSION_TTL + "; HttpOnly; Secure; SameSite=Lax",
-    },
-  });
+  const h = new Headers({ Location: "/analytics/dashboard" });
+  h.append("Set-Cookie", setCookie(SESSION_COOKIE, token, SESSION_TTL));
+  h.append("Set-Cookie", setCookie(LOGOUT_COOKIE, "", 0)); // entrou: some a marca de saída
+  return new Response(null, { status: 303, headers: h });
 }
 function handleLogout() {
-  return new Response(null, {
-    status: 303,
-    headers: {
-      Location: "/analytics/login",
-      "Set-Cookie": SESSION_COOKIE + "=; Path=/analytics; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
-    },
-  });
+  const h = new Headers({ Location: "/analytics/login" });
+  h.append("Set-Cookie", setCookie(SESSION_COOKIE, "", 0));
+  h.append("Set-Cookie", setCookie(LOGOUT_COOKIE, "1", SESSION_TTL));
+  return new Response(null, { status: 303, headers: h });
 }
 function loginPage(erro) {
   return new Response(LOGIN_HTML.replace("<!--ERRO-->", erro ? '<p class="erro">Senha incorreta. Tente de novo.</p>' : ""), {

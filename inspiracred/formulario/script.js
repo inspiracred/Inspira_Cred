@@ -440,12 +440,12 @@
     if (step.type === "choice") {
       var error = document.getElementById("step-error");
       var ok = !!answers[step.id];
-      if (ok && (step.id === "faixa_credito" || step.id === "faixa_emprestimo_auto") && exceedsAssetLimit()) {
-        if (error) error.textContent = "O crédito escolhido ultrapassa 50% do valor do bem informado.";
-        ok = false;
-      } else if (error) {
-        error.textContent = "Escolha uma opção para continuar.";
-      }
+      // Antes o formulário TRAVAVA aqui quando o crédito passava de 50% do valor do
+      // bem — a pessoa não conseguia terminar e a gente perdia o contato inteiro.
+      // Decisão do cliente (24/07/2026): pedir mais que 50% não é impeditivo; segue o
+      // fluxo e a classificação normal (imóvel >= 400 mil E crédito >= 200 mil) decide
+      // se é qualificado ou não.
+      if (error) error.textContent = "Escolha uma opção para continuar.";
       if (error) error.classList.toggle("is-visible", !ok);
       return ok;
     }
@@ -506,12 +506,6 @@
     return parseMoney(answers.valor_automovel);
   }
 
-  function exceedsAssetLimit() {
-    var assetValue = selectedAssetValue();
-    var creditValue = selectedCreditValue();
-    return assetValue > 0 && creditValue > 0 && creditValue > assetValue * 0.5;
-  }
-
   // Classifica o lead pelo que foi respondido.
   //  baixo_valor      = RD como lead não qualificado, mas sem evento Lead no Meta
   //  home_equity      = imóvel + matrícula + crédito >= 200 mil + imóvel >= 400 mil
@@ -523,15 +517,11 @@
       var propertyValue = selectedAssetValue();
       if (creditValue < MIN_CREDIT_VALUE || propertyValue < MIN_RD_PROPERTY_VALUE) return "baixo_valor";
       if (answers.possui_matricula !== "sim") return "baixo_valor";
-      if (exceedsAssetLimit()) return "descarte";
       if (creditValue >= MQL_CREDIT_VALUE && propertyValue >= MQL_PROPERTY_VALUE) return "home_equity_mql";
       if (creditValue >= MIN_RD_CREDIT_VALUE && propertyValue >= MIN_RD_PROPERTY_VALUE) return "home_equity";
       return "baixo_valor";
     }
-    if (answers.possui_automovel === "sim") {
-      if (exceedsAssetLimit()) return "descarte";
-      return "auto";
-    }
+    if (answers.possui_automovel === "sim") return "auto";
     // sem imóvel e sem automóvel — não qualificado pra nenhum funil: contato fica só
     // no nosso banco, ver META_EVENTS/_app.js.
     return "descarte";
