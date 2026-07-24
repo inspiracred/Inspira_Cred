@@ -355,6 +355,10 @@
       };
 
       const MIN_CREDIT_VALUE = 100000;
+      const MIN_RD_CREDIT_VALUE = 300000;
+      const MIN_RD_PROPERTY_VALUE = 400000;
+      const MQL_CREDIT_VALUE = 500000;
+      const MQL_PROPERTY_VALUE = 1000000;
       const TERM_MONTHS = 180;
       const INTERNAL_RATE = 0.01;
       const DISPLAY_RATE = 0.0109;
@@ -582,9 +586,7 @@
           return { valid: false, propertyValue, creditValue, debtValue };
         }
 
-        if (state.docs === "Não") {
-          profileMessage = "Infelizmente, não conseguimos atender seu perfil no momento. É necessário que a documentação do imóvel esteja regularizada para contratar essa modalidade de crédito.";
-        } else if (state.paid === "Não" && propertyValue > 0 && debtValue > propertyValue * 0.5) {
+        if (state.paid === "Não" && propertyValue > 0 && debtValue > propertyValue * 0.5) {
           setFieldError("debtValue", "O saldo devedor informado está acima do limite permitido.");
           profileMessage = "Infelizmente, não conseguimos atender seu perfil no momento. O saldo devedor do seu imóvel está acima do limite permitido para essa modalidade de crédito.";
         }
@@ -761,22 +763,25 @@
         elements.leadForm.classList.add("is-hidden");
         elements.leadSuccess.classList.remove("is-hidden");
         clearMessage(elements.leadMessage);
+
+        // Regra comercial: abaixo de R$100 mil de crédito OU abaixo de R$400 mil de
+        // imóvel fica só no banco. A partir de R$300 mil de crédito + R$400 mil de
+        // imóvel vira Lead/RD/Meta. A partir de R$500 mil + imóvel de R$1M vira MQL.
+        var docsOk = lastSimulation && lastSimulation.docs === "Sim";
+        var isLowValue = !lastSimulation || lastSimulation.creditValue < MIN_CREDIT_VALUE || lastSimulation.propertyValue < MIN_RD_PROPERTY_VALUE;
+        var isLead = docsOk && !isLowValue && lastSimulation.creditValue >= MIN_RD_CREDIT_VALUE;
+        var isMql = isLead && lastSimulation.creditValue >= MQL_CREDIT_VALUE && lastSimulation.propertyValue >= MQL_PROPERTY_VALUE;
+
         try {
-          window.dataLayer = window.dataLayer || [];
-          window.dataLayer.push({ event: "lead" });
+          if (isLead) {
+            window.dataLayer = window.dataLayer || [];
+            window.dataLayer.push({ event: "lead" });
+          }
         } catch {}
         try {
-          if (window.inspiraTrack) window.inspiraTrack.meta("CompleteRegistration");
+          if (isLead && window.inspiraTrack) window.inspiraTrack.meta("CompleteRegistration");
         } catch {}
         try {
-          // Lead qualificado manda `Lead` (conversão que a Meta de fato usa); MQL manda
-          // `Lead` + `LeadQualificado`. Valor abaixo do piso = desqualificado, não vai
-          // pro Meta (segue salvo no dashboard/RD). ⚠️ A conta está sob "configuração
-          // básica" da Meta (categoria serviço financeiro): evento PERSONALIZADO não é
-          // registrado — mandar só custom equivale a não enviar nada.
-          var isLowValue = lastSimulation.creditValue < MIN_CREDIT_VALUE;
-          var docsOk = lastSimulation.docs === "Sim";
-          var isMql = !isLowValue && docsOk && lastSimulation.creditValue >= 200000;
           if (window.inspiraTrack && lastSimulation) window.inspiraTrack.lead(Object.assign({
             name: name,
             phone: "+55" + phone.replace(/\D/g, ""),
@@ -784,8 +789,8 @@
             property_value: lastSimulation.propertyValue,
             credit_value: lastSimulation.creditValue,
             source: "landing_page",
-            lead_kind: isLowValue ? "baixo_valor" : (isMql ? "home_equity_mql" : "home_equity"),
-            meta_events: (!isLowValue && docsOk) ? (isMql ? ["Lead", "LeadQualificado"] : ["Lead"]) : [],
+            lead_kind: isLead ? (isMql ? "home_equity_mql" : "home_equity") : "baixo_valor",
+            meta_events: isLead ? (isMql ? ["Lead", "LeadQualificado"] : ["Lead"]) : [],
             // já eram coletados na simulação (lastSimulation) mas nunca chegavam a
             // lugar nenhum — nem RD nem nosso banco. Ver sendLeadToRD em _app.js.
             imovel_quitado: lastSimulation.paid || null,
@@ -794,10 +799,12 @@
           }, getUtmParams()));
         } catch {}
         // Redireciona pra página de obrigado. Atraso curto pra o beacon do lead
-        // (sendBeacon sobrevive ao unload) e o Pixel/CompleteRegistration dispararem
+        // (sendBeacon sobrevive ao unload) e o Pixel/Lead dispararem, quando houver
         // antes da navegação. A conversão já foi enviada acima — a página de obrigado
         // NÃO dispara evento (evita duplicar).
-        setTimeout(function () { window.location.href = "/obrigado/simulacao/"; }, 900);
+        setTimeout(function () {
+          window.location.href = isLead ? "/obrigado/simulacao/" : "/obrigado/nao-elegivel/";
+        }, 900);
       });
 
       document.getElementById("new-simulation").addEventListener("click", () => {

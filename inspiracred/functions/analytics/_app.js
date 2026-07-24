@@ -161,6 +161,8 @@ async function handleTrack(request, env, cors, context) {
         const hasPhone = event.phone ? 1 : 0;
         const hasName = event.name ? 1 : 0;
 
+        event.lead_kind = normalizeLeadKind(event);
+
         const leadInsert = await env.DB.prepare(
           `INSERT INTO leads (session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbp, fbc, fbclid, gclid, event_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         ).bind(event.session_id || null, event.name || null, event.phone || null, event.email || null,
@@ -211,17 +213,23 @@ async function handleTrack(request, env, cors, context) {
           } catch (e) { /* colunas 0008 ainda não existem — ok */ }
         }
         if (leadId && context) {
-          // TODO lead vai pro RD agora (pivô 2026-07-22 — antes baixo_valor/descarte
-          // ficavam só no D1). A classificação vai junto no campo cf_classificacao_lead
-          // pra equipe filtrar/despriorizar dentro do próprio RD. Ainda passam pela CAPI
-          // (que naturalmente não faz nada pros kinds sem evento — ver META_EVENTS no
-          // formulario/script.js).
-          context.waitUntil(sendLeadToRD(event, env, leadId));
+          const sendsToRD = shouldSendLeadToRD(event.lead_kind);
+          const hasExplicitMetaEvents = Array.isArray(event.meta_events);
+          const sendsToMeta = !hasExplicitMetaEvents || event.meta_events.length > 0;
+
+          if (sendsToRD) {
+            context.waitUntil(sendLeadToRD(event, env, leadId));
+          } else {
+            context.waitUntil(markLeadStatus(env, leadId, "rd_status", "nao_enviado"));
+          }
+
           // Filtro de bot (Fase B): crawler (WhatsApp/Slack/Facebook/curl/headless…) NÃO
           // vai pra CAPI — não polui o Pixel/otimização. O lead já foi salvo no D1 com
           // is_bot=1 (métrica de saúde correta). O RD NÃO é gateado por bot de propósito:
           // dropar um lead real por falso-positivo de UA no CRM custa mais que um bot raro.
-          if (!bot.isBot) {
+          if (!sendsToMeta) {
+            context.waitUntil(markLeadStatus(env, leadId, "meta_status", "nao_enviado"));
+          } else if (!bot.isBot) {
             context.waitUntil(sendLeadToMeta(event, env, leadId, {
               clientIp: request.headers.get("CF-Connecting-IP") || "",
               userAgent: leadUA,
@@ -283,25 +291,51 @@ const RD_PAGE_CONFIG = {
   home_equity_form: { identificador: "home-equity-typeform" },
 };
 
-// Rótulo legível da classificação — vai no campo de Lead cf_classificacao_lead (pivô
-// 2026-07-22: todo lead vai pro RD agora, inclusive baixo_valor/descarte; a equipe
-// filtra/despriorização DENTRO do RD por este campo, em vez de ficarem só no nosso D1).
+// Rótulo legível da classificação — vai no campo de Lead cf_classificacao_lead
+// somente para os tipos enviados ao RD. Baixo valor/descarte ficam só no D1.
 const LEAD_KIND_LABEL = {
-  home_equity: "Qualificado",
-  home_equity_mql: "Qualificado (MQL)",
-  auto: "Qualificado (garantia de veículo)",
-  baixo_valor: "Não qualificado — valor baixo",
-  descarte: "Não qualificado — sem imóvel/veículo",
+  home_equity: "Lead",
+  home_equity_mql: "Lead qualificado",
+  auto: "Lead automóvel",
+  baixo_valor: "Banco de dados — não qualificado",
+  descarte: "Banco de dados — não qualificado",
 };
 
-// Identificador do RD por TIPO de lead do formulário (event.lead_kind). Home equity
-// (inclusive MQL, baixo_valor, descarte) mantém o identificador base — que JÁ é gatilho
-// do fluxo "Form nativo > pipe" do cliente. Auto ganha identificador próprio pra NÃO
-// cair no mesmo funil de vendas (o dado é preservado no RD; se o cliente quiser roteá-lo,
-// adiciona o identificador a um fluxo dele, igual fez com os 3 atuais).
+function normalizeLeadKind(event) {
+  const current = event.lead_kind || "";
+  if (current === "auto") return "auto";
+  if (current === "descarte") return "descarte";
+
+  const credit = Number(event.credit_value || 0);
+  const property = Number(event.property_value || 0);
+  const docsOk =
+    event.documentacao_ok === "Sim" ||
+    event.possui_matricula === "Sim" ||
+    event.possui_matricula === "sim" ||
+    event.situacao_imovel === "Quitado";
+
+  if (!docsOk || credit < 100000 || property < 400000) return "baixo_valor";
+  if (credit >= 500000 && property >= 1000000) return "home_equity_mql";
+  if (credit >= 300000 && property >= 400000) return "home_equity";
+  return "baixo_valor";
+}
+
+function shouldSendLeadToRD(kind) {
+  return kind === "home_equity" || kind === "home_equity_mql" || kind === "auto";
+}
+
+async function markLeadStatus(env, leadId, column, status) {
+  if (column !== "rd_status" && column !== "meta_status") return;
+  try {
+    await env.DB.prepare(`UPDATE leads SET ${column} = ? WHERE id = ?`).bind(status, leadId).run();
+  } catch (e) { /* não derruba captura */ }
+}
+
+// Identificador do RD por TIPO de lead. Baixo valor/descarte não chegam aqui:
+// ficam só no D1. Auto ganha identificador/tag próprios para diferenciar no RD.
 function rdIdentificador(cfg, kind) {
   if (kind === "auto") return cfg.identificador + "-auto";
-  return cfg.identificador; // home_equity / home_equity_mql / baixo_valor / descarte / indefinido
+  return cfg.identificador;
 }
 
 async function sendLeadToRD(event, env, leadId) {
@@ -322,8 +356,8 @@ async function sendLeadToRD(event, env, leadId) {
     if (!n || isNaN(n)) return undefined;
     if (n < 100000) return "Menos de R$ 100 mil";
     if (n < 300000) return "De R$ 100 mil a R$ 300 mil";
-    if (n < 600000) return "De R$ 300 mil a R$ 600 mil";
-    if (n < 900000) return "De R$ 600 mil a R$ 900 mil";
+    if (n < 500000) return "De R$ 300 mil a R$ 500 mil";
+    if (n < 900000) return "De R$ 500 mil a R$ 900 mil";
     return "Acima de R$ 900 mil";
   };
   // "Imóvel Quitado?" (Sim/Não) p/ o campo de Lead cf_imovel_quitado — TEXTO LIVRE que
@@ -342,6 +376,7 @@ async function sendLeadToRD(event, env, leadId) {
   const payload = {
     token_rdstation: env.RD_STATION_TOKEN,
     identificador: rdIdentificador(cfg, event.lead_kind),
+    tags: event.lead_kind === "auto" ? ["lead automóvel"] : undefined,
     nome: event.name || undefined,
     email: event.email || (phoneDigits ? `${phoneDigits}@lead.inspiracred.com.br` : undefined),
     telefone: phoneDigits ? `+55${phoneDigits}` : undefined,
@@ -1198,7 +1233,7 @@ const DASHBOARD_HTML = `<!doctype html>
 <script>
 var dailyChart=null, lastLeads=[], lastNaoQual=[], activeTab="overview";
 var PAGE_LABELS={landing_page:"Landing / Simulação",home_equity_lp:"Home Equity",home_equity_form:"Formulário Home Equity",link_bio:"Link na bio",obrigado_simulacao:"Obrigado · Simulação",obrigado_home_equity:"Obrigado · Home Equity",obrigado_formulario:"Obrigado · Formulário",other:"Outras"};
-var LEAD_KIND_LABELS={home_equity:"Home Equity",home_equity_mql:"Home Equity · MQL",baixo_valor:"Baixo valor (não qualificado)",auto:"Garantia de veículo",descarte:"Sem imóvel/veículo (não qualificado)"};
+var LEAD_KIND_LABELS={home_equity:"Lead Home Equity",home_equity_mql:"Lead qualificado",baixo_valor:"Banco de dados (não qualificado)",auto:"Lead automóvel",descarte:"Banco de dados (sem imóvel/veículo)"};
 var PAGE_URLS={landing_page:"https://nova.inspiracred.com.br/",home_equity_lp:"https://nova.inspiracred.com.br/homeequity/",home_equity_form:"https://nova.inspiracred.com.br/formulario/",link_bio:"https://links.inspiracred.com.br/",obrigado_simulacao:"https://nova.inspiracred.com.br/obrigado/simulacao/",obrigado_home_equity:"https://nova.inspiracred.com.br/obrigado/home-equity/",obrigado_formulario:"https://nova.inspiracred.com.br/obrigado/formulario/"};
 var CHART_PALETTE=["#f97316","#0b2d72","#10b981","#f59e0b","#3b82f6","#8b5cf6","#ec4899"];
 function pretty(n){return (n==null||n===""?"-":String(n))}
@@ -1207,7 +1242,7 @@ function daysAgo(n){return new Date(Date.now()-n*864e5).toISOString().slice(0,10
 function brl(v){if(v==null)return"-";return "R$ "+Number(v).toLocaleString("pt-BR")}
 function pct(a,b){return b?Math.round((a/b)*100):0}
 function currentPage(){return document.getElementById("pageSel").value}
-function badge(s){if(s==="ok")return '<span class="pill ok">entregue</span>';if(s==null||s==="")return '<span class="pill wait">pendente</span>';return '<span class="pill err">'+pretty(s)+'</span>';}
+function badge(s){if(s==="ok")return '<span class="pill ok">entregue</span>';if(s==="nao_enviado")return '<span class="pill wait">não enviado</span>';if(s==null||s==="")return '<span class="pill wait">pendente</span>';return '<span class="pill err">'+pretty(s)+'</span>';}
 
 function showTab(name){
   activeTab=name;
@@ -1431,7 +1466,7 @@ function renderNaoQual(d){
   document.getElementById("naoQualTitle").textContent="Leads não qualificados ("+n+")";
   var porTipo={};
   lastNaoQual.forEach(function(l){var k=l.lead_kind||"?";porTipo[k]=(porTipo[k]||0)+1;});
-  var kk=[["Total",pretty(n),"também vão pro RD, marcados"],["Baixo valor",pretty(porTipo.baixo_valor||0),"imóvel, crédito < R$ 100 mil"],["Sem imóvel/veículo",pretty(porTipo.descarte||0),"não qualificam pra nenhum funil"]];
+  var kk=[["Total",pretty(n),"ficam só no banco de dados"],["Baixo valor",pretty(porTipo.baixo_valor||0),"crédito < R$ 300 mil ou imóvel < R$ 400 mil"],["Sem imóvel/veículo",pretty(porTipo.descarte||0),"não qualificam pra RD"]];
   document.getElementById("naoQualKpis").innerHTML=kk.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub">'+k[2]+'</div></div>'}).join("");
   if(!n){document.getElementById("naoQual").innerHTML='<div class="empty">Nenhum lead não qualificado no período.</div>';return}
   var html='<table><thead><tr><th>Data</th><th>Nome</th><th>Telefone</th><th>Tipo</th><th>Origem</th><th></th></tr></thead><tbody>';
@@ -1473,8 +1508,7 @@ function showLead(i,list){
   row("Criativo (utm_content)",pretty(l.utm_content));
   opt("Termo (utm_term)",l.utm_term);
   sec("Entrega");
-  // Desde 2026-07-22 todo lead vai pro RD (inclusive baixo_valor/descarte) — a
-  // classificação vai junto no campo cf_classificacao_lead pra equipe filtrar lá dentro.
+  // Baixo valor/descarte ficam só no banco; Lead, MQL e auto seguem para RD.
   row("RD Station", badge(l.rd_status));
   row("Meta CAPI",badge(l.meta_status));
   if(l.fbp_source||l.fbc_source) row("Origem fbp/fbc", pretty(l.fbp_source)+" / "+pretty(l.fbc_source));

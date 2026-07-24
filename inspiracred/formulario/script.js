@@ -15,6 +15,11 @@
   var stepIndex = 0;
   var started = false;
   var submitting = false;
+  var MIN_CREDIT_VALUE = 100000;
+  var MIN_RD_CREDIT_VALUE = 300000;
+  var MIN_RD_PROPERTY_VALUE = 400000;
+  var MQL_CREDIT_VALUE = 500000;
+  var MQL_PROPERTY_VALUE = 1000000;
 
   // Destinos das páginas de obrigado por tipo de lead.
   var WHATSAPP_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.149-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.71.306 1.263.489 1.694.625.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.885-9.885 9.885M20.52 3.449C18.24 1.245 15.24 0 12.045 0 5.463 0 .104 5.334.101 11.892c0 2.096.549 4.14 1.595 5.945L0 24l6.335-1.652a12.062 12.062 0 005.71 1.447h.006c6.585 0 11.946-5.336 11.949-11.896 0-3.176-1.24-6.165-3.487-8.4"/></svg>';
@@ -48,15 +53,14 @@
       tone: "not-qualified",
       eyebrow: "Respostas recebidas",
       title: "Obrigada por responder!",
-      lead: "Pelo perfil que você indicou, talvez este não seja o momento ideal para o crédito com garantia de imóvel. Guardamos suas informações e, se surgir uma condição que faça sentido para o seu perfil, entramos em contato.",
+      lead: "Pelo perfil que você indicou, talvez este não seja o momento ideal para esta modalidade. Se quiser, você ainda pode falar com nossa equipe pelo WhatsApp para verificar outras possibilidades.",
       steps: [],
-      whatsapp: null
+      whatsapp: "https://wa.me/5521977340731?text=Ol%C3%A1%2C%20respondi%20o%20formul%C3%A1rio%20da%20InspiraCred%20e%20gostaria%20de%20verificar%20outras%20possibilidades%20com%20a%20equipe."
     }
   };
 
   // Eventos do Meta (Pixel + CAPI) por tipo de lead:
-  // < R$100 mil = sem evento Meta; R$100-199 mil = Lead; R$200 mil+ = Lead + LeadQualificado,
-  // sempre exigindo documentação/matrícula ok no ramo de imóvel.
+  // banco apenas = sem evento; Lead = Lead; MQL = Lead + LeadQualificado.
   var META_EVENTS = {
     home_equity: ["Lead"],
     home_equity_mql: ["Lead", "LeadQualificado"],
@@ -120,10 +124,9 @@
       title: "Qual valor do crédito você está buscando?",
       options: [
         { label: "Menos de R$ 100 mil", value: "menos_100k", amount: 75000 },
-        { label: "De R$ 100 mil a R$ 200 mil", value: "100k_200k", amount: 150000 },
-        { label: "De R$ 200 mil a R$ 300 mil", value: "200k_300k", amount: 250000 },
-        { label: "De R$ 300 mil a R$ 600 mil", value: "300k_600k", amount: 450000 },
-        { label: "De R$ 600 mil a R$ 900 mil", value: "600k_900k", amount: 750000 },
+        { label: "De R$ 100 mil a R$ 300 mil", value: "100k_300k", amount: 200000 },
+        { label: "De R$ 300 mil a R$ 500 mil", value: "300k_500k", amount: 400000 },
+        { label: "De R$ 500 mil a R$ 900 mil", value: "500k_900k", amount: 700000 },
         { label: "Acima de R$ 900 mil", value: "acima_900k", amount: 1000000 }
       ],
       showIf: function () { return answers.possui_imovel === "sim"; }
@@ -443,7 +446,7 @@
     return step.options.filter(function (o) { return o.value === value; })[0] || null;
   }
 
-  // rótulos legíveis pra mandar pro RD (em vez de slugs tipo "sim"/"100k_200k")
+  // rótulos legíveis pra mandar pro RD (em vez de slugs tipo "sim"/"300k_500k")
   function labelFor(stepId, value) {
     if (!value) return null;
     var opt = optionFor(stepId, value);
@@ -471,20 +474,20 @@
   }
 
   // Classifica o lead pelo que foi respondido.
-  //  baixo_valor      = tem imóvel, mas crédito < 100 mil
-  //  home_equity_mql  = tem imóvel + matrícula + crédito >= 200 mil (lead mais quente)
-  //  home_equity      = tem imóvel (demais casos)
+  //  baixo_valor      = banco apenas (crédito baixo, imóvel < 400k, sem matrícula ou abaixo do corte RD)
+  //  home_equity      = imóvel + matrícula + crédito >= 300 mil + imóvel >= 400 mil
+  //  home_equity_mql  = imóvel + matrícula + crédito >= 500 mil + imóvel >= 1M
   //  auto             = não tem imóvel, mas tem automóvel (garantia de veículo)
   function classifyLead() {
     if (answers.possui_imovel === "sim") {
-      if (answers.faixa_credito === "menos_100k") return "baixo_valor";
+      var creditValue = selectedCreditValue();
+      var propertyValue = selectedAssetValue();
+      if (creditValue < MIN_CREDIT_VALUE || propertyValue < MIN_RD_PROPERTY_VALUE) return "baixo_valor";
+      if (answers.possui_matricula !== "sim") return "baixo_valor";
       if (exceedsAssetLimit()) return "descarte";
-      var faixaAlta = answers.faixa_credito === "200k_300k" ||
-        answers.faixa_credito === "300k_600k" ||
-        answers.faixa_credito === "600k_900k" ||
-        answers.faixa_credito === "acima_900k";
-      if (answers.possui_matricula === "sim" && faixaAlta) return "home_equity_mql";
-      return "home_equity";
+      if (creditValue >= MQL_CREDIT_VALUE && propertyValue >= MQL_PROPERTY_VALUE) return "home_equity_mql";
+      if (creditValue >= MIN_RD_CREDIT_VALUE && propertyValue >= MIN_RD_PROPERTY_VALUE) return "home_equity";
+      return "baixo_valor";
     }
     if (answers.possui_automovel === "sim") {
       if (answers.automovel_quitado !== "sim" || exceedsAssetLimit()) return "descarte";
@@ -557,11 +560,8 @@
     var assetValue = selectedAssetValue();
     var creditValue = selectedCreditValue();
     var metaEvents = META_EVENTS[kind] || [];
-    if (kind === "home_equity" && answers.possui_matricula !== "sim") metaEvents = [];
     if (kind === "auto") {
-      if (answers.automovel_quitado !== "sim" || creditValue < 100000) metaEvents = [];
-      else if (creditValue >= 200000) metaEvents = ["Lead", "LeadQualificado"];
-      else metaEvents = ["Lead"];
+      metaEvents = answers.automovel_quitado === "sim" ? ["Lead"] : [];
     }
 
     var payload = {

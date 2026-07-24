@@ -81,6 +81,10 @@
     }
 
     var MIN_EMP = 100000;
+    var MIN_RD_EMP = 300000;
+    var MIN_RD_IMOVEL = 400000;
+    var MQL_EMP = 500000;
+    var MQL_IMOVEL = 1000000;
 
     function validate(data) {
       var ok = true;
@@ -125,14 +129,15 @@
       // server-side (Pages Function /analytics/track, ver inspiracred/functions/analytics/_app.js).
       try {
         if (window.inspiraTrack) {
-          // < R$100 mil não vira conversão Meta. De R$100 mil a R$199 mil manda
-          // Lead; de R$200 mil pra cima manda Lead + LeadQualificado, sempre com
-          // imóvel quitado/documentação ok.
+          // Regra comercial: abaixo de R$100 mil de crédito OU abaixo de R$400 mil de
+          // imóvel fica só no banco. A partir de R$300 mil de crédito + R$400 mil de
+          // imóvel vira Lead/RD/Meta. A partir de R$500 mil + imóvel de R$1M vira MQL.
           var creditValue = parseMoney(data.valor_emprestimo);
           var propertyValue = parseMoney(data.valor_imovel);
-          var isLowValue = creditValue < MIN_EMP;
           var docsOk = data.situacao_imovel === "Quitado";
-          var isMql = !isLowValue && docsOk && creditValue >= 200000;
+          var isLowValue = creditValue < MIN_EMP || propertyValue < MIN_RD_IMOVEL;
+          var isLead = docsOk && !isLowValue && creditValue >= MIN_RD_EMP;
+          var isMql = isLead && creditValue >= MQL_EMP && propertyValue >= MQL_IMOVEL;
           window.inspiraTrack.lead(Object.assign({
             name: data.nome,
             phone: "+55" + data.celular.replace(/\D/g, ""),
@@ -142,8 +147,8 @@
             credit_value: creditValue,
             situacao_imovel: data.situacao_imovel || null, // "Quitado"/"Financiado" -> normalizado p/ Sim/Não no RD cf_imovel_quitado (Negociação "Imóvel Quitado?")
             source: "home_equity_lp",
-            lead_kind: isLowValue ? "baixo_valor" : (isMql ? "home_equity_mql" : "home_equity"),
-            meta_events: (!isLowValue && docsOk) ? (isMql ? ["Lead", "LeadQualificado"] : ["Lead"]) : []
+            lead_kind: isLead ? (isMql ? "home_equity_mql" : "home_equity") : "baixo_valor",
+            meta_events: isLead ? (isMql ? ["Lead", "LeadQualificado"] : ["Lead"]) : []
           }, getUtmParams()));
         }
       } catch (e) {}
@@ -153,7 +158,13 @@
       // conversão já foi enviada acima (a página de obrigado não dispara evento).
       form.classList.add("is-hidden");
       formSuccess.classList.remove("is-hidden");
-      setTimeout(function () { window.location.href = "/obrigado/home-equity/"; }, 900);
+      setTimeout(function () {
+        var creditValue = parseMoney(data.valor_emprestimo);
+        var propertyValue = parseMoney(data.valor_imovel);
+        var docsOk = data.situacao_imovel === "Quitado";
+        var isLead = docsOk && creditValue >= MIN_RD_EMP && propertyValue >= MIN_RD_IMOVEL;
+        window.location.href = isLead ? "/obrigado/home-equity/" : "/obrigado/nao-elegivel/";
+      }, 900);
     });
   }
 
