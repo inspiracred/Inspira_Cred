@@ -15,8 +15,8 @@
   var stepIndex = 0;
   var started = false;
   var submitting = false;
-  var MIN_CREDIT_VALUE = 100000;
-  var MIN_RD_CREDIT_VALUE = 300000;
+  var MIN_CREDIT_VALUE = 200000;
+  var MIN_RD_CREDIT_VALUE = 200000;
   var MIN_RD_PROPERTY_VALUE = 400000;
   var MQL_CREDIT_VALUE = 500000;
   var MQL_PROPERTY_VALUE = 1000000;
@@ -60,7 +60,7 @@
   };
 
   // Eventos do Meta (Pixel + CAPI) por tipo de lead:
-  // banco apenas = sem evento; Lead = Lead; MQL = Lead + LeadQualificado.
+  // Sem evento = não conta como Lead no Meta; Lead = Lead; MQL = Lead + LeadQualificado.
   var META_EVENTS = {
     home_equity: ["Lead"],
     home_equity_mql: ["Lead", "LeadQualificado"],
@@ -123,9 +123,8 @@
       kicker: "Crédito desejado",
       title: "Qual valor do crédito você está buscando?",
       options: [
-        { label: "Menos de R$ 100 mil", value: "menos_100k", amount: 75000 },
-        { label: "De R$ 100 mil a R$ 300 mil", value: "100k_300k", amount: 200000 },
-        { label: "De R$ 300 mil a R$ 500 mil", value: "300k_500k", amount: 400000 },
+        { label: "Menos de R$ 200 mil", value: "menos_200k", amount: 150000 },
+        { label: "De R$ 200 mil a R$ 500 mil", value: "200k_500k", amount: 350000 },
         { label: "De R$ 500 mil a R$ 900 mil", value: "500k_900k", amount: 700000 },
         { label: "Acima de R$ 900 mil", value: "acima_900k", amount: 1000000 }
       ],
@@ -172,13 +171,12 @@
     {
       id: "faixa_emprestimo_auto",
       type: "choice",
-      kicker: "Empréstimo desejado",
-      title: "Qual valor de empréstimo você está buscando?",
+      kicker: "Crédito desejado",
+      title: "Qual valor de crédito você está buscando?",
       options: [
-        { label: "Abaixo de R$ 20 mil", value: "abaixo_20k", amount: 15000 },
-        { label: "De R$ 20 mil a R$ 50 mil", value: "20k_50k", amount: 35000 },
-        { label: "De R$ 50 mil a R$ 100 mil", value: "50k_100k", amount: 75000 },
-        { label: "Acima de R$ 100 mil", value: "acima_100k", amount: 120000 }
+        { label: "Menos de R$ 200 mil", value: "auto_menos_200k", amount: 150000 },
+        { label: "De R$ 200 mil a R$ 500 mil", value: "auto_200k_500k", amount: 350000 },
+        { label: "Acima de R$ 500 mil", value: "auto_acima_500k", amount: 600000 }
       ],
       showIf: function () { return answers.possui_imovel === "nao" && answers.possui_automovel === "sim"; }
     },
@@ -446,7 +444,7 @@
     return step.options.filter(function (o) { return o.value === value; })[0] || null;
   }
 
-  // rótulos legíveis pra mandar pro RD (em vez de slugs tipo "sim"/"300k_500k")
+  // rótulos legíveis pra mandar pro RD (em vez de slugs tipo "sim"/"200k_500k")
   function labelFor(stepId, value) {
     if (!value) return null;
     var opt = optionFor(stepId, value);
@@ -474,8 +472,8 @@
   }
 
   // Classifica o lead pelo que foi respondido.
-  //  baixo_valor      = banco apenas (crédito baixo, imóvel < 400k, sem matrícula ou abaixo do corte RD)
-  //  home_equity      = imóvel + matrícula + crédito >= 300 mil + imóvel >= 400 mil
+  //  baixo_valor      = RD como lead não qualificado, mas sem evento Lead no Meta
+  //  home_equity      = imóvel + matrícula + crédito >= 200 mil + imóvel >= 400 mil
   //  home_equity_mql  = imóvel + matrícula + crédito >= 500 mil + imóvel >= 1M
   //  auto             = não tem imóvel, mas tem automóvel (garantia de veículo)
   function classifyLead() {
@@ -490,11 +488,11 @@
       return "baixo_valor";
     }
     if (answers.possui_automovel === "sim") {
-      if (answers.automovel_quitado !== "sim" || exceedsAssetLimit()) return "descarte";
+      if (exceedsAssetLimit()) return "descarte";
       return "auto";
     }
-    // sem imóvel e sem automóvel — não qualificado pra nenhum funil, mas ainda vira
-    // lead (contato já foi capturado): fica só no nosso banco, ver META_EVENTS/_app.js.
+    // sem imóvel e sem automóvel — não qualificado pra nenhum funil: contato fica só
+    // no nosso banco, ver META_EVENTS/_app.js.
     return "descarte";
   }
 
@@ -561,7 +559,7 @@
     var creditValue = selectedCreditValue();
     var metaEvents = META_EVENTS[kind] || [];
     if (kind === "auto") {
-      metaEvents = answers.automovel_quitado === "sim" ? ["Lead"] : [];
+      metaEvents = creditValue >= MIN_CREDIT_VALUE ? ["Lead"] : [];
     }
 
     var payload = {

@@ -225,6 +225,7 @@ input {
 
 .button:focus-visible,
 .pill-button:focus-visible,
+.asset-option:focus-visible,
 .seg-option:focus-visible,
 .toggle-option:focus-visible,
 .input:focus-visible {
@@ -372,6 +373,7 @@ input {
   background: #f3f4f6;
 }
 
+.asset-option,
 .seg-option,
 .toggle-option {
   border: 0;
@@ -384,6 +386,7 @@ input {
   transition: color 180ms var(--ease), background 180ms var(--ease), box-shadow 180ms var(--ease), border-color 180ms var(--ease);
 }
 
+.asset-option.is-active,
 .seg-option.is-active {
   color: var(--blue);
   background: #fff;
@@ -1198,6 +1201,7 @@ input {
     border-radius: 16px;
   }
 
+  .asset-option,
   .seg-option {
     font-size: 11px;
   }

@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Crédito com Garantia de Imóvel (Home Equity): de R$ 100 mil a R$ 25 milhões, taxas a partir de 1,09% ao mês e até 240 meses para pagar. Use seu imóvel a seu favor sem vendê-lo." />
+    <meta name="description" content="Crédito com Garantia de Imóvel (Home Equity): de R$ 200 mil a R$ 25 milhões, taxas a partir de 1,09% ao mês e até 240 meses para pagar. Use seu imóvel a seu favor sem vendê-lo." />
     <meta name="theme-color" content="#061a42" />
     <title>Home Equity | Crédito com Garantia de Imóvel — InspiraCred</title>
     <link rel="icon" type="image/svg+xml" href="/assets/icons/favicon.svg" />
 
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Home Equity | Crédito com Garantia de Imóvel — InspiraCred" />
-    <meta property="og:description" content="Libere de R$ 100 mil a R$ 25 milhões para reorganizar dívidas, investir ou expandir — taxas a partir de 1,09% ao mês e até 240 meses para pagar." />
+    <meta property="og:description" content="Libere de R$ 200 mil a R$ 25 milhões para reorganizar dívidas, investir ou expandir — taxas a partir de 1,09% ao mês e até 240 meses para pagar." />
     <meta property="og:image" content="img/hero-home.webp" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -48,7 +48,7 @@
               Use seu imóvel a seu favor para <span class="accent">quitar dívidas ou crescer com inteligência</span>
             </h1>
             <p class="hero-subtitle">
-              Libere de R$ 100 mil a R$ 25 milhões para reorganizar dívidas, investir ou expandir negócios — com taxas a partir de 1,09% ao mês e até 240 meses para pagar.
+              Libere de R$ 200 mil a R$ 25 milhões para reorganizar dívidas, investir ou expandir negócios — com taxas a partir de 1,09% ao mês e até 240 meses para pagar.
             </p>
             <div class="hero-actions">
               <a class="button button-lg" href="#simular">Quero saber se meu imóvel é elegível</a>
@@ -94,11 +94,19 @@
                 </div>
                 <div class="form-row form-row-4">
                   <div class="field">
-                    <label for="f-valor-emp">Valor de empréstimo desejado <span class="req">*</span></label>
-                    <input class="input money" id="f-valor-emp" name="valor_emprestimo" type="text" inputmode="numeric" placeholder="Mínimo R$ 100.000" />
-                    <p class="field-error" data-error="valor_emprestimo"></p>
+                    <label for="f-bem">Tipo de bem <span class="req">*</span></label>
+                    <select class="select" id="f-bem" name="tipo_bem">
+                      <option value="Imóvel" selected>Imóvel</option>
+                      <option value="Automóvel">Automóvel</option>
+                    </select>
+                    <p class="field-error" data-error="tipo_bem"></p>
                   </div>
                   <div class="field">
+                    <label for="f-valor-emp">Valor de crédito desejado <span class="req">*</span></label>
+                    <input class="input money" id="f-valor-emp" name="valor_emprestimo" type="text" inputmode="numeric" placeholder="Mínimo R$ 200.000" />
+                    <p class="field-error" data-error="valor_emprestimo"></p>
+                  </div>
+                  <div class="field" id="f-tipo-field">
                     <label for="f-tipo">Tipo de imóvel <span class="req">*</span></label>
                     <select class="select" id="f-tipo" name="tipo_imovel">
                       <option value="" disabled selected>Selecione</option>
@@ -110,7 +118,7 @@
                     <p class="field-error" data-error="tipo_imovel"></p>
                   </div>
                   <div class="field">
-                    <label for="f-situacao">Situação atual do imóvel <span class="req">*</span></label>
+                    <label for="f-situacao" id="f-situacao-label">Situação atual do imóvel <span class="req">*</span></label>
                     <select class="select" id="f-situacao" name="situacao_imovel">
                       <option value="" disabled selected>Selecione</option>
                       <option value="Quitado">Quitado</option>
@@ -119,8 +127,8 @@
                     <p class="field-error" data-error="situacao_imovel"></p>
                   </div>
                   <div class="field">
-                    <label for="f-valor-imovel">Valor aproximado do imóvel <span class="req">*</span></label>
-                    <input class="input money" id="f-valor-imovel" name="valor_imovel" type="text" inputmode="numeric" placeholder="Valor mínimo R$ 450.000" />
+                    <label for="f-valor-imovel" id="f-valor-imovel-label">Valor aproximado do imóvel <span class="req">*</span></label>
+                    <input class="input money" id="f-valor-imovel" name="valor_imovel" type="text" inputmode="numeric" placeholder="Valor mínimo R$ 400.000" />
                     <p class="field-error" data-error="valor_imovel"></p>
                   </div>
                 </div>
@@ -150,7 +158,7 @@
               <span class="eyebrow">Simule agora</span>
               <h2 class="section-title">Descubra quanto de crédito seu imóvel pode liberar</h2>
               <p class="section-copy">
-                Se você tem um imóvel em seu nome, pode usar esse patrimônio a seu favor — sem vendê-lo, sem burocracia e com taxas muito menores do que qualquer empréstimo tradicional.
+                Se você tem um imóvel em seu nome, pode usar esse patrimônio a seu favor — sem vendê-lo, sem burocracia e com taxas muito menores do que qualquer crédito tradicional.
               </p>
             </div>
             <div class="feature-list" data-reveal data-stagger>
@@ -182,7 +190,7 @@
 
           <div class="float-card fc-1" data-dx="-140" data-dy="-95" data-rot="-7">
             <span class="fc-ic fc-ic-orange"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
-            <div class="fc-text"><strong>Crédito de R$ 100 mil a R$ 25 milhões</strong><span>Do micro ao macro</span></div>
+            <div class="fc-text"><strong>Crédito de R$ 200 mil a R$ 25 milhões</strong><span>Do micro ao macro</span></div>
           </div>
           <div class="float-card fc-2" data-dx="-180" data-dy="15" data-rot="-5">
             <span class="fc-ic fc-ic-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg></span>
@@ -230,7 +238,7 @@
             <div class="bar-value" data-value="3,5">3,5%</div>
           </div>
           <div class="bar-row">
-            <div class="bar-label"><strong>Empréstimo Pessoal Tradicional</strong><span>Taxas significativamente maiores por não possuir garantia.</span></div>
+            <div class="bar-label"><strong>Crédito Pessoal Tradicional</strong><span>Taxas significativamente maiores por não possuir garantia.</span></div>
             <div class="bar-track"><div class="bar-fill" data-w="46"></div></div>
             <div class="bar-value" data-value="6,5">6,5%</div>
           </div>

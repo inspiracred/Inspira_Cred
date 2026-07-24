@@ -52,7 +52,7 @@ Pixel (navegador) e CAPI (servidor) já estão no código, disparando o **mesmo 
 
 - **Pixel** — `assets/js/track.js`: carrega o Pixel só se a constante `META_PIXEL_ID`
   (topo do arquivo) estiver preenchida. Dispara `PageView`,
-  `Lead` (com `value`=valor do empréstimo, `currency`=BRL, `content_category`=tipo de
+  `Lead` (com `value`=valor do crédito, `currency`=BRL, `content_category`=tipo de
   imóvel) e eventos custom `SimulacaoIniciada`/`SimulacaoCompleta`.
 - **CAPI** — `functions/analytics/_app.js` `sendLeadToMeta`: server-side, hash SHA-256 de
   e-mail/telefone/nome, `external_id`=hash do session_id, `fbp`/`fbc` lidos do cookie do

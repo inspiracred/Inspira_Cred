@@ -180,7 +180,7 @@ async function handleTrack(request, env, cors, context) {
             await env.DB.prepare(
               `UPDATE leads SET imovel_quitado=?, documentacao_ok=?, situacao_imovel=?, saldo_devedor=?, possui_imovel=?, possui_matricula=?, faixa_credito=?, city=? WHERE id=?`
             ).bind(
-              event.imovel_quitado || null, event.documentacao_ok || null, event.situacao_imovel || null,
+              event.imovel_quitado || null, event.documentacao_ok || null, event.situacao_imovel || event.automovel_quitado || null,
               event.saldo_devedor != null ? String(event.saldo_devedor) : null, event.possui_imovel || null,
               event.possui_matricula || null, event.faixa_credito || null, event.city || null, leadId
             ).run();
@@ -211,6 +211,8 @@ async function handleTrack(request, env, cors, context) {
               uaInfo.browser, uaInfo.os, uaInfo.isMobile ? 1 : 0, hasEmail, hasPhone, hasName, leadId
             ).run();
           } catch (e) { /* colunas 0008 ainda não existem — ok */ }
+          if (context) context.waitUntil(recordMetaEventAudit(env, event, leadId));
+          else await recordMetaEventAudit(env, event, leadId);
         }
         if (leadId && context) {
           const sendsToRD = shouldSendLeadToRD(event.lead_kind);
@@ -291,13 +293,13 @@ const RD_PAGE_CONFIG = {
   home_equity_form: { identificador: "home-equity-typeform" },
 };
 
-// Rótulo legível da classificação — vai no campo de Lead cf_classificacao_lead
-// somente para os tipos enviados ao RD. Baixo valor/descarte ficam só no D1.
+// Rótulo legível da classificação — vai no campo de Lead cf_classificacao_lead.
+// Baixo valor também vai ao RD como lead não qualificado; descarte fica só no D1.
 const LEAD_KIND_LABEL = {
   home_equity: "Lead",
   home_equity_mql: "Lead qualificado",
   auto: "Lead automóvel",
-  baixo_valor: "Banco de dados — não qualificado",
+  baixo_valor: "Lead não qualificado",
   descarte: "Banco de dados — não qualificado",
 };
 
@@ -314,14 +316,14 @@ function normalizeLeadKind(event) {
     event.possui_matricula === "sim" ||
     event.situacao_imovel === "Quitado";
 
-  if (!docsOk || credit < 100000 || property < 400000) return "baixo_valor";
+  if (!docsOk || credit < 200000 || property < 400000) return "baixo_valor";
   if (credit >= 500000 && property >= 1000000) return "home_equity_mql";
-  if (credit >= 300000 && property >= 400000) return "home_equity";
+  if (credit >= 200000 && property >= 400000) return "home_equity";
   return "baixo_valor";
 }
 
 function shouldSendLeadToRD(kind) {
-  return kind === "home_equity" || kind === "home_equity_mql" || kind === "auto";
+  return kind === "home_equity" || kind === "home_equity_mql" || kind === "auto" || kind === "baixo_valor";
 }
 
 async function markLeadStatus(env, leadId, column, status) {
@@ -331,10 +333,34 @@ async function markLeadStatus(env, leadId, column, status) {
   } catch (e) { /* não derruba captura */ }
 }
 
-// Identificador do RD por TIPO de lead. Baixo valor/descarte não chegam aqui:
-// ficam só no D1. Auto ganha identificador/tag próprios para diferenciar no RD.
+async function recordMetaEventAudit(env, event, leadId) {
+  const raw = Array.isArray(event.meta_events)
+    ? event.meta_events
+    : (event.meta_events === undefined ? [{ name: "Lead", event_id: event.event_id }] : []);
+  if (!raw.length) return;
+  for (const item of raw) {
+    const name = typeof item === "string" ? item : item && item.name;
+    if (!name) continue;
+    const eventId = typeof item === "string" ? event.event_id : item.event_id;
+    try {
+      await env.DB.prepare(
+        `INSERT INTO events (session_id, event_type, event_name, properties, page_name) VALUES (?,?,?,?,?)`
+      ).bind(
+        event.session_id || null,
+        "meta",
+        name,
+        JSON.stringify({ lead_id: leadId || null, lead_kind: event.lead_kind || null, event_id: eventId || null, channel: "pixel_capi" }),
+        event.source || event.page_name || "lead"
+      ).run();
+    } catch (e) { /* auditoria não pode derrubar captura */ }
+  }
+}
+
+// Identificador do RD por TIPO de lead. Descarte não chega aqui: fica só no D1.
+// Auto e baixo valor ganham identificador/tag próprios para diferenciar no RD.
 function rdIdentificador(cfg, kind) {
   if (kind === "auto") return cfg.identificador + "-auto";
+  if (kind === "baixo_valor") return cfg.identificador + "-nao-qualificado";
   return cfg.identificador;
 }
 
@@ -354,9 +380,8 @@ async function sendLeadToRD(event, env, leadId) {
   const faixaFromCredit = (v) => {
     const n = Number(v);
     if (!n || isNaN(n)) return undefined;
-    if (n < 100000) return "Menos de R$ 100 mil";
-    if (n < 300000) return "De R$ 100 mil a R$ 300 mil";
-    if (n < 500000) return "De R$ 300 mil a R$ 500 mil";
+    if (n < 200000) return "Menos de R$ 200 mil";
+    if (n < 500000) return "De R$ 200 mil a R$ 500 mil";
     if (n < 900000) return "De R$ 500 mil a R$ 900 mil";
     return "Acima de R$ 900 mil";
   };
@@ -369,14 +394,19 @@ async function sendLeadToRD(event, env, leadId) {
   //   • home equity: "Situação do imóvel" vem "Quitado"/"Financiado" (event.situacao_imovel)
   const imovelQuitado = (() => {
     if (event.imovel_quitado === "Sim" || event.imovel_quitado === "Não") return event.imovel_quitado;
+    if (event.automovel_quitado === "Sim" || event.automovel_quitado === "Não") return event.automovel_quitado;
     if (event.situacao_imovel === "Quitado") return "Sim";
     if (event.situacao_imovel === "Financiado") return "Não";
+    if (event.automovel_quitado === "Quitado") return "Sim";
+    if (event.automovel_quitado === "Financiado") return "Não";
     return undefined;
   })();
   const payload = {
     token_rdstation: env.RD_STATION_TOKEN,
     identificador: rdIdentificador(cfg, event.lead_kind),
-    tags: event.lead_kind === "auto" ? ["lead automóvel"] : undefined,
+    tags: event.lead_kind === "auto"
+      ? ["lead automóvel"]
+      : (event.lead_kind === "baixo_valor" ? ["lead não qualificado"] : undefined),
     nome: event.name || undefined,
     email: event.email || (phoneDigits ? `${phoneDigits}@lead.inspiracred.com.br` : undefined),
     telefone: phoneDigits ? `+55${phoneDigits}` : undefined,
@@ -683,7 +713,7 @@ async function handleOverview(request, env) {
   const one = async (sql, b) => (await env.DB.prepare(sql).bind(...b).first()) || {};
   const many = async (sql, b) => (await env.DB.prepare(sql).bind(...b).all()).results || [];
 
-  const [visitors, simStart, simComplete, leadsN, pages, forms, clicks, sources, daily] = await Promise.all([
+  const [visitors, simStart, simComplete, leadsN, pages, forms, clicks, sources, daily, eventRows, leadKindRows] = await Promise.all([
     one(`SELECT COUNT(DISTINCT session_id) n FROM page_views WHERE DATE(created_at) BETWEEN ? AND ?${pv}`, bp),
     one(`SELECT COUNT(DISTINCT session_id) n FROM events WHERE event_name='simulation_start' AND DATE(created_at) BETWEEN ? AND ?${pv}`, bp),
     one(`SELECT COUNT(DISTINCT session_id) n FROM events WHERE event_name='simulation_complete' AND DATE(created_at) BETWEEN ? AND ?${pv}`, bp),
@@ -693,6 +723,8 @@ async function handleOverview(request, env) {
     many(`SELECT page_name, element_id, element_text, COUNT(*) clicks FROM clicks WHERE DATE(created_at) BETWEEN ? AND ?${pv} GROUP BY page_name, element_id, element_text ORDER BY clicks DESC`, bp),
     many(`SELECT COALESCE(NULLIF(utm_source,''),'direto') source, COUNT(*) n FROM leads WHERE DATE(created_at) BETWEEN ? AND ?${sc} GROUP BY source ORDER BY n DESC`, bs),
     many(`SELECT DATE(created_at) d, COUNT(DISTINCT session_id) v FROM page_views WHERE DATE(created_at) BETWEEN ? AND ?${pv} GROUP BY d ORDER BY d`, bp),
+    many(`SELECT event_type, event_name, COUNT(*) n, COUNT(DISTINCT session_id) sessions FROM events WHERE DATE(created_at) BETWEEN ? AND ?${pv} GROUP BY event_type, event_name ORDER BY n DESC`, bp),
+    many(`SELECT COALESCE(NULLIF(lead_kind,''),'sem_classificacao') kind, COUNT(*) n, SUM(CASE WHEN rd_status='ok' THEN 1 ELSE 0 END) rd_ok, SUM(CASE WHEN meta_status='ok' THEN 1 ELSE 0 END) meta_ok, SUM(CASE WHEN meta_status='nao_enviado' THEN 1 ELSE 0 END) meta_skip, SUM(COALESCE(credit_value,0)) credit FROM leads WHERE DATE(created_at) BETWEEN ? AND ?${sc} GROUP BY kind ORDER BY n DESC`, bs),
   ]);
 
   const formsByPage = {};
@@ -707,17 +739,20 @@ async function handleOverview(request, env) {
     totals: { visitors: v, sim_start: ss, sim_complete: scv, leads: ld },
     rates: { visitor_to_start: pct(ss, v), start_to_complete: pct(scv, ss), complete_to_lead: pct(ld, scv), visitor_to_lead: pct(ld, v) },
     pages: pagesOut, clicks, sources, daily,
+    events_summary: eventRows,
+    lead_kind_summary: leadKindRows,
   });
 }
 
 async function handleLeads(request, env) {
+  const { start, end } = params(request.url);
   const p = new URL(request.url).searchParams;
   const limit = Math.min(parseInt(p.get("limit")) || 100, 500);
   const pageRaw = p.get("page");
   const page = pageRaw && pageRaw !== "all" ? pageRaw : null;
-  // kind=nao_qualificado -> aba "Leads não qualificados" (lead_kind IN baixo_valor/
-  // descarte — ficam só no nosso D1, nunca vão pro RD). kind=<valor específico> filtra
-  // por um lead_kind exato, se algum dia precisar.
+  // kind=nao_qualificado -> lead_kind IN baixo_valor/descarte; baixo_valor vai ao RD
+  // como não qualificado, descarte fica só no nosso D1. kind=<valor específico> filtra
+  // por um lead_kind exato.
   const kind = p.get("kind");
   // Colunas base + qualificadores (migration 0003). Se as colunas novas ainda não
   // existirem no D1, o 1º SELECT falha e caímos no fallback com as colunas antigas —
@@ -725,7 +760,8 @@ async function handleLeads(request, env) {
   const BASE = `id, session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, rd_status, meta_status, created_at`;
   const QUAL = `, imovel_quitado, documentacao_ok, situacao_imovel, saldo_devedor, possui_imovel, possui_matricula, faixa_credito, city, lead_kind, fbp_source, fbc_source`;
   const conds = [];
-  const binds = [];
+  const binds = [start, end];
+  conds.push(`DATE(created_at) BETWEEN ? AND ?`);
   if (page) { conds.push(`source = ?`); binds.push(page); }
   if (kind === "nao_qualificado") conds.push(`lead_kind IN ('baixo_valor','descarte')`);
   else if (kind) { conds.push(`lead_kind = ?`); binds.push(kind); }
@@ -1005,7 +1041,14 @@ const DASHBOARD_HTML = `<!doctype html>
   .pill.ok{background:var(--green-soft);color:var(--green-ink)}
   .pill.err{background:var(--red-soft);color:var(--red-ink)}
   .pill.wait{background:var(--surface);color:var(--muted)}
+  .pill.blue{background:rgba(11,45,114,.10);color:var(--blue)}
+  .pill.orange{background:rgba(249,115,22,.15);color:var(--orange)}
+  .pill.green{background:var(--green-soft);color:var(--green-ink)}
   .btn-sm{padding:6px 12px;font-size:12px;border-radius:9px}
+  .filterbar{display:flex;align-items:end;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:0 0 16px;padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--surface)}
+  .filterbar label{display:grid;gap:6px;font-size:12px;font-weight:700;color:var(--blue)}
+  .filterbar select{min-width:230px}
+  .filter-note{font-size:12px;color:var(--muted);max-width:520px;line-height:1.45}
   .empty{color:var(--muted);font-size:13px;padding:28px 0;text-align:center}
   /* Funil: trapézios empilhados (silhueta contínua) + rótulos fora da forma */
   #funnel{display:flex;flex-direction:column;padding:4px 0}
@@ -1083,7 +1126,6 @@ const DASHBOARD_HTML = `<!doctype html>
 <div class="tabs">
   <button class="tab" id="tabbtn-overview" onclick="showTab('overview')">Visão geral</button>
   <button class="tab" id="tabbtn-leads" onclick="showTab('leads')">Leads</button>
-  <button class="tab" id="tabbtn-naoqual" onclick="showTab('naoqual')">Não qualificados</button>
   <button class="tab" id="tabbtn-campaigns" onclick="showTab('campaigns')">Campanhas</button>
   <button class="tab" id="tabbtn-traffic" onclick="showTab('traffic')">Tráfego</button>
   <button class="tab" id="tabbtn-heatmap" onclick="showTab('heatmap')">Mapa de calor</button>
@@ -1101,26 +1143,28 @@ const DASHBOARD_HTML = `<!doctype html>
   </section>
 
   <section class="tab-section" id="tab-leads">
+    <div class="card" style="margin-bottom:18px">
+      <div class="h2row"><h2>Eventos enviados / registrados</h2><span class="hint">contagem do período e da página selecionada</span></div>
+      <div class="kpis" id="eventKpis"></div>
+      <div id="eventSummary"></div>
+    </div>
     <div class="kpis" id="leadKpis"></div>
     <div class="card">
       <div class="h2row"><h2 id="leadsTitle">Leads</h2><button class="btn-sm" id="csvBtn">Baixar CSV</button></div>
-      <div class="table-scroll"><div id="leads"></div></div>
-    </div>
-  </section>
-
-  <section class="tab-section" id="tab-naoqual">
-    <div class="kpis" id="naoQualKpis"></div>
-    <div class="card">
-      <div class="h2row">
-        <h2 id="naoQualTitle">Leads não qualificados</h2>
-        <button class="btn-sm" id="naoQualCsvBtn">Baixar CSV</button>
+      <div class="filterbar">
+        <label>Filtrar por conversão
+          <select id="leadEventFilter">
+            <option value="all">Todas as conversões</option>
+            <option value="home_equity">Lead Home Equity</option>
+            <option value="home_equity_mql">Lead qualificado</option>
+            <option value="auto">Lead automóvel</option>
+            <option value="nao_qualificado">Lead não qualificado</option>
+            <option value="descarte">Sem imóvel/veículo</option>
+          </select>
+        </label>
+        <div class="filter-note">A tabela agora junta todos os leads capturados. O filtro mostra qual evento/conversão aquele cadastro gerou — inclusive os que vão ao RD sem contar como Lead no Meta.</div>
       </div>
-      <p class="hint" style="display:block;margin:-6px 0 14px">
-        Imóvel com crédito abaixo de R$ 100 mil, ou sem imóvel e sem veículo — também
-        vão pro RD Station (marcados como não qualificados no card), mas ficam
-        agrupados aqui pra facilitar filtrar/ver de uma vez.
-      </p>
-      <div class="table-scroll"><div id="naoQual"></div></div>
+      <div class="table-scroll"><div id="leads"></div></div>
     </div>
   </section>
 
@@ -1231,10 +1275,10 @@ const DASHBOARD_HTML = `<!doctype html>
 </div>
 
 <script>
-var dailyChart=null, lastLeads=[], lastNaoQual=[], activeTab="overview";
-var PAGE_LABELS={landing_page:"Landing / Simulação",home_equity_lp:"Home Equity",home_equity_form:"Formulário Home Equity",link_bio:"Link na bio",obrigado_simulacao:"Obrigado · Simulação",obrigado_home_equity:"Obrigado · Home Equity",obrigado_formulario:"Obrigado · Formulário",other:"Outras"};
-var LEAD_KIND_LABELS={home_equity:"Lead Home Equity",home_equity_mql:"Lead qualificado",baixo_valor:"Banco de dados (não qualificado)",auto:"Lead automóvel",descarte:"Banco de dados (sem imóvel/veículo)"};
-var PAGE_URLS={landing_page:"https://nova.inspiracred.com.br/",home_equity_lp:"https://nova.inspiracred.com.br/homeequity/",home_equity_form:"https://nova.inspiracred.com.br/formulario/",link_bio:"https://links.inspiracred.com.br/",obrigado_simulacao:"https://nova.inspiracred.com.br/obrigado/simulacao/",obrigado_home_equity:"https://nova.inspiracred.com.br/obrigado/home-equity/",obrigado_formulario:"https://nova.inspiracred.com.br/obrigado/formulario/"};
+var dailyChart=null, lastLeads=[], lastAllLeads=[], activeTab="overview";
+var PAGE_LABELS={landing_page:"Landing / Simulação",home_equity_lp:"Home Equity",home_equity_form:"Formulário Home Equity",link_bio:"Link na bio",obrigado_simulacao:"Obrigado · Simulação",obrigado_home_equity:"Obrigado · Home Equity",obrigado_formulario:"Obrigado · Formulário",obrigado_auto:"Obrigado · Auto",obrigado_nao_elegivel:"Obrigado · Não elegível",other:"Outras"};
+var LEAD_KIND_LABELS={home_equity:"Lead Home Equity",home_equity_mql:"Lead qualificado",baixo_valor:"Lead não qualificado",auto:"Lead automóvel",descarte:"Banco de dados (sem imóvel/veículo)"};
+var PAGE_URLS={landing_page:"https://nova.inspiracred.com.br/",home_equity_lp:"https://nova.inspiracred.com.br/homeequity/",home_equity_form:"https://nova.inspiracred.com.br/formulario/",link_bio:"https://links.inspiracred.com.br/",obrigado_simulacao:"https://nova.inspiracred.com.br/obrigado/simulacao/",obrigado_home_equity:"https://nova.inspiracred.com.br/obrigado/home-equity/",obrigado_formulario:"https://nova.inspiracred.com.br/obrigado/formulario/",obrigado_auto:"https://nova.inspiracred.com.br/obrigado/auto/",obrigado_nao_elegivel:"https://nova.inspiracred.com.br/obrigado/nao-elegivel/"};
 var CHART_PALETTE=["#f97316","#0b2d72","#10b981","#f59e0b","#3b82f6","#8b5cf6","#ec4899"];
 function pretty(n){return (n==null||n===""?"-":String(n))}
 function label(p){return PAGE_LABELS[p]||p}
@@ -1246,7 +1290,7 @@ function badge(s){if(s==="ok")return '<span class="pill ok">entregue</span>';if(
 
 function showTab(name){
   activeTab=name;
-  ["overview","leads","naoqual","campaigns","traffic","heatmap","health"].forEach(function(t){
+  ["overview","leads","campaigns","traffic","heatmap","health"].forEach(function(t){
     document.getElementById("tab-"+t).style.display=(t===name)?"block":"none";
     document.getElementById("tabbtn-"+t).classList.toggle("active",t===name);
   });
@@ -1265,13 +1309,10 @@ function loadAll(){
   var scopeTxt="Exibindo: <b>"+(page==="all"?"Todas as páginas":label(page))+"</b> · últimos "+days+" dias";
   document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--muted)">carregando…</span>';
   var p1=fetch("${API}/overview"+qs+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(function(d){render(d);renderTraffic(d);});
-  var p2=fetch("${API}/leads?limit=500"+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderLeads);
+  var p2=fetch("${API}/leads"+qs+"&limit=500"+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderLeads);
   var p3=fetch("${API}/campaigns"+qs+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderCampaigns);
-  // Não qualificados: sempre TODAS as páginas (ignora o filtro pageQ) — é um balde
-  // à parte, não faz sentido "zerar" ao filtrar por uma página específica no topo.
-  var p4=fetch("${API}/leads?limit=500&kind=nao_qualificado&_="+Date.now()).then(function(r){return r.json()}).then(renderNaoQual);
   var p5=fetch("${API}/health"+qs+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderHealth);
-  Promise.all([p1,p2,p3,p4,p5]).then(function(){
+  Promise.all([p1,p2,p3,p5]).then(function(){
     document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--green-ink)">atualizado às '+new Date().toLocaleTimeString("pt-BR")+'</span>';
   }).catch(function(e){console.error(e);document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--red-ink)">erro ao carregar</span>';})
   .then(function(){setLoading(false);});
@@ -1282,7 +1323,49 @@ function render(d){
   var kpis=[["Visitantes únicos",pretty(t.visitors),r.visitor_to_lead+"% viram lead"],["Simulações concluídas",pretty(t.sim_complete),r.start_to_complete+"% de conclusão"],["Leads capturados",pretty(t.leads),r.complete_to_lead+"% dos que concluíram"],["Conversão visitante→lead",r.visitor_to_lead+"%",pretty(t.leads)+" de "+pretty(t.visitors)]];
   document.getElementById("kpis").innerHTML=kpis.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>'}).join("");
   renderFunnel([["Visitantes",t.visitors],["Simulação iniciada",t.sim_start],["Simulação concluída",t.sim_complete],["Lead",t.leads]]);
+  renderEventSummary(d);
   var dl=d.daily||[]; drawLine("dailyChart",dl.map(function(x){return x.d.slice(5)}),dl.map(function(x){return x.v}));
+}
+
+function eventLabel(name){
+  var m={
+    simulation_start:"Simulação iniciada",
+    simulation_complete:"Simulação concluída",
+    section_view:"Seção visualizada",
+    scroll_depth:"Profundidade de scroll",
+    CompleteRegistration:"CompleteRegistration",
+    Lead:"Lead",
+    LeadQualificado:"Lead qualificado"
+  };
+  return m[name]||name;
+}
+
+function renderEventSummary(d){
+  var rows=d.events_summary||[];
+  var kinds=d.lead_kind_summary||[];
+  var byKind={};
+  kinds.forEach(function(k){byKind[k.kind]=k;});
+  var leadOk=(byKind.home_equity&&byKind.home_equity.meta_ok||0)+(byKind.auto&&byKind.auto.meta_ok||0)+(byKind.home_equity_mql&&byKind.home_equity_mql.meta_ok||0);
+  var mqlOk=(byKind.home_equity_mql&&byKind.home_equity_mql.meta_ok||0);
+  var rdOk=kinds.reduce(function(a,k){return a+Number(k.rd_ok||0)},0);
+  var metaSkip=kinds.reduce(function(a,k){return a+Number(k.meta_skip||0)},0);
+  var kpis=[
+    ["Meta Lead",pretty(leadOk),"eventos com entrega CAPI ok"],
+    ["Meta LeadQualificado",pretty(mqlOk),"MQLs enviados ao Meta"],
+    ["RD Station",pretty(rdOk),"leads enviados ao CRM"],
+    ["Sem Lead no Meta",pretty(metaSkip),"não qualificados por regra"]
+  ];
+  document.getElementById("eventKpis").innerHTML=kpis.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>'}).join("");
+  var leadRows=kinds.map(function(k){
+    return {name:LEAD_KIND_LABELS[k.kind]||k.kind,n:k.n||0,sessions:k.rd_ok||0,type:"Conversão"};
+  });
+  var eventRows=rows.slice(0,8).map(function(e){return {name:eventLabel(e.event_name),n:e.n||0,sessions:e.sessions||0,type:e.event_type||"Evento"};});
+  var all=leadRows.concat(eventRows);
+  if(!all.length){document.getElementById("eventSummary").innerHTML='<div class="empty">Nenhum evento registrado no período.</div>';return}
+  var max=Math.max.apply(null,all.map(function(x){return x.n||0}).concat([1]));
+  document.getElementById("eventSummary").innerHTML='<table class="sumtable"><thead><tr><th>Evento / conversão</th><th style="text-align:left">Tipo</th><th>Qtd.</th><th>Sessões / RD</th></tr></thead><tbody>'+
+    all.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td style="text-align:left;font-weight:500;color:var(--muted)">'+esc(x.type)+'</td><td class="num">'+pretty(x.n)+'</td><td class="num">'+pretty(x.sessions)+'</td></tr>';}).join("")+
+    '</tbody></table>';
 }
 
 /* Funil de conversão com silhueta real: cada etapa é um trapézio que vai da própria
@@ -1441,39 +1524,36 @@ function renderClicksByPage(pages,clicks){
   }).join("");
 }
 
+function currentLeadFilter(){var el=document.getElementById("leadEventFilter");return el?el.value:"all";}
+function leadMatchesFilter(l,filter){
+  var k=l.lead_kind||"sem_classificacao";
+  if(filter==="all")return true;
+  if(filter==="nao_qualificado")return k==="baixo_valor"||k==="descarte";
+  return k===filter;
+}
+function leadKindPill(k){
+  var lb=LEAD_KIND_LABELS[k]||pretty(k);
+  var cls=k==="home_equity_mql"?"orange":(k==="home_equity"||k==="auto"?"blue":(k==="baixo_valor"||k==="descarte"?"wait":"green"));
+  return '<span class="pill '+cls+'">'+esc(lb)+'</span>';
+}
 function renderLeads(d){
-  lastLeads=d.leads||[];
-  var n=lastLeads.length;
-  document.getElementById("leadsTitle").textContent="Leads ("+n+")";
+  if(d) lastAllLeads=d.leads||[];
+  var filter=currentLeadFilter();
+  lastLeads=lastAllLeads.filter(function(l){return leadMatchesFilter(l,filter);});
+  var n=lastLeads.length, totalAll=lastAllLeads.length;
+  var filterLabel=document.getElementById("leadEventFilter")?document.getElementById("leadEventFilter").selectedOptions[0].textContent:"Todas";
+  document.getElementById("leadsTitle").textContent="Leads ("+n+(filter==="all"?"":" de "+totalAll)+")";
   var totalCredit=0, rdOk=0, metaOk=0;
   lastLeads.forEach(function(l){totalCredit+=Number(l.credit_value||0);if(l.rd_status==="ok")rdOk++;if(l.meta_status==="ok")metaOk++;});
-  var lk=[["Total de leads",pretty(n),""],["Valor total solicitado",brl(totalCredit),"em crédito"],["Ticket médio",n?brl(Math.round(totalCredit/n)):"-","por lead"],["Entrega RD Station",rdOk+"/"+n,pct(rdOk,n)+"% no CRM"],["Entrega Meta CAPI",metaOk+"/"+n,pct(metaOk,n)+"% no Pixel"]];
+  var lk=[["Filtro ativo",filterLabel,pretty(n)+" registro(s)"],["Valor total solicitado",brl(totalCredit),"em crédito"],["Ticket médio",n?brl(Math.round(totalCredit/n)):"-","por lead"],["Entrega RD Station",rdOk+"/"+n,pct(rdOk,n)+"% no CRM"],["Entrega Meta CAPI",metaOk+"/"+n,pct(metaOk,n)+"% no Pixel"]];
   document.getElementById("leadKpis").innerHTML=lk.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub">'+k[2]+'</div></div>'}).join("");
   if(!n){document.getElementById("leads").innerHTML='<div class="empty">Nenhum lead para este filtro.</div>';return}
-  var html='<table><thead><tr><th>Data</th><th>Nome</th><th>Telefone</th><th>Imóvel</th><th>Crédito</th><th>Origem</th><th>RD</th><th>Meta</th><th></th></tr></thead><tbody>';
+  var html='<table><thead><tr><th>Data</th><th>Nome</th><th>Telefone</th><th>Conversão</th><th>Bem</th><th>Crédito</th><th>Origem</th><th>RD</th><th>Meta</th><th></th></tr></thead><tbody>';
   lastLeads.forEach(function(l,i){
-    html+='<tr><td>'+(l.created_at||"").slice(0,16)+'</td><td>'+pretty(l.name)+'</td><td>'+pretty(l.phone)+'</td><td>'+pretty(l.property_type)+'</td><td>'+brl(l.credit_value)+'</td><td>'+pretty(l.utm_source||l.source||"direto")+'</td><td>'+badge(l.rd_status)+'</td><td>'+badge(l.meta_status)+'</td><td><button class="btn-sm" onclick="showLead('+i+')">Ver ficha</button></td></tr>';
+    var bem=l.lead_kind==="auto"?"Automóvel":pretty(l.property_type);
+    html+='<tr><td>'+(l.created_at||"").slice(0,16)+'</td><td>'+pretty(l.name)+'</td><td>'+pretty(l.phone)+'</td><td>'+leadKindPill(l.lead_kind)+'</td><td>'+bem+'</td><td>'+brl(l.credit_value)+'</td><td>'+pretty(l.utm_source||l.source||"direto")+'</td><td>'+badge(l.rd_status)+'</td><td>'+badge(l.meta_status)+'</td><td><button class="btn-sm" onclick="showLead('+i+')">Ver ficha</button></td></tr>';
   });
   document.getElementById("leads").innerHTML=html+'</tbody></table>';
-}
-
-// Leads que NÃO vão pro RD Station (baixo_valor / descarte) — ficam só no nosso D1.
-// Mesma ficha/modal de renderLeads (showLead aceita a lista), mas sem colunas de
-// entrega RD/Meta (não fazem sentido aqui: por design, nunca são enviados ao RD).
-function renderNaoQual(d){
-  lastNaoQual=d.leads||[];
-  var n=lastNaoQual.length;
-  document.getElementById("naoQualTitle").textContent="Leads não qualificados ("+n+")";
-  var porTipo={};
-  lastNaoQual.forEach(function(l){var k=l.lead_kind||"?";porTipo[k]=(porTipo[k]||0)+1;});
-  var kk=[["Total",pretty(n),"ficam só no banco de dados"],["Baixo valor",pretty(porTipo.baixo_valor||0),"crédito < R$ 300 mil ou imóvel < R$ 400 mil"],["Sem imóvel/veículo",pretty(porTipo.descarte||0),"não qualificam pra RD"]];
-  document.getElementById("naoQualKpis").innerHTML=kk.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub">'+k[2]+'</div></div>'}).join("");
-  if(!n){document.getElementById("naoQual").innerHTML='<div class="empty">Nenhum lead não qualificado no período.</div>';return}
-  var html='<table><thead><tr><th>Data</th><th>Nome</th><th>Telefone</th><th>Tipo</th><th>Origem</th><th></th></tr></thead><tbody>';
-  lastNaoQual.forEach(function(l,i){
-    html+='<tr><td>'+(l.created_at||"").slice(0,16)+'</td><td>'+pretty(l.name)+'</td><td>'+pretty(l.phone)+'</td><td>'+(LEAD_KIND_LABELS[l.lead_kind]||pretty(l.lead_kind))+'</td><td>'+pretty(l.utm_source||l.source||"direto")+'</td><td><button class="btn-sm" onclick="showLead('+i+',lastNaoQual)">Ver ficha</button></td></tr>';
-  });
-  document.getElementById("naoQual").innerHTML=html+'</tbody></table>';
 }
 
 function showLead(i,list){
@@ -1489,13 +1569,15 @@ function showLead(i,list){
   sec("Contato");
   row("Telefone",pretty(l.phone)); row("E-mail",pretty(l.email)); opt("Cidade",l.city);
   opt("Classificação",l.lead_kind?(LEAD_KIND_LABELS[l.lead_kind]||l.lead_kind):null);
-  sec("Imóvel & simulação");
-  row("Tipo de imóvel",pretty(l.property_type));
-  opt("Valor do imóvel",l.property_value?brl(l.property_value):null);
+  var isAutoLead=l.lead_kind==="auto";
+  sec("Bem & simulação");
+  row("Tipo de bem",isAutoLead?"Automóvel":"Imóvel");
+  if(!isAutoLead) row("Tipo de imóvel",pretty(l.property_type));
+  opt(isAutoLead?"Valor do automóvel":"Valor do imóvel",l.property_value?brl(l.property_value):null);
   row("Crédito desejado",brl(l.credit_value));
   opt("Faixa de crédito",l.faixa_credito);
   opt("Imóvel quitado?",l.imovel_quitado);
-  opt("Situação do imóvel",l.situacao_imovel);
+  opt(isAutoLead?"Situação do automóvel":"Situação do imóvel",l.situacao_imovel);
   opt("Documentação ok?",l.documentacao_ok);
   opt("Possui imóvel?",l.possui_imovel);
   opt("Possui matrícula?",l.possui_matricula);
@@ -1508,7 +1590,7 @@ function showLead(i,list){
   row("Criativo (utm_content)",pretty(l.utm_content));
   opt("Termo (utm_term)",l.utm_term);
   sec("Entrega");
-  // Baixo valor/descarte ficam só no banco; Lead, MQL e auto seguem para RD.
+  // Baixo valor também segue para RD; descarte fica só no banco.
   row("RD Station", badge(l.rd_status));
   row("Meta CAPI",badge(l.meta_status));
   if(l.fbp_source||l.fbc_source) row("Origem fbp/fbc", pretty(l.fbp_source)+" / "+pretty(l.fbc_source));
@@ -1563,10 +1645,7 @@ function downloadCSV(rows,cols,filename){
   URL.revokeObjectURL(url);
 }
 function exportCSV(){
-  downloadCSV(lastLeads,CSV_COLS,"leads-"+currentPage()+"-"+new Date().toISOString().slice(0,10)+".csv");
-}
-function exportNaoQualCSV(){
-  downloadCSV(lastNaoQual,CSV_COLS,"leads-nao-qualificados-"+new Date().toISOString().slice(0,10)+".csv");
+  downloadCSV(lastLeads,CSV_COLS,"leads-"+currentPage()+"-"+currentLeadFilter()+"-"+new Date().toISOString().slice(0,10)+".csv");
 }
 
 function drawLine(id,labels,data){var ctx=document.getElementById(id);if(dailyChart)dailyChart.destroy();dailyChart=new Chart(ctx,{type:"line",data:{labels:labels,datasets:[{data:data,borderColor:"#f97316",backgroundColor:"rgba(249,115,22,.12)",fill:true,tension:.3,pointRadius:2,pointBackgroundColor:"#f97316"}]},options:{maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:"#6b7280"},grid:{color:"#eef0f3"}},y:{ticks:{color:"#6b7280"},grid:{color:"#eef0f3"}}}}})}
@@ -1681,7 +1760,7 @@ document.getElementById("rangeSel").addEventListener("change",loadAll);
 document.getElementById("pageSel").addEventListener("change",loadAll);
 document.getElementById("openPage").addEventListener("click",function(){var u=PAGE_URLS[currentPage()];if(u)window.open(u,"_blank","noopener");});
 document.getElementById("csvBtn").addEventListener("click",exportCSV);
-document.getElementById("naoQualCsvBtn").addEventListener("click",exportNaoQualCSV);
+document.getElementById("leadEventFilter").addEventListener("change",function(){renderLeads();});
 document.getElementById("hmLoad").addEventListener("click",loadHeatmap);
 document.getElementById("hmDevice").addEventListener("change",loadHeatmap);
 document.getElementById("hmPageSel").addEventListener("change",loadHeatmap);

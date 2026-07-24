@@ -15,7 +15,7 @@
     var submitBtn = form.querySelector("button[type='submit']");
 
     // Máscara de VALOR INTEIRO em reais: dígitos digitados = reais (ninguém pede
-    // centavo de empréstimo). ",00" fixo/decorativo; a regex remove esse sufixo de
+    // centavo de crédito). ",00" fixo/decorativo; a regex remove esse sufixo de
     // centavos antes de reler os dígitos. Ex.: 800000 -> "R$ 800.000,00".
     function formatMoney(value) {
       var digits = value.replace(/,\d*$/, "").replace(/\D/g, "");
@@ -80,11 +80,43 @@
       };
     }
 
-    var MIN_EMP = 100000;
-    var MIN_RD_EMP = 300000;
+    var MIN_EMP = 200000;
+    var MIN_RD_EMP = 200000;
     var MIN_RD_IMOVEL = 400000;
     var MQL_EMP = 500000;
     var MQL_IMOVEL = 1000000;
+
+    var bemSelect = document.getElementById("f-bem");
+    var tipoField = document.getElementById("f-tipo-field");
+    var situacaoLabel = document.getElementById("f-situacao-label");
+    var valorBemLabel = document.getElementById("f-valor-imovel-label");
+    var valorBemInput = document.getElementById("f-valor-imovel");
+
+    function isAutoBem() {
+      return bemSelect && bemSelect.value === "Automóvel";
+    }
+
+    function syncBemFields() {
+      var isAuto = isAutoBem();
+      if (tipoField) {
+        tipoField.classList.toggle("is-hidden", isAuto);
+        tipoField.setAttribute("aria-hidden", String(isAuto));
+      }
+      if (situacaoLabel) situacaoLabel.innerHTML = isAuto ? 'Situação atual do automóvel <span class="req">*</span>' : 'Situação atual do imóvel <span class="req">*</span>';
+      if (valorBemLabel) valorBemLabel.innerHTML = isAuto ? 'Valor aproximado do automóvel <span class="req">*</span>' : 'Valor aproximado do imóvel <span class="req">*</span>';
+      if (valorBemInput) valorBemInput.placeholder = isAuto ? "Valor do automóvel" : "Valor mínimo R$ 400.000";
+      clearError("tipo_imovel");
+      clearError("situacao_imovel");
+      clearError("valor_imovel");
+    }
+
+    if (bemSelect) {
+      bemSelect.addEventListener("change", function () {
+        bemSelect.classList.toggle("filled", !!bemSelect.value);
+        syncBemFields();
+      });
+      syncBemFields();
+    }
 
     function validate(data) {
       var ok = true;
@@ -95,12 +127,14 @@
       if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { setError("email", "E-mail inválido."); ok = false; }
       var creditValue = parseMoney(data.valor_emprestimo);
       var propertyValue = parseMoney(data.valor_imovel);
-      if (!data.valor_emprestimo || creditValue <= 0) { setError("valor_emprestimo", "Informe o valor do empréstimo."); ok = false; }
-      if (!data.tipo_imovel) { setError("tipo_imovel", "Selecione o tipo de imóvel."); ok = false; }
-      if (!data.situacao_imovel) { setError("situacao_imovel", "Selecione a situação do imóvel."); ok = false; }
-      if (!data.valor_imovel || propertyValue <= 0) { setError("valor_imovel", "Informe o valor do imóvel."); ok = false; }
+      var isAuto = data.tipo_bem === "Automóvel";
+      if (!data.tipo_bem) { setError("tipo_bem", "Selecione o tipo de bem."); ok = false; }
+      if (!data.valor_emprestimo || creditValue <= 0) { setError("valor_emprestimo", "Informe o valor do crédito."); ok = false; }
+      if (!isAuto && !data.tipo_imovel) { setError("tipo_imovel", "Selecione o tipo de imóvel."); ok = false; }
+      if (!data.situacao_imovel) { setError("situacao_imovel", isAuto ? "Selecione a situação do automóvel." : "Selecione a situação do imóvel."); ok = false; }
+      if (!data.valor_imovel || propertyValue <= 0) { setError("valor_imovel", isAuto ? "Informe o valor do automóvel." : "Informe o valor do imóvel."); ok = false; }
       else if (creditValue > 0 && creditValue > propertyValue * 0.5) {
-        setError("valor_emprestimo", "O crédito máximo é de 50% do valor do imóvel.");
+        setError("valor_emprestimo", "O crédito máximo é de 50% do valor do bem.");
         ok = false;
       }
       return ok;
@@ -114,6 +148,7 @@
         nome: document.getElementById("f-nome").value.trim(),
         celular: document.getElementById("f-celular").value.trim(),
         email: document.getElementById("f-email").value.trim(),
+        tipo_bem: document.getElementById("f-bem").value,
         valor_emprestimo: document.getElementById("f-valor-emp").value.trim(),
         tipo_imovel: document.getElementById("f-tipo").value,
         situacao_imovel: document.getElementById("f-situacao").value,
@@ -129,26 +164,34 @@
       // server-side (Pages Function /analytics/track, ver inspiracred/functions/analytics/_app.js).
       try {
         if (window.inspiraTrack) {
-          // Regra comercial: abaixo de R$100 mil de crédito OU abaixo de R$400 mil de
-          // imóvel fica só no banco. A partir de R$300 mil de crédito + R$400 mil de
-          // imóvel vira Lead/RD/Meta. A partir de R$500 mil + imóvel de R$1M vira MQL.
+          // Regra comercial: abaixo de R$200 mil de crédito vai ao RD como não qualificado,
+          // mas fica sem evento Lead no Meta.
+          // Imóvel precisa ter no mínimo R$400 mil. A partir de R$500 mil de crédito +
+          // imóvel de R$1M vira LeadQualificado. Automóvel quitado vai ao RD como auto.
           var creditValue = parseMoney(data.valor_emprestimo);
           var propertyValue = parseMoney(data.valor_imovel);
-          var docsOk = data.situacao_imovel === "Quitado";
-          var isLowValue = creditValue < MIN_EMP || propertyValue < MIN_RD_IMOVEL;
-          var isLead = docsOk && !isLowValue && creditValue >= MIN_RD_EMP;
-          var isMql = isLead && creditValue >= MQL_EMP && propertyValue >= MQL_IMOVEL;
+          var isAuto = data.tipo_bem === "Automóvel";
+          var docsOk = isAuto ? true : data.situacao_imovel === "Quitado";
+          var isLowValue = creditValue < MIN_EMP || (!isAuto && propertyValue < MIN_RD_IMOVEL);
+          var isLead = docsOk && (isAuto || (!isLowValue && creditValue >= MIN_RD_EMP));
+          var isMql = !isAuto && isLead && creditValue >= MQL_EMP && propertyValue >= MQL_IMOVEL;
+          var leadKind = isLead ? (isAuto ? "auto" : (isMql ? "home_equity_mql" : "home_equity")) : "baixo_valor";
+          var shouldSendMetaLead = isLead && (!isAuto || creditValue >= MIN_EMP);
           window.inspiraTrack.lead(Object.assign({
             name: data.nome,
             phone: "+55" + data.celular.replace(/\D/g, ""),
             email: data.email || null,
-            property_type: data.tipo_imovel.toLowerCase(),
+            property_type: isAuto ? null : data.tipo_imovel.toLowerCase(),
             property_value: propertyValue,
             credit_value: creditValue,
             situacao_imovel: data.situacao_imovel || null, // "Quitado"/"Financiado" -> normalizado p/ Sim/Não no RD cf_imovel_quitado (Negociação "Imóvel Quitado?")
             source: "home_equity_lp",
-            lead_kind: isLead ? (isMql ? "home_equity_mql" : "home_equity") : "baixo_valor",
-            meta_events: isLead ? (isMql ? ["Lead", "LeadQualificado"] : ["Lead"]) : []
+            lead_kind: leadKind,
+            meta_events: shouldSendMetaLead ? (isMql ? ["Lead", "LeadQualificado"] : ["Lead"]) : [],
+            possui_imovel: isAuto ? "Não" : "Sim",
+            possui_automovel: isAuto ? "Sim" : "Não",
+            automovel_quitado: isAuto ? data.situacao_imovel || null : null,
+            valor_automovel: isAuto ? propertyValue : null
           }, getUtmParams()));
         }
       } catch (e) {}
@@ -161,9 +204,10 @@
       setTimeout(function () {
         var creditValue = parseMoney(data.valor_emprestimo);
         var propertyValue = parseMoney(data.valor_imovel);
-        var docsOk = data.situacao_imovel === "Quitado";
-        var isLead = docsOk && creditValue >= MIN_RD_EMP && propertyValue >= MIN_RD_IMOVEL;
-        window.location.href = isLead ? "/obrigado/home-equity/" : "/obrigado/nao-elegivel/";
+        var isAuto = data.tipo_bem === "Automóvel";
+        var docsOk = isAuto ? true : data.situacao_imovel === "Quitado";
+        var isLead = docsOk && (isAuto || (creditValue >= MIN_RD_EMP && propertyValue >= MIN_RD_IMOVEL));
+        window.location.href = isLead ? (isAuto ? "/obrigado/auto/" : "/obrigado/home-equity/") : "/obrigado/nao-elegivel/";
       }, 900);
     });
   }

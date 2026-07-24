@@ -95,6 +95,14 @@
 
           <form class="form-card" id="simulation-form" data-reveal novalidate>
             <div class="field">
+              <label>Qual bem você quer usar como garantia?</label>
+              <div class="segmented" role="radiogroup" aria-label="Tipo de bem">
+                <button class="asset-option is-active" type="button" data-value="Imóvel" aria-pressed="true">Imóvel</button>
+                <button class="asset-option" type="button" data-value="Automóvel" aria-pressed="false">Automóvel</button>
+              </div>
+            </div>
+
+            <div class="field" id="property-type-field">
               <label>Tipo de imóvel</label>
               <div class="segmented" role="radiogroup" aria-label="Tipo de imóvel">
                 <button class="seg-option is-active" type="button" data-value="Casa" aria-pressed="true">Casa</button>
@@ -104,15 +112,15 @@
             </div>
 
             <div class="field">
-              <label for="property-value">Valor do imóvel</label>
+              <label for="property-value" id="asset-value-label">Valor do imóvel</label>
               <input class="input money" id="property-value" name="propertyValue" placeholder="R$ 500.000,00" inputmode="numeric" aria-describedby="property-value-error" />
               <p class="field-error" id="property-value-error"></p>
             </div>
 
             <div class="choice-field">
               <div class="toggle-row">
-                <span class="inline-label">Seu imóvel está quitado?</span>
-                <div class="toggle" role="radiogroup" aria-label="Seu imóvel está quitado?">
+                <span class="inline-label" id="asset-paid-label">Seu imóvel está quitado?</span>
+                <div class="toggle" role="radiogroup" aria-label="Bem quitado?">
                   <button class="toggle-option" type="button" data-toggle="paid" data-value="Sim" aria-pressed="false">Sim</button>
                   <button class="toggle-option" type="button" data-toggle="paid" data-value="Não" aria-pressed="false">Não</button>
                 </div>
@@ -126,7 +134,7 @@
               <p class="field-error" id="debt-value-error"></p>
             </div>
 
-            <div class="choice-field">
+            <div class="choice-field" id="docs-field">
               <div class="toggle-row">
                 <span class="inline-label">Documentação regularizada?</span>
                 <div class="toggle" role="radiogroup" aria-label="Documentação regularizada?">
@@ -162,7 +170,7 @@
                 <p>Taxas a partir de 1,09% a.m. + IPCA, podendo variar conforme análise de crédito, perfil do cliente e instituição financeira parceira.</p>
               </div>
             </div>
-            <p class="result-potential">Com base no valor do seu imóvel, você pode ter potencial para liberar até <strong id="result-potential">R$ 0,00</strong>, sujeito à análise.</p>
+            <p class="result-potential">Com base no valor do bem informado, você pode ter potencial para liberar até <strong id="result-potential">R$ 0,00</strong>, sujeito à análise.</p>
           </article>
 
           <article class="income-card">
@@ -349,13 +357,14 @@
 
     <script>
       const state = {
+        assetType: "Imóvel",
         propertyType: "Casa",
         paid: "",
         docs: ""
       };
 
-      const MIN_CREDIT_VALUE = 100000;
-      const MIN_RD_CREDIT_VALUE = 300000;
+      const MIN_CREDIT_VALUE = 200000;
+      const MIN_RD_CREDIT_VALUE = 200000;
       const MIN_RD_PROPERTY_VALUE = 400000;
       const MQL_CREDIT_VALUE = 500000;
       const MQL_PROPERTY_VALUE = 1000000;
@@ -411,7 +420,7 @@
       };
 
       // Máscara de VALOR INTEIRO em reais: os dígitos digitados são os reais
-      // (ninguém pede centavo de empréstimo). O ",00" é fixo/decorativo — a regex
+      // (ninguém pede centavo de crédito). O ",00" é fixo/decorativo — a regex
       // remove esse sufixo de centavos antes de reler os dígitos do inteiro.
       // Ex.: digitar 800000 -> "R$ 800.000,00" (antes virava "R$ 8.000,00").
       const formatCurrency = (value) => {
@@ -517,6 +526,7 @@
             event: "simulacao_concluida",
             valor_credito: creditValue,
             valor_imovel: propertyValue,
+            tipo_bem: state.assetType.toLowerCase(),
             tipo_imovel: state.propertyType.toLowerCase()
           });
         } catch {}
@@ -525,6 +535,7 @@
             var simulationMeta = {
               valor_credito: creditValue,
               valor_imovel: propertyValue,
+              tipo_bem: state.assetType.toLowerCase(),
               tipo_imovel: state.propertyType.toLowerCase()
             };
             window.inspiraTrack.meta("simulacao_concluida", simulationMeta);
@@ -545,6 +556,27 @@
         }
       };
 
+      const syncAssetFields = () => {
+        const isAuto = state.assetType === "Automóvel";
+        const propertyTypeField = document.getElementById("property-type-field");
+        const docsField = document.getElementById("docs-field");
+        const assetValueLabel = document.getElementById("asset-value-label");
+        const assetPaidLabel = document.getElementById("asset-paid-label");
+        propertyTypeField.classList.toggle("is-hidden", isAuto);
+        propertyTypeField.setAttribute("aria-hidden", String(isAuto));
+        docsField.classList.toggle("is-hidden", isAuto);
+        docsField.setAttribute("aria-hidden", String(isAuto));
+        assetValueLabel.textContent = isAuto ? "Valor do automóvel" : "Valor do imóvel";
+        fieldMap.propertyValue.input.placeholder = isAuto ? "R$ 120.000,00" : "R$ 500.000,00";
+        assetPaidLabel.textContent = isAuto ? "Seu automóvel está quitado?" : "Seu imóvel está quitado?";
+        if (isAuto) {
+          state.docs = "";
+          setFieldError("docs");
+        }
+        syncDebtField();
+        hideSimulationOutcome();
+      };
+
       const validateSimulation = () => {
         const propertyInput = fieldMap.propertyValue.input;
         const creditInput = fieldMap.creditValue.input;
@@ -552,7 +584,8 @@
         const propertyValue = parseCurrency(propertyInput.value);
         const creditValue = parseCurrency(creditInput.value);
         const debtValue = parseCurrency(debtInput.value);
-        const creditLimit = PROPERTY_CREDIT_LIMITS[state.propertyType] || 0.5;
+        const isAuto = state.assetType === "Automóvel";
+        const creditLimit = 0.5;
         let isValid = true;
         let profileMessage = "";
 
@@ -560,7 +593,7 @@
         clearMessage(elements.formMessage);
 
         if (!propertyInput.value.trim() || propertyValue <= 0) {
-          setFieldError("propertyValue", "Informe o valor do imóvel.");
+          setFieldError("propertyValue", isAuto ? "Informe o valor do automóvel." : "Informe o valor do imóvel.");
           isValid = false;
         }
 
@@ -569,7 +602,7 @@
           isValid = false;
         }
 
-        if (!state.docs) {
+        if (!isAuto && !state.docs) {
           setFieldError("docs", "Selecione uma opção para continuar.");
           isValid = false;
         }
@@ -578,7 +611,7 @@
           setFieldError("creditValue", "Informe o valor desejado.");
           isValid = false;
         } else if (propertyValue > 0 && creditValue > propertyValue * creditLimit) {
-          setFieldError("creditValue", `Crédito máximo para esse imóvel: ${Math.round(creditLimit * 100)}% do valor de avaliação.`);
+          setFieldError("creditValue", `Crédito máximo para esse bem: ${Math.round(creditLimit * 100)}% do valor de avaliação.`);
           isValid = false;
         }
 
@@ -586,7 +619,7 @@
           return { valid: false, propertyValue, creditValue, debtValue };
         }
 
-        if (state.paid === "Não" && propertyValue > 0 && debtValue > propertyValue * 0.5) {
+        if (!isAuto && state.paid === "Não" && propertyValue > 0 && debtValue > propertyValue * 0.5) {
           setFieldError("debtValue", "O saldo devedor informado está acima do limite permitido.");
           profileMessage = "Infelizmente, não conseguimos atender seu perfil no momento. O saldo devedor do seu imóvel está acima do limite permitido para essa modalidade de crédito.";
         }
@@ -599,7 +632,7 @@
       };
 
       const renderSimulationResult = (result) => {
-        const creditLimit = PROPERTY_CREDIT_LIMITS[state.propertyType] || 0.5;
+        const creditLimit = 0.5;
         const maxPotential = result.propertyValue * creditLimit;
         const displayInstallment = calculateInstallment(result.creditValue, DISPLAY_RATE);
         const internalInstallment = calculateInstallment(result.creditValue, INTERNAL_RATE);
@@ -611,6 +644,7 @@
           displayInstallment,
           incomeMinimum,
           propertyType: state.propertyType,
+          assetType: state.assetType,
           paid: state.paid,
           docs: state.docs
         };
@@ -670,6 +704,21 @@
           // cursor logo antes do ",00" fixo pra novos dígitos entrarem no valor inteiro
           if (input.value) { const p = input.value.length - 3; try { input.setSelectionRange(p, p); } catch (e) {} }
           hideSimulationOutcome();
+        });
+      });
+
+      document.querySelectorAll(".asset-option").forEach((button) => {
+        button.addEventListener("click", () => {
+          trackStart();
+          clearMessage(elements.formMessage);
+          document.querySelectorAll(".asset-option").forEach((item) => {
+            item.classList.remove("is-active");
+            item.setAttribute("aria-pressed", "false");
+          });
+          button.classList.add("is-active");
+          button.setAttribute("aria-pressed", "true");
+          state.assetType = button.dataset.value;
+          syncAssetFields();
         });
       });
 
@@ -764,37 +813,45 @@
         elements.leadSuccess.classList.remove("is-hidden");
         clearMessage(elements.leadMessage);
 
-        // Regra comercial: abaixo de R$100 mil de crédito OU abaixo de R$400 mil de
-        // imóvel fica só no banco. A partir de R$300 mil de crédito + R$400 mil de
-        // imóvel vira Lead/RD/Meta. A partir de R$500 mil + imóvel de R$1M vira MQL.
-        var docsOk = lastSimulation && lastSimulation.docs === "Sim";
-        var isLowValue = !lastSimulation || lastSimulation.creditValue < MIN_CREDIT_VALUE || lastSimulation.propertyValue < MIN_RD_PROPERTY_VALUE;
-        var isLead = docsOk && !isLowValue && lastSimulation.creditValue >= MIN_RD_CREDIT_VALUE;
-        var isMql = isLead && lastSimulation.creditValue >= MQL_CREDIT_VALUE && lastSimulation.propertyValue >= MQL_PROPERTY_VALUE;
+        // Regra comercial: abaixo de R$200 mil de crédito vai ao RD como não qualificado,
+        // mas fica sem evento Lead no Meta.
+        // Imóvel precisa ter no mínimo R$400 mil. A partir de R$500 mil de crédito +
+        // imóvel de R$1M vira LeadQualificado. Automóvel quitado vai ao RD como auto.
+        var isAuto = lastSimulation && lastSimulation.assetType === "Automóvel";
+        var docsOk = lastSimulation && (isAuto ? true : lastSimulation.docs === "Sim");
+        var isLowValue = !lastSimulation || lastSimulation.creditValue < MIN_CREDIT_VALUE || (!isAuto && lastSimulation.propertyValue < MIN_RD_PROPERTY_VALUE);
+        var isLead = docsOk && (isAuto || (!isLowValue && lastSimulation.creditValue >= MIN_RD_CREDIT_VALUE));
+        var isMql = !isAuto && isLead && lastSimulation.creditValue >= MQL_CREDIT_VALUE && lastSimulation.propertyValue >= MQL_PROPERTY_VALUE;
+        var leadKind = isLead ? (isAuto ? "auto" : (isMql ? "home_equity_mql" : "home_equity")) : "baixo_valor";
+        var shouldSendMetaLead = isLead && (!isAuto || lastSimulation.creditValue >= MIN_CREDIT_VALUE);
 
         try {
-          if (isLead) {
+          if (shouldSendMetaLead) {
             window.dataLayer = window.dataLayer || [];
             window.dataLayer.push({ event: "lead" });
           }
         } catch {}
         try {
-          if (isLead && window.inspiraTrack) window.inspiraTrack.meta("CompleteRegistration");
+          if (shouldSendMetaLead && window.inspiraTrack) window.inspiraTrack.meta("CompleteRegistration");
         } catch {}
         try {
           if (window.inspiraTrack && lastSimulation) window.inspiraTrack.lead(Object.assign({
             name: name,
             phone: "+55" + phone.replace(/\D/g, ""),
-            property_type: lastSimulation.propertyType.toLowerCase(),
+            property_type: isAuto ? null : lastSimulation.propertyType.toLowerCase(),
             property_value: lastSimulation.propertyValue,
             credit_value: lastSimulation.creditValue,
             source: "landing_page",
-            lead_kind: isLead ? (isMql ? "home_equity_mql" : "home_equity") : "baixo_valor",
-            meta_events: isLead ? (isMql ? ["Lead", "LeadQualificado"] : ["Lead"]) : [],
+            lead_kind: leadKind,
+            meta_events: shouldSendMetaLead ? (isMql ? ["Lead", "LeadQualificado"] : ["Lead"]) : [],
             // já eram coletados na simulação (lastSimulation) mas nunca chegavam a
             // lugar nenhum — nem RD nem nosso banco. Ver sendLeadToRD em _app.js.
-            imovel_quitado: lastSimulation.paid || null,
-            documentacao_ok: lastSimulation.docs || null,
+            imovel_quitado: isAuto ? null : lastSimulation.paid || null,
+            documentacao_ok: isAuto ? null : lastSimulation.docs || null,
+            possui_imovel: isAuto ? "Não" : "Sim",
+            possui_automovel: isAuto ? "Sim" : "Não",
+            automovel_quitado: isAuto ? lastSimulation.paid || null : null,
+            valor_automovel: isAuto ? lastSimulation.propertyValue : null,
             saldo_devedor: lastSimulation.debtValue || null
           }, getUtmParams()));
         } catch {}
@@ -803,7 +860,7 @@
         // antes da navegação. A conversão já foi enviada acima — a página de obrigado
         // NÃO dispara evento (evita duplicar).
         setTimeout(function () {
-          window.location.href = isLead ? "/obrigado/simulacao/" : "/obrigado/nao-elegivel/";
+          window.location.href = isLead ? (isAuto ? "/obrigado/auto/" : "/obrigado/simulacao/") : "/obrigado/nao-elegivel/";
         }, 900);
       });
 
@@ -811,6 +868,7 @@
         window.location.href = "#simulador";
         setTimeout(() => window.location.reload(), 50);
       });
+      syncAssetFields();
     </script>
 
     <script>window.IC_PAGE = "landing_page";</script>
