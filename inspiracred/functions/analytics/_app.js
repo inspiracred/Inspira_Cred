@@ -722,7 +722,15 @@ async function handleOverview(request, env) {
     many(`SELECT page_name, COUNT(*) n FROM form_submissions WHERE success=1 AND DATE(created_at) BETWEEN ? AND ?${pv} GROUP BY page_name`, bp),
     many(`SELECT page_name, element_id, element_text, COUNT(*) clicks FROM clicks WHERE DATE(created_at) BETWEEN ? AND ?${pv} GROUP BY page_name, element_id, element_text ORDER BY clicks DESC`, bp),
     many(`SELECT COALESCE(NULLIF(utm_source,''),'direto') source, COUNT(*) n FROM leads WHERE DATE(created_at) BETWEEN ? AND ?${sc} GROUP BY source ORDER BY n DESC`, bs),
-    many(`SELECT DATE(created_at) d, COUNT(DISTINCT session_id) v FROM page_views WHERE DATE(created_at) BETWEEN ? AND ?${pv} GROUP BY d ORDER BY d`, bp),
+    many(`
+      SELECT d, SUM(v) v, SUM(l) l FROM (
+        SELECT DATE(created_at) d, COUNT(DISTINCT session_id) v, 0 l
+        FROM page_views WHERE DATE(created_at) BETWEEN ? AND ?${pv} GROUP BY d
+        UNION ALL
+        SELECT DATE(created_at) d, 0 v, COUNT(*) l
+        FROM leads WHERE DATE(created_at) BETWEEN ? AND ?${sc} GROUP BY d
+      ) GROUP BY d ORDER BY d
+    `, page ? [start, end, page, start, end, page] : [start, end, start, end]),
     many(`SELECT event_type, event_name, COUNT(*) n, COUNT(DISTINCT session_id) sessions FROM events WHERE DATE(created_at) BETWEEN ? AND ?${pv} GROUP BY event_type, event_name ORDER BY n DESC`, bp),
     many(`SELECT COALESCE(NULLIF(lead_kind,''),'sem_classificacao') kind, COUNT(*) n, SUM(CASE WHEN rd_status='ok' THEN 1 ELSE 0 END) rd_ok, SUM(CASE WHEN meta_status='ok' THEN 1 ELSE 0 END) meta_ok, SUM(CASE WHEN meta_status='nao_enviado' THEN 1 ELSE 0 END) meta_skip, SUM(COALESCE(credit_value,0)) credit FROM leads WHERE DATE(created_at) BETWEEN ? AND ?${sc} GROUP BY kind ORDER BY n DESC`, bs),
   ]);
@@ -996,13 +1004,26 @@ const DASHBOARD_HTML = `<!doctype html>
   .wrap{padding:22px 26px;max-width:1240px;margin:0 auto}
   .scope{font-size:12.5px;color:var(--muted);margin-bottom:18px}
   .scope b{color:var(--blue)}
+  .dash-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin:2px 0 20px}
+  .dash-eyebrow{display:inline-flex;align-items:center;gap:7px;color:var(--orange);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
+  .dash-hero h1{margin:8px 0 4px;font-family:"Instrument Sans","Inter",sans-serif;font-size:32px;line-height:1.05;color:var(--text);letter-spacing:-.04em}
+  .dash-hero p{margin:0;color:var(--muted);font-size:14px}
+  .hero-meta{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+  .hero-meta .chip{background:#fff;color:var(--blue);font-weight:700}
   .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:20px}
   .kpi{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:15px 18px;box-shadow:var(--shadow)}
   .kpi .label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
   .kpi .val{font-size:29px;font-weight:800;color:var(--blue);margin-top:7px;line-height:1}
   .kpi .sub{font-size:12px;color:var(--muted);margin-top:8px}
   .kpi .sub b{color:var(--green-ink);font-weight:700}
+  .metric-strip{grid-template-columns:repeat(6,minmax(150px,1fr));gap:10px}
+  .metric-strip .kpi{border-radius:14px;padding:13px 15px;box-shadow:0 1px 2px rgba(6,26,66,.04)}
+  .metric-strip .kpi .val{font-size:25px;color:var(--text)}
+  .metric-strip .kpi .sub b{color:var(--orange)}
   .grid{display:grid;grid-template-columns:1.5fr 1fr;gap:18px;margin-bottom:20px}
+  .overview-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(330px,.85fr);gap:18px;align-items:start}
+  .overview-stack{display:grid;gap:18px}
+  .overview-side{display:grid;gap:18px}
   .card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px 20px;box-shadow:var(--shadow)}
   .card h2{font-size:12px;margin:0 0 16px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
   .h2row{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
@@ -1023,6 +1044,20 @@ const DASHBOARD_HTML = `<!doctype html>
   .bar-row .lbl{font-size:13px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .bar-row .val{font-size:12.5px;color:var(--blue);font-weight:700;font-variant-numeric:tabular-nums;flex-shrink:0;font-family:"Instrument Sans","Inter",sans-serif}
   .bar-row .val small{color:var(--muted);font-weight:600;font-family:"Inter",sans-serif;margin-left:5px}
+  .donut-card{min-height:300px}
+  .donut-wrap{position:relative;height:174px;margin:4px auto 10px;max-width:230px}
+  .legend-list{display:grid;gap:8px;margin-top:10px}
+  .legend-item{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;font-size:12.5px;color:var(--text)}
+  .legend-dot{width:9px;height:9px;border-radius:99px;background:var(--blue)}
+  .legend-item .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .legend-item .num{font-weight:800;color:var(--blue)}
+  .chart-tall{height:310px}
+  .event-bars{display:grid;gap:10px}
+  .event-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}
+  .event-bar .track{grid-column:1/-1;height:8px;background:var(--surface);border-radius:999px;overflow:hidden}
+  .event-bar .fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--blue),var(--orange));transition:width .5s cubic-bezier(.22,1,.36,1)}
+  .event-bar .name{font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .event-bar .count{font-family:"Instrument Sans","Inter",sans-serif;font-size:13px;font-weight:800;color:var(--blue)}
   /* tabela-resumo por página */
   .sumtable{width:100%;border-collapse:collapse;font-size:13px}
   .sumtable th{text-align:right;color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:0 10px 9px;border-bottom:1px solid var(--border)}
@@ -1099,6 +1134,7 @@ const DASHBOARD_HTML = `<!doctype html>
      assim o drawSlice sincroniza calor + página. scrollTo programático segue funcionando. */
   #hmFrame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
   #hmCanvas{position:absolute;inset:0;pointer-events:none}
+  @media(max-width:980px){.overview-grid{grid-template-columns:1fr}.metric-strip{grid-template-columns:repeat(2,minmax(0,1fr))}.dash-hero{align-items:flex-start;flex-direction:column}.hero-meta{justify-content:flex-start}}
   @media(max-width:760px){.grid,.traffic-top{grid-template-columns:1fr}.tabs{top:auto}}
 </style>
 </head>
@@ -1135,10 +1171,34 @@ const DASHBOARD_HTML = `<!doctype html>
   <div class="scope" id="scope"></div>
 
   <section class="tab-section" id="tab-overview">
-    <div class="kpis" id="kpis"></div>
-    <div class="grid">
-      <div class="card"><h2>Funil de conversão</h2><div id="funnel"></div></div>
-      <div class="card"><h2>Visitantes por dia</h2><div class="chart-box"><canvas id="dailyChart"></canvas></div></div>
+    <div class="dash-hero">
+      <div>
+        <span class="dash-eyebrow">Dashboard</span>
+        <h1>Olá, InspiraCred 👋</h1>
+        <p>Acompanhe leads, conversões e qualidade do funil em uma visão executiva.</p>
+      </div>
+      <div class="hero-meta" id="overviewMeta"></div>
+    </div>
+    <div class="kpis metric-strip" id="kpis"></div>
+    <div class="overview-grid">
+      <div class="overview-stack">
+        <div class="card">
+          <div class="h2row"><h2>Desempenho ao longo do tempo</h2><span class="hint">visitantes x leads</span></div>
+          <div class="chart-box chart-tall"><canvas id="dailyChart"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="h2row"><h2>Conversões / eventos</h2><span class="hint">principais sinais do período</span></div>
+          <div id="overviewEvents"></div>
+        </div>
+      </div>
+      <div class="overview-side">
+        <div class="card"><h2>Funil de conversão</h2><div id="funnel"></div></div>
+        <div class="card donut-card">
+          <div class="h2row"><h2>Leads por fonte</h2><span class="hint" id="overviewSourcesHint"></span></div>
+          <div class="donut-wrap"><canvas id="sourceChart"></canvas></div>
+          <div class="legend-list" id="overviewSourcesLegend"></div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -1155,7 +1215,7 @@ const DASHBOARD_HTML = `<!doctype html>
         <label>Filtrar por conversão
           <select id="leadEventFilter">
             <option value="all">Todas as conversões</option>
-            <option value="home_equity">Lead Home Equity</option>
+            <option value="home_equity">Lead com imóvel</option>
             <option value="home_equity_mql">Lead qualificado</option>
             <option value="auto">Lead automóvel</option>
             <option value="nao_qualificado">Lead não qualificado</option>
@@ -1275,9 +1335,9 @@ const DASHBOARD_HTML = `<!doctype html>
 </div>
 
 <script>
-var dailyChart=null, lastLeads=[], lastAllLeads=[], activeTab="overview";
+var dailyChart=null, sourceChart=null, lastLeads=[], lastAllLeads=[], activeTab="overview";
 var PAGE_LABELS={landing_page:"Landing / Simulação",home_equity_lp:"Home Equity",home_equity_form:"Formulário Home Equity",link_bio:"Link na bio",obrigado_simulacao:"Obrigado · Simulação",obrigado_home_equity:"Obrigado · Home Equity",obrigado_formulario:"Obrigado · Formulário",obrigado_auto:"Obrigado · Auto",obrigado_nao_elegivel:"Obrigado · Não elegível",other:"Outras"};
-var LEAD_KIND_LABELS={home_equity:"Lead Home Equity",home_equity_mql:"Lead qualificado",baixo_valor:"Lead não qualificado",auto:"Lead automóvel",descarte:"Banco de dados (sem imóvel/veículo)"};
+var LEAD_KIND_LABELS={home_equity:"Lead com imóvel",home_equity_mql:"Lead qualificado",baixo_valor:"Lead não qualificado",auto:"Lead automóvel",descarte:"Banco de dados (sem imóvel/veículo)"};
 var PAGE_URLS={landing_page:"https://nova.inspiracred.com.br/",home_equity_lp:"https://nova.inspiracred.com.br/homeequity/",home_equity_form:"https://nova.inspiracred.com.br/formulario/",link_bio:"https://links.inspiracred.com.br/",obrigado_simulacao:"https://nova.inspiracred.com.br/obrigado/simulacao/",obrigado_home_equity:"https://nova.inspiracred.com.br/obrigado/home-equity/",obrigado_formulario:"https://nova.inspiracred.com.br/obrigado/formulario/",obrigado_auto:"https://nova.inspiracred.com.br/obrigado/auto/",obrigado_nao_elegivel:"https://nova.inspiracred.com.br/obrigado/nao-elegivel/"};
 var CHART_PALETTE=["#f97316","#0b2d72","#10b981","#f59e0b","#3b82f6","#8b5cf6","#ec4899"];
 function pretty(n){return (n==null||n===""?"-":String(n))}
@@ -1320,11 +1380,24 @@ function loadAll(){
 
 function render(d){
   var t=d.totals, r=d.rates;
-  var kpis=[["Visitantes únicos",pretty(t.visitors),r.visitor_to_lead+"% viram lead"],["Simulações concluídas",pretty(t.sim_complete),r.start_to_complete+"% de conclusão"],["Leads capturados",pretty(t.leads),r.complete_to_lead+"% dos que concluíram"],["Conversão visitante→lead",r.visitor_to_lead+"%",pretty(t.leads)+" de "+pretty(t.visitors)]];
+  var kinds=d.lead_kind_summary||[], byKind={};
+  kinds.forEach(function(k){byKind[k.kind]=k;});
+  var mql=(byKind.home_equity_mql&&byKind.home_equity_mql.n)||0;
+  var qualifRate=pct(mql,t.leads||0);
+  document.getElementById("overviewMeta").innerHTML='<span class="chip">'+(d.page==="all"?"Todas as páginas":label(d.page||"all"))+'</span><span class="chip">'+(d.range?d.range.start+" → "+d.range.end:"período atual")+'</span>';
+  var kpis=[
+    ["Visitas",pretty(t.visitors),r.visitor_to_lead+"% viram lead"],
+    ["Engajados",pretty(t.sim_start),r.visitor_to_start+"% iniciaram"],
+    ["Simulações",pretty(t.sim_complete),r.start_to_complete+"% conclusão"],
+    ["Tx. conv.",r.visitor_to_lead+"%",pretty(t.leads)+" leads"],
+    ["Leads",pretty(t.leads),r.complete_to_lead+"% pós-simulação"],
+    ["% qualif.",qualifRate+"%",pretty(mql)+" MQLs"]
+  ];
   document.getElementById("kpis").innerHTML=kpis.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>'}).join("");
   renderFunnel([["Visitantes",t.visitors],["Simulação iniciada",t.sim_start],["Simulação concluída",t.sim_complete],["Lead",t.leads]]);
   renderEventSummary(d);
-  var dl=d.daily||[]; drawLine("dailyChart",dl.map(function(x){return x.d.slice(5)}),dl.map(function(x){return x.v}));
+  renderOverviewSources(d.sources||[]);
+  var dl=d.daily||[]; drawLine("dailyChart",dl.map(function(x){return x.d.slice(5)}),dl.map(function(x){return x.v}),dl.map(function(x){return x.l||0}));
 }
 
 function eventLabel(name){
@@ -1361,11 +1434,46 @@ function renderEventSummary(d){
   });
   var eventRows=rows.slice(0,8).map(function(e){return {name:eventLabel(e.event_name),n:e.n||0,sessions:e.sessions||0,type:e.event_type||"Evento"};});
   var all=leadRows.concat(eventRows);
-  if(!all.length){document.getElementById("eventSummary").innerHTML='<div class="empty">Nenhum evento registrado no período.</div>';return}
+  if(!all.length){
+    document.getElementById("overviewEvents").innerHTML='<div class="empty">Nenhum evento registrado no período.</div>';
+    document.getElementById("eventSummary").innerHTML='<div class="empty">Nenhum evento registrado no período.</div>';
+    return;
+  }
   var max=Math.max.apply(null,all.map(function(x){return x.n||0}).concat([1]));
+  document.getElementById("overviewEvents").innerHTML=eventBars(all.slice(0,7), max, "Nenhum evento registrado no período.");
   document.getElementById("eventSummary").innerHTML='<table class="sumtable"><thead><tr><th>Evento / conversão</th><th style="text-align:left">Tipo</th><th>Qtd.</th><th>Sessões / RD</th></tr></thead><tbody>'+
     all.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td style="text-align:left;font-weight:500;color:var(--muted)">'+esc(x.type)+'</td><td class="num">'+pretty(x.n)+'</td><td class="num">'+pretty(x.sessions)+'</td></tr>';}).join("")+
     '</tbody></table>';
+}
+
+function eventBars(rows,max,emptyMsg){
+  rows=rows||[];
+  if(!rows.length)return '<div class="empty">'+emptyMsg+'</div>';
+  max=max||Math.max.apply(null,rows.map(function(x){return x.n||0}).concat([1]));
+  return '<div class="event-bars">'+rows.map(function(x){
+    var w=Math.max(5,Math.round((x.n||0)/max*100));
+    return '<div class="event-bar"><span class="name" title="'+esc(x.name)+'">'+esc(x.name)+'</span><span class="count">'+pretty(x.n)+'</span><span class="track"><span class="fill" style="width:'+w+'%"></span></span></div>';
+  }).join("")+'</div>';
+}
+
+function renderOverviewSources(rows){
+  rows=rows||[];
+  var hint=document.getElementById("overviewSourcesHint");
+  var legend=document.getElementById("overviewSourcesLegend");
+  var total=rows.reduce(function(a,x){return a+(x.n||0)},0);
+  hint.textContent=total?(total+(total===1?" lead":" leads")):"";
+  if(!rows.length){
+    legend.innerHTML='<div class="empty">Nenhuma fonte de lead no período.</div>';
+    drawDonut("sourceChart",[],[]);
+    return;
+  }
+  var labels=rows.slice(0,6).map(function(x){return x.source||"direto"});
+  var vals=rows.slice(0,6).map(function(x){return x.n||0});
+  drawDonut("sourceChart",labels,vals);
+  legend.innerHTML=rows.slice(0,6).map(function(x,i){
+    var color=CHART_PALETTE[i%CHART_PALETTE.length];
+    return '<div class="legend-item"><span class="legend-dot" style="background:'+color+'"></span><span class="name" title="'+esc(x.source||"direto")+'">'+esc(x.source||"direto")+'</span><span class="num">'+pretty(x.n)+' · '+pct(x.n,total)+'%</span></div>';
+  }).join("");
 }
 
 /* Funil de conversão com silhueta real: cada etapa é um trapézio que vai da própria
@@ -1648,7 +1756,20 @@ function exportCSV(){
   downloadCSV(lastLeads,CSV_COLS,"leads-"+currentPage()+"-"+currentLeadFilter()+"-"+new Date().toISOString().slice(0,10)+".csv");
 }
 
-function drawLine(id,labels,data){var ctx=document.getElementById(id);if(dailyChart)dailyChart.destroy();dailyChart=new Chart(ctx,{type:"line",data:{labels:labels,datasets:[{data:data,borderColor:"#f97316",backgroundColor:"rgba(249,115,22,.12)",fill:true,tension:.3,pointRadius:2,pointBackgroundColor:"#f97316"}]},options:{maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:"#6b7280"},grid:{color:"#eef0f3"}},y:{ticks:{color:"#6b7280"},grid:{color:"#eef0f3"}}}}})}
+function drawLine(id,labels,visitors,leads){
+  var ctx=document.getElementById(id);
+  if(dailyChart)dailyChart.destroy();
+  dailyChart=new Chart(ctx,{type:"line",data:{labels:labels,datasets:[
+    {label:"Visitas",data:visitors,borderColor:"rgba(11,45,114,.32)",backgroundColor:"rgba(11,45,114,.06)",fill:true,tension:.38,pointRadius:0,borderWidth:3},
+    {label:"Leads",data:leads||[],borderColor:"#f97316",backgroundColor:"rgba(249,115,22,.10)",fill:false,tension:.38,pointRadius:2,pointBackgroundColor:"#f97316",borderWidth:3}
+  ]},options:{maintainAspectRatio:false,interaction:{intersect:false,mode:"index"},plugins:{legend:{display:true,position:"bottom",labels:{boxWidth:22,usePointStyle:true,pointStyle:"line",color:"#6b7280",font:{family:"Inter",size:12,weight:"600"}}}},scales:{x:{ticks:{color:"#9ca3af"},grid:{display:false}},y:{beginAtZero:true,ticks:{color:"#9ca3af"},grid:{color:"#eef0f3"}}}}})
+}
+function drawDonut(id,labels,data){
+  var ctx=document.getElementById(id);
+  if(!ctx)return;
+  if(sourceChart)sourceChart.destroy();
+  sourceChart=new Chart(ctx,{type:"doughnut",data:{labels:labels,datasets:[{data:data,backgroundColor:CHART_PALETTE,borderColor:"#fff",borderWidth:4,hoverOffset:4}]},options:{maintainAspectRatio:false,cutout:"66%",plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){var total=(c.dataset.data||[]).reduce(function(a,n){return a+Number(n||0)},0);return " "+c.label+": "+c.raw+" ("+pct(c.raw,total)+"%)";}}}}}})
+}
 
 /* ---- Mapa de calor ---- */
 // Paths same-origin (as 3 páginas existem no projeto Pages inspira-cred) → dá pra
