@@ -777,6 +777,15 @@ a {
   margin-top: 28px;
 }
 
+.thank-you-nudge {
+  margin: 0 0 2px;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
+}
+
 .thank-you-btn {
   min-height: 54px;
   display: inline-flex;

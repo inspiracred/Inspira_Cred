@@ -29,7 +29,8 @@
       tone: "qualified",
       eyebrow: "Etapa concluída",
       title: "Muito obrigada por suas respostas!",
-      lead: "Terminamos por aqui. Nossa equipe já vai analisar o seu perfil e entrar em contato em breve para falar sobre as melhores condições para você.",
+      lead: "",
+      ctaNudge: "Quer acelerar o processo? Mande uma mensagem",
       steps: [
         ["Análise do seu perfil", "Revisamos tipo de imóvel, documentação e valor buscado."],
         ["Contato pelo WhatsApp", "Entramos em contato para entender melhor a sua necessidade."],
@@ -41,7 +42,8 @@
       tone: "qualified",
       eyebrow: "Etapa concluída",
       title: "Muito obrigada por suas respostas!",
-      lead: "Recebemos suas informações sobre o crédito com garantia de veículo. Nossa equipe já vai analisar o seu perfil e entrar em contato em breve para falar sobre as melhores condições para você.",
+      lead: "",
+      ctaNudge: "Quer acelerar o processo? Mande uma mensagem",
       steps: [
         ["Análise do seu perfil", "Revisamos o valor do veículo e o crédito buscado."],
         ["Contato pelo WhatsApp", "Um especialista entra em contato para entender o seu momento."],
@@ -516,6 +518,9 @@
 
     var cta = "";
     if (cfg.whatsapp) {
+      if (cfg.ctaNudge) {
+        cta += '<p class="thank-you-nudge">' + escapeHtml(cfg.ctaNudge) + '</p>';
+      }
       cta += '<a class="thank-you-btn thank-you-btn-whatsapp" id="formulario-obrigado-whatsapp" href="' + cfg.whatsapp + '" target="_blank" rel="noopener noreferrer">' +
         WHATSAPP_ICON + 'Falar com um consultor no WhatsApp</a>';
       cta += '<a class="thank-you-btn thank-you-btn-ghost" id="formulario-obrigado-nova" href="/formulario/">Fazer uma nova simulação</a>';
@@ -535,7 +540,7 @@
       '<span class="thank-you-mark" aria-hidden="true"><svg viewBox="0 0 56 56" width="30" height="30"><circle class="ring" cx="28" cy="28" r="24"></circle><path class="check" d="M17 29.5 24.3 36.5 39.5 20"></path></svg></span>' +
       '<span class="thank-you-eyebrow">' + escapeHtml(cfg.eyebrow) + '</span>' +
       '<h2>' + escapeHtml(cfg.title) + '</h2>' +
-      '<p class="thank-you-lead">' + escapeHtml(cfg.lead) + '</p>' +
+      (cfg.lead ? '<p class="thank-you-lead">' + escapeHtml(cfg.lead) + '</p>' : '') +
       steps +
       '<div class="thank-you-cta">' + cta + '</div>' +
       '<p class="thank-you-fine"><a href="/politica-de-privacidade.html" target="_blank" rel="noopener noreferrer">Política de Privacidade</a> · <a href="/termos-de-uso.html" target="_blank" rel="noopener noreferrer">Termos de Uso</a></p>' +
