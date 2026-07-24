@@ -1407,6 +1407,7 @@ const DASHBOARD_HTML = `<!doctype html>
   select:hover,button:hover{border-color:var(--blue)}
   button.primary{background:var(--orange);border-color:var(--orange);color:#fff;font-weight:600}
   button.primary:hover{filter:brightness(1.04);box-shadow:0 6px 14px rgba(249,115,22,.28)}
+  #saveFilter.saved{background:var(--orange-soft);border-color:rgba(249,115,22,.4);color:#9a3412;font-weight:700}
   .tabs{position:fixed;left:0;top:0;bottom:0;z-index:40;width:246px;display:flex;flex-direction:column;gap:6px;padding:18px 14px;background:linear-gradient(180deg,var(--blue-dark),var(--blue));border-right:1px solid rgba(255,255,255,.10);box-shadow:10px 0 30px rgba(6,26,66,.14)}
   .side-mark{padding:8px 8px 18px;margin-bottom:8px;border-bottom:1px solid rgba(255,255,255,.14)}
   .side-mark .brand{font-family:"Instrument Sans","Inter",sans-serif;font-size:22px;font-weight:850;color:#fff;letter-spacing:-.03em}
@@ -1720,6 +1721,7 @@ const DASHBOARD_HTML = `<!doctype html>
     </select>
     <select id="rangeSel"><option value="7">Últimos 7 dias</option><option value="30" selected>Últimos 30 dias</option><option value="90">Últimos 90 dias</option></select>
     <button id="refresh" class="primary">Atualizar</button>
+    <button id="saveFilter" title="Guardar página, origem e período como padrão deste navegador">☆ Salvar filtro</button>
     <a href="/analytics/logout" class="btn-sm" style="text-decoration:none;display:inline-flex;align-items:center">Sair</a>
     <button id="openPage" title="Abrir a página selecionada em nova aba">Abrir página ↗</button>
   </div>
@@ -3435,11 +3437,64 @@ document.getElementById("hmViewport").addEventListener("wheel",function(e){
   if(m<=0)return;
   if((e.deltaY<0&&this.scrollTop>0)||(e.deltaY>0&&this.scrollTop<m-1)){e.preventDefault();this.scrollTop+=e.deltaY;}
 },{passive:false});
+/* ---- Filtro padrão salvo (por navegador, via localStorage) ----
+   Guarda página + origem + período. Ao abrir o dashboard, se houver algo salvo, os
+   seletores já vêm preenchidos com ele antes do 1º loadAll(). É por navegador porque é
+   preferência de quem abre — não faz sentido gravar no servidor pra todo mundo. */
+var FILTER_KEY="ic_dash_filter";
+function saveFilter(){
+  var f={page:currentPage(),src:currentSrc(),days:document.getElementById("rangeSel").value};
+  try{ localStorage.setItem(FILTER_KEY,JSON.stringify(f)); }catch(e){}
+  var b=document.getElementById("saveFilter");
+  b.textContent="★ Filtro salvo"; b.classList.add("saved");
+  setTimeout(function(){ syncSaveBtn(); },1800);
+}
+function clearFilter(){
+  try{ localStorage.removeItem(FILTER_KEY); }catch(e){}
+  syncSaveBtn();
+}
+function readSavedFilter(){
+  try{ return JSON.parse(localStorage.getItem(FILTER_KEY)||"null"); }catch(e){ return null; }
+}
+// Reflete no botão se o filtro atual é o que está salvo (estrela cheia = salvo/igual).
+function syncSaveBtn(){
+  var b=document.getElementById("saveFilter"); if(!b)return;
+  var s=readSavedFilter();
+  var igual=s&&s.page===currentPage()&&s.src===currentSrc()&&String(s.days)===document.getElementById("rangeSel").value;
+  b.classList.toggle("saved",!!igual);
+  b.title=igual?"Este é o filtro padrão deste navegador — clique para remover":"Guardar página, origem e período como padrão deste navegador";
+  b.textContent=igual?"★ Filtro salvo":"☆ Salvar filtro";
+}
+// Aplica o filtro salvo aos seletores no carregamento. A origem salva pode não estar
+// na lista de opções ainda (o srcSel começa só com meta_ads/todas até /campaigns
+// popular) — então injeta a opção pra o valor "pegar".
+function applySavedFilter(){
+  var s=readSavedFilter(); if(!s)return;
+  var pageSel=document.getElementById("pageSel"), srcSel=document.getElementById("srcSel"), rangeSel=document.getElementById("rangeSel");
+  if(s.page){ if(![].some.call(pageSel.options,function(o){return o.value===s.page})){} pageSel.value=s.page; }
+  if(s.days){ rangeSel.value=String(s.days); }
+  if(s.src){
+    if(![].some.call(srcSel.options,function(o){return o.value===s.src})){
+      var o=document.createElement("option"); o.value=s.src; o.textContent="Origem: "+s.src; srcSel.appendChild(o);
+    }
+    srcSel.value=s.src; campSrc=s.src;
+  }
+}
+document.getElementById("saveFilter").addEventListener("click",function(){
+  var s=readSavedFilter();
+  var igual=s&&s.page===currentPage()&&s.src===currentSrc()&&String(s.days)===document.getElementById("rangeSel").value;
+  if(igual) clearFilter(); else saveFilter();
+});
+document.getElementById("pageSel").addEventListener("change",syncSaveBtn);
+document.getElementById("rangeSel").addEventListener("change",syncSaveBtn);
+document.getElementById("srcSel").addEventListener("change",syncSaveBtn);
 document.getElementById("criteriaBtn").addEventListener("click",openCriteria);
 document.getElementById("criteriaClose").addEventListener("click",function(){document.getElementById("criteriaModal").classList.remove("show");});
 document.getElementById("criteriaModal").addEventListener("click",function(e){if(e.target.id==="criteriaModal")this.classList.remove("show");});
 document.getElementById("modalClose").addEventListener("click",closeModal);
 document.getElementById("leadModal").addEventListener("click",function(e){if(e.target.id==="leadModal")closeModal()});
+applySavedFilter();
+syncSaveBtn();
 setHmMode("clicks");
 showTab("overview");
 loadAll();
