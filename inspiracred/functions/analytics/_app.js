@@ -895,9 +895,28 @@ async function handleOverview(request, env) {
   // o funil curto (visita → lead) em vez de misturar número filtrado com não filtrado.
   let v = visitors.n || 0, ss = simStart.n || 0, scv = simComplete.n || 0;
   const ld = leadsN.n || 0;
-  let dailyOut = daily;
+  let dailyOut = daily, eventsSrcSince = null;
   if (src) {
-    ss = null; scv = null;
+    // "Simulação iniciada" filtrada por origem: o carimbo `utm_source` gravado dentro
+    // de events.properties (ver assets/js/track.js). Só existe a partir do deploy que
+    // ligou o carimbo — por isso devolvemos a data do primeiro evento carimbado, pra a
+    // tela avisar em vez de mostrar zero como se fosse queda real.
+    // "Simulação concluída" continua fora do funil filtrado (a etapa do meio ficaria
+    // sempre menor que a verdade no histórico e confunde mais do que ajuda).
+    scv = null;
+    try {
+      const EVSRC = `COALESCE(NULLIF(json_extract(properties,'$.utm_source'),''),'direto')`;
+      const evBinds = page ? [start, end, page, src] : [start, end, src];
+      const r = await env.DB.prepare(
+        `SELECT COUNT(DISTINCT session_id) n FROM events
+         WHERE event_name='simulation_start' AND DATE(created_at) BETWEEN ? AND ?${pv} AND ${EVSRC} = ?`
+      ).bind(...evBinds).first();
+      ss = (r && r.n) || 0;
+      const since = await env.DB.prepare(
+        `SELECT MIN(DATE(created_at)) d FROM events WHERE json_extract(properties,'$.utm_source') IS NOT NULL`
+      ).first();
+      eventsSrcSince = (since && since.d) || null;
+    } catch (e) { ss = null; }
     try {
       const sw = `WHERE DATE(created_at,'unixepoch') BETWEEN ? AND ? AND ${SRC_EXPR} = ?`;
       const sv = await env.DB.prepare(`SELECT COUNT(*) n FROM sessions ${sw}`).bind(start, end, src).first();
@@ -917,7 +936,7 @@ async function handleOverview(request, env) {
 
   return json({
     range: { start, end }, page: page || "all", src: src || "all",
-    visits_from_sessions: !!src,
+    visits_from_sessions: !!src, events_src_since: eventsSrcSince,
     totals: { visitors: v, sim_start: ss, sim_complete: scv, leads: ld },
     rates: { visitor_to_start: pct(ss, v), start_to_complete: pct(scv, ss), complete_to_lead: pct(ld, scv), visitor_to_lead: pct(ld, v) },
     pages: pagesOut, clicks, sources, daily: dailyOut,
@@ -1622,7 +1641,7 @@ const DASHBOARD_HTML = `<!doctype html>
         </div>
       </div>
       <div class="overview-side">
-        <div class="card"><h2>Funil de conversão</h2><div id="funnel"></div></div>
+        <div class="card"><h2>Funil de conversão</h2><div id="funnel"></div><p class="hint" id="funnelNote" style="display:none;margin:10px 0 0;line-height:1.5"></p></div>
         <div class="card donut-card">
           <div class="h2row"><h2>Campanhas que mais trazem lead</h2><span class="hint" id="topCampHint"></span></div>
           <div class="donut-wrap"><canvas id="campMixChart"></canvas></div>
@@ -1635,7 +1654,12 @@ const DASHBOARD_HTML = `<!doctype html>
   <section class="tab-section" id="tab-leads">
     <div class="kpis" id="leadKpis"></div>
     <div class="card">
-      <div class="h2row"><h2 id="leadsTitle">Mesa de leads</h2><button class="btn-sm" id="csvBtn">Baixar CSV</button></div>
+      <div class="h2row"><h2 id="leadsTitle">Mesa de leads</h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn-sm" id="criteriaBtn">? Critérios de qualificação</button>
+          <button class="btn-sm" id="csvBtn">Baixar CSV</button>
+        </div>
+      </div>
       <div class="filterbar">
         <label>Filtrar por conversão
           <select id="leadEventFilter">
@@ -1796,6 +1820,15 @@ const DASHBOARD_HTML = `<!doctype html>
   </section>
 </div>
 
+<div class="modal-bg" id="criteriaModal">
+  <div class="modal" style="max-width:560px">
+    <button class="close" id="criteriaClose">&times;</button>
+    <h3>Critérios de qualificação</h3>
+    <div class="chip">as mesmas regras do site e do servidor</div>
+    <div class="modal-scroll" id="criteriaBody"></div>
+  </div>
+</div>
+
 <div class="modal-bg" id="leadModal">
   <div class="modal">
     <button class="close" id="modalClose">&times;</button>
@@ -1870,20 +1903,34 @@ function render(d){
   // Com filtro de origem ligado, "simulação iniciada/concluída" não existe filtrado
   // (esses eventos não gravam origem) — some do KPI e do funil em vez de aparecer um
   // número de OUTRO recorte do lado de um número filtrado.
-  var temFunilMeio=t.sim_start!=null;
+  // Sem filtro: funil completo (4 etapas). Com filtro de origem: 3 etapas —
+  // visitas da origem → simulação iniciada → lead. A "simulação concluída" fica de
+  // fora filtrada porque o histórico anterior ao carimbo de origem nos eventos
+  // apareceria menor do que foi de verdade.
+  var filtrado=d.src&&d.src!=="all";
+  var temSimCompleta=t.sim_complete!=null;
   var kpis=[
     [d.visits_from_sessions?"Visitas (sessões)":"Visitas",pretty(t.visitors),r.visitor_to_lead+"% viram lead"],
-    ["Engajados",temFunilMeio?pretty(t.sim_start):"—",temFunilMeio?r.visitor_to_start+"% iniciaram":"sem origem gravada"],
-    ["Simulações",temFunilMeio?pretty(t.sim_complete):"—",temFunilMeio?r.start_to_complete+"% conclusão":"sem origem gravada"],
+    ["Engajados",t.sim_start!=null?pretty(t.sim_start):"—",t.sim_start!=null?r.visitor_to_start+"% iniciaram":"sem origem gravada"],
+    ["Simulações",temSimCompleta?pretty(t.sim_complete):"—",temSimCompleta?r.start_to_complete+"% conclusão":"não filtrável por origem"],
     ["Tx. conv.",r.visitor_to_lead+"%",pretty(t.leads)+" leads"],
-    ["Leads",pretty(t.leads),temFunilMeio?r.complete_to_lead+"% pós-simulação":"no recorte atual"],
+    ["Leads",pretty(t.leads),temSimCompleta?r.complete_to_lead+"% pós-simulação":"no recorte atual"],
     ["% qualif.",qualifRate+"%",pretty(mql)+" MQLs"]
   ];
   document.getElementById("kpis").innerHTML=kpis.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>'}).join("");
   renderOverviewModules(d);
-  renderFunnel(temFunilMeio
-    ? [["Visitantes",t.visitors],["Simulação iniciada",t.sim_start],["Simulação concluída",t.sim_complete],["Lead",t.leads]]
-    : [["Visitas da origem",t.visitors],["Lead",t.leads]]);
+  renderFunnel(filtrado
+    ? [["Visitas da origem",t.visitors],["Simulação iniciada",t.sim_start||0],["Lead",t.leads]]
+    : [["Visitantes",t.visitors],["Simulação iniciada",t.sim_start],["Simulação concluída",t.sim_complete],["Lead",t.leads]]);
+  var fn=document.getElementById("funnelNote");
+  if(fn){
+    fn.innerHTML=filtrado
+      ? 'Filtrado por <b>'+esc(d.src)+'</b>. Visitas vêm da sessão do servidor; a simulação iniciada passou a guardar a origem'+
+        (d.events_src_since?' em <b>'+d.events_src_since.split("-").reverse().join("/")+'</b>':' a partir do último deploy')+
+        ' — antes disso ela não aparece neste recorte.'
+      : '';
+    fn.style.display=filtrado?"block":"none";
+  }
   renderEventSummary(d);
   renderOverviewTopCamps();
   var dl=d.daily||[]; drawLine("dailyChart",dl.map(function(x){return x.d.slice(5)}),dl.map(function(x){return x.v}),dl.map(function(x){return x.l||0}));
@@ -2551,8 +2598,12 @@ function valorCell(v,minimo,kind){
   var ok=Number(v)>=minimo;
   return '<span class="val-'+(ok?'ok':'no')+'" title="'+(ok?'atende ao mínimo de ':'abaixo do mínimo de ')+brl(minimo)+'">'+brl(v)+'</span>';
 }
+function openCriteria(){
+  document.getElementById("criteriaBody").innerHTML=criteriaBox();
+  document.getElementById("criteriaModal").classList.add("show");
+}
 function criteriaBox(){
-  return '<div class="criteria">'+
+  return '<div class="criteria" style="margin:0">'+
     '<b>Como um lead vira qualificado</b>'+
     '<ul>'+
       '<li><span class="val-ok">Imóvel a partir de '+brl(MIN_IMOVEL)+'</span> <b>E</b> <span class="val-ok">crédito a partir de '+brl(MIN_CREDITO)+'</span> → conta como <b>Lead</b> no Meta e vai pro RD.</li>'+
@@ -2580,7 +2631,7 @@ function renderLeads(d){
   document.getElementById("leadKpis").innerHTML=lk.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub">'+k[2]+'</div></div>'}).join("");
   renderLeadVisuals(lastLeads);
   if(!n){document.getElementById("leads").innerHTML='<div class="empty">Nenhum lead para este filtro.</div>';return}
-  var html=criteriaBox()+eventLegend();
+  var html=eventLegend();
   html+='<table><thead><tr><th>Data</th><th>Nome</th><th>Classificação</th><th>Página</th><th>Imóvel</th><th>Crédito</th><th>RD</th><th>Meta Lead</th><th>MQL</th><th></th></tr></thead><tbody>';
   lastLeads.forEach(function(l,i){
     html+='<tr><td>'+(l.created_at||"").slice(0,16)+'</td>'+
@@ -3266,6 +3317,9 @@ document.getElementById("hmViewport").addEventListener("wheel",function(e){
   if(m<=0)return;
   if((e.deltaY<0&&this.scrollTop>0)||(e.deltaY>0&&this.scrollTop<m-1)){e.preventDefault();this.scrollTop+=e.deltaY;}
 },{passive:false});
+document.getElementById("criteriaBtn").addEventListener("click",openCriteria);
+document.getElementById("criteriaClose").addEventListener("click",function(){document.getElementById("criteriaModal").classList.remove("show");});
+document.getElementById("criteriaModal").addEventListener("click",function(e){if(e.target.id==="criteriaModal")this.classList.remove("show");});
 document.getElementById("modalClose").addEventListener("click",closeModal);
 document.getElementById("leadModal").addEventListener("click",function(e){if(e.target.id==="leadModal")closeModal()});
 setHmMode("clicks");

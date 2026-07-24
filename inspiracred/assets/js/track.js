@@ -165,6 +165,26 @@
   function send(payload) {
     payload.session_id = sid;
     if (!payload.page_name) payload.page_name = PAGE;
+    // Carimba a ORIGEM dentro das properties de todo evento (simulação iniciada,
+    // scroll, seção…). A tabela `events` não tem coluna de UTM e é chaveada pelo id do
+    // navegador, não pela sessão do edge — sem este carimbo não existe jeito de filtrar
+    // o funil por origem no dashboard. Vai em `properties` de propósito: é coluna JSON,
+    // então não precisa de migration. Cópia (não mutação) pra não mexer no objeto que o
+    // Pixel já usou.
+    if (payload.type === "event") {
+      try {
+        var uSrc = utmParams().utm_source;
+        if (uSrc) {
+          var props = payload.properties || {};
+          if (props.utm_source == null) {
+            var copia = {};
+            for (var k in props) copia[k] = props[k];
+            copia.utm_source = uSrc;
+            payload.properties = copia;
+          }
+        }
+      } catch (e) {}
+    }
     try {
       var body = JSON.stringify(payload);
       // text/plain evita preflight CORS em requisições cross-subdomain (links -> nova)
