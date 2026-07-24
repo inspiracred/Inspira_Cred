@@ -42,7 +42,17 @@ export async function onRequest(context) {
     return handleTrack(request, env, cors, context);
   }
 
-  if (!isAuthorized(request, env)) return unauthorized();
+  // Login próprio (tela nossa) — o POST tem que rodar ANTES do guard de autenticação.
+  if (sub === "/login" && request.method === "POST") return handleLogin(request, env);
+  if (sub === "/logout") return handleLogout();
+
+  if (!(await isAuthorized(request, env))) {
+    // Página do dashboard devolve a TELA de login; API continua 401 seco.
+    if ((sub === "/" || sub === "/dashboard" || sub === "/login") && request.method === "GET") {
+      return loginPage(url.searchParams.get("erro") === "1");
+    }
+    return unauthorized();
+  }
 
   if (sub === "/api/overview" && request.method === "GET") return handleOverview(request, env);
   if (sub === "/api/leads" && request.method === "GET") return handleLeads(request, env);
@@ -52,6 +62,10 @@ export async function onRequest(context) {
   if (sub === "/api/campaigns" && request.method === "GET") return handleCampaigns(request, env);
   if (sub === "/api/health" && request.method === "GET") return handleHealth(request, env);
   if (sub === "/api/meta-test" && request.method === "GET") return handleMetaTest(request, env);
+  // já logado tentando abrir a tela de login: manda direto pro painel
+  if (sub === "/login" && request.method === "GET") {
+    return new Response(null, { status: 303, headers: { Location: "/analytics/dashboard" } });
+  }
   if ((sub === "/" || sub === "/dashboard") && request.method === "GET") {
     return new Response(DASHBOARD_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
   }
@@ -59,10 +73,46 @@ export async function onRequest(context) {
   return new Response("Not Found", { status: 404 });
 }
 
-/* ---- AUTH ---- */
-function isAuthorized(request, env) {
+/* ---- AUTH ----
+ * Duas portas para a MESMA senha (`DASHBOARD_PASSWORD`):
+ *   1) tela de login nossa -> cookie de sessão assinado (o caminho normal, no navegador)
+ *   2) Basic Auth -> continua valendo, pra não quebrar link salvo/curl/monitoramento.
+ * O cookie NÃO guarda a senha: é `expiração.assinatura`, com HMAC-SHA256 usando a
+ * própria senha como chave. Sem a senha não dá pra forjar, e o token morre sozinho.
+ */
+const SESSION_COOKIE = "ic_dash";
+const SESSION_TTL = 60 * 60 * 12; // 12 horas
+
+async function hmacHex(key, msg) {
+  const enc = new TextEncoder();
+  const k = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", k, enc.encode(msg));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function safeEqual(a, b) {
+  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+async function makeSessionToken(env) {
+  const exp = Math.floor(Date.now() / 1000) + SESSION_TTL;
+  return exp + "." + (await hmacHex(env.DASHBOARD_PASSWORD, "dash|" + exp));
+}
+async function sessionTokenOk(env, token) {
+  if (!token) return false;
+  const dot = token.indexOf(".");
+  if (dot < 1) return false;
+  const exp = token.slice(0, dot), sig = token.slice(dot + 1);
+  if (!/^\d+$/.test(exp) || Number(exp) < Math.floor(Date.now() / 1000)) return false;
+  return safeEqual(sig, await hmacHex(env.DASHBOARD_PASSWORD, "dash|" + exp));
+}
+
+async function isAuthorized(request, env) {
   const pw = env.DASHBOARD_PASSWORD;
   if (!pw) return false;
+  const cookie = parseCookies(request.headers.get("Cookie"))[SESSION_COOKIE];
+  if (cookie && (await sessionTokenOk(env, cookie))) return true;
   const header = request.headers.get("Authorization") || "";
   if (!header.startsWith("Basic ")) return false;
   let decoded = "";
@@ -70,11 +120,94 @@ function isAuthorized(request, env) {
   return decoded.slice(decoded.indexOf(":") + 1) === pw;
 }
 function unauthorized() {
-  return new Response("Autenticação necessária", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="InspiraCred Analytics"' },
+  // Sem WWW-Authenticate de propósito: é ele que faz o navegador abrir aquele popup
+  // feio. Quem usa Basic manda o header direto e continua entrando normalmente.
+  return new Response("Autenticação necessária", { status: 401 });
+}
+
+async function handleLogin(request, env) {
+  let senha = "";
+  try {
+    const form = await request.formData();
+    senha = String(form.get("senha") || "");
+  } catch (e) { /* corpo inválido */ }
+  if (!env.DASHBOARD_PASSWORD || !safeEqual(senha, env.DASHBOARD_PASSWORD)) {
+    return new Response(null, { status: 303, headers: { Location: "/analytics/login?erro=1" } });
+  }
+  const token = await makeSessionToken(env);
+  return new Response(null, {
+    status: 303,
+    headers: {
+      Location: "/analytics/dashboard",
+      "Set-Cookie": SESSION_COOKIE + "=" + token + "; Path=/analytics; Max-Age=" + SESSION_TTL + "; HttpOnly; Secure; SameSite=Lax",
+    },
   });
 }
+function handleLogout() {
+  return new Response(null, {
+    status: 303,
+    headers: {
+      Location: "/analytics/login",
+      "Set-Cookie": SESSION_COOKIE + "=; Path=/analytics; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
+    },
+  });
+}
+function loginPage(erro) {
+  return new Response(LOGIN_HTML.replace("<!--ERRO-->", erro ? '<p class="erro">Senha incorreta. Tente de novo.</p>' : ""), {
+    status: erro ? 401 : 200,
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+  });
+}
+
+const LOGIN_HTML = `<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="robots" content="noindex,nofollow"/>
+<title>InspiraCred · Analytics</title>
+<link rel="icon" href="/assets/icons/favicon.svg" type="image/svg+xml"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--blue:#0b2d72;--blue-dark:#061a42;--orange:#f97316;--border:#e6e8ec;--muted:#6b7280}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+    font-family:"Inter",-apple-system,Segoe UI,Roboto,sans-serif;color:#fff;
+    background:radial-gradient(1100px 620px at 15% -10%,#12408f 0%,transparent 60%),linear-gradient(160deg,var(--blue-dark),#04122e 70%)}
+  .card{width:100%;max-width:392px}
+  .brand{font-family:"Instrument Sans","Inter",sans-serif;font-size:31px;font-weight:800;letter-spacing:-.03em;margin:0 0 4px}
+  .brand span{color:var(--orange)}
+  .sub{margin:0 0 26px;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.55)}
+  form{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.13);border-radius:20px;padding:24px;backdrop-filter:blur(9px)}
+  h1{margin:0 0 6px;font-family:"Instrument Sans","Inter",sans-serif;font-size:20px;font-weight:800;letter-spacing:-.02em}
+  p.lead{margin:0 0 20px;font-size:13.5px;line-height:1.5;color:rgba(255,255,255,.66)}
+  label{display:block;font-size:11.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.6);margin-bottom:7px}
+  input{width:100%;padding:13px 14px;border-radius:13px;border:1px solid rgba(255,255,255,.18);background:rgba(4,15,38,.55);color:#fff;font-size:15px;font-family:inherit}
+  input:focus{outline:none;border-color:var(--orange);box-shadow:0 0 0 3px rgba(249,115,22,.22)}
+  button{width:100%;margin-top:16px;padding:13px 16px;border:0;border-radius:13px;background:var(--orange);color:#fff;
+    font-family:"Instrument Sans","Inter",sans-serif;font-size:15px;font-weight:800;cursor:pointer}
+  button:hover{filter:brightness(1.06);box-shadow:0 10px 24px rgba(249,115,22,.32)}
+  .erro{margin:14px 0 0;padding:10px 12px;border-radius:11px;background:rgba(239,68,68,.16);border:1px solid rgba(239,68,68,.35);font-size:13px;font-weight:600}
+  .foot{margin:18px 2px 0;font-size:11.5px;color:rgba(255,255,255,.42);line-height:1.5}
+</style>
+</head>
+<body>
+  <div class="card">
+    <p class="brand">Inspira<span>Cred</span></p>
+    <p class="sub">Analytics</p>
+    <form method="POST" action="/analytics/login">
+      <h1>Acesso ao painel</h1>
+      <p class="lead">Digite a senha de acesso para ver os dados de leads, campanhas e tráfego.</p>
+      <label for="senha">Senha de acesso</label>
+      <input id="senha" name="senha" type="password" autocomplete="current-password" autofocus required placeholder="••••••••"/>
+      <button type="submit">Entrar</button>
+      <!--ERRO-->
+    </form>
+    <p class="foot">Acesso restrito à equipe InspiraCred. A sessão fica ativa por 12 horas neste navegador.</p>
+  </div>
+</body>
+</html>`;
 
 /* ---- COLETA ---- */
 async function handleTrack(request, env, cors, context) {
@@ -834,7 +967,7 @@ async function handleCampaigns(request, env) {
               SUM(COALESCE(credit_value,0)) valor
        FROM leads ${WHERE}`
     ).bind(...b).first(),
-    many(`SELECT DATE(created_at) d, ${CAMP} camp, COUNT(*) n FROM leads ${WHERE} GROUP BY d, camp ORDER BY d`),
+    many(`SELECT DATE(created_at) d, ${CAMP} camp, ${SRC} src, COUNT(*) n FROM leads ${WHERE} GROUP BY d, camp, src ORDER BY d`),
   ]);
 
   // Visitas/sessões (tabela da Fase A). Se ainda não existir no banco, o dashboard
@@ -843,7 +976,7 @@ async function handleCampaigns(request, env) {
   try {
     [visits, daily_visits, visits_since] = await Promise.all([
       manyS(`SELECT ${SRC} src, ${CAMP} camp, ${MED} med, ${CONT} cont, COUNT(*) n FROM sessions ${SWHERE} GROUP BY src,camp,med,cont`),
-      manyS(`SELECT DATE(created_at,'unixepoch') d, ${CAMP} camp, COUNT(*) n FROM sessions ${SWHERE} GROUP BY d, camp ORDER BY d`),
+      manyS(`SELECT DATE(created_at,'unixepoch') d, ${CAMP} camp, ${SRC} src, COUNT(*) n FROM sessions ${SWHERE} GROUP BY d, camp, src ORDER BY d`),
       env.DB.prepare(`SELECT MIN(DATE(created_at,'unixepoch')) d FROM sessions`).first().then((r) => (r && r.d) || null),
     ]);
   } catch (e) { /* sessions ainda não criada */ }
@@ -860,7 +993,7 @@ async function handleCampaigns(request, env) {
       ["Tipo de imóvel", "COALESCE(NULLIF(property_type,''),'(não informado)')"],
     ];
     const parts = await Promise.all(dims.map(([dim, expr]) =>
-      many(`SELECT '${dim}' dim, ${expr} k, ${CAMP} camp, COUNT(*) n FROM leads ${WHERE} GROUP BY k, camp`)
+      many(`SELECT '${dim}' dim, ${expr} k, ${CAMP} camp, ${SRC} src, COUNT(*) n FROM leads ${WHERE} GROUP BY k, camp, src`)
     ));
     audience = parts.flat();
   } catch (e) { /* colunas das migrations 0003/0008 ausentes */ }
@@ -1241,6 +1374,20 @@ const DASHBOARD_HTML = `<!doctype html>
   .aud-card{border:1px solid var(--border);border-radius:15px;padding:13px;background:var(--surface)}
   .aud-card h3{margin:0 0 10px;font-family:"Instrument Sans","Inter",sans-serif;font-size:12px;font-weight:850;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
   /* ---- Mapa de calor: modos ---- */
+  .hm-steps{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 11px}
+  .hm-step-btn{padding:6px 11px;border:1px solid var(--border);border-radius:99px;background:#fff;color:var(--muted);font-size:12px;font-weight:750;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .hm-step-btn:hover{border-color:var(--orange);color:var(--orange)}
+  .hm-step-btn.active{background:var(--blue);border-color:var(--blue);color:#fff}
+  .hm-badges{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+  .hm-badge{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;padding:3px 9px;border-radius:99px;background:var(--orange);color:#fff;font-family:"Instrument Sans","Inter",sans-serif;font-size:11px;font-weight:850;line-height:1.5;box-shadow:0 4px 12px rgba(249,115,22,.42);border:2px solid #fff;cursor:pointer;white-space:nowrap}
+  .hm-badge.cool{background:var(--blue);box-shadow:0 4px 12px rgba(11,45,114,.34)}
+  .hm-badge:hover{filter:brightness(1.08)}
+  .hm-pop{position:absolute;z-index:6;pointer-events:auto;min-width:172px;max-width:240px;padding:12px 13px 12px;border-radius:14px;background:#fff;border:1px solid var(--border);box-shadow:0 16px 36px rgba(6,26,66,.24);font-size:12px;color:var(--muted)}
+  .hm-pop b{display:block;font-size:12.5px;color:var(--text);margin:0 14px 6px 0;line-height:1.35}
+  .hm-pop .n{font-family:"Instrument Sans","Inter",sans-serif;font-size:23px;font-weight:850;color:var(--orange);line-height:1}
+  .hm-pop .x{position:absolute;top:5px;right:9px;color:var(--muted);cursor:pointer;font-weight:800;font-size:14px}
+  .hm-legend{display:flex;align-items:center;gap:11px;margin-top:12px;font-size:11.5px;font-weight:750;color:var(--muted)}
+  .hm-legend .ramp{flex:1;height:9px;border-radius:99px}
   .hm-modes{display:flex;gap:6px;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:14px;flex-wrap:wrap}
   .hm-mode{padding:8px 13px;border:0;border-radius:11px;background:transparent;color:var(--muted);font-size:13px;font-weight:750}
   .hm-mode:hover{color:var(--blue)}
@@ -1380,6 +1527,7 @@ const DASHBOARD_HTML = `<!doctype html>
     </select>
     <select id="rangeSel"><option value="7">Últimos 7 dias</option><option value="30" selected>Últimos 30 dias</option><option value="90">Últimos 90 dias</option></select>
     <button id="refresh" class="primary">Atualizar</button>
+    <a href="/analytics/logout" class="btn-sm" style="text-decoration:none;display:inline-flex;align-items:center">Sair</a>
     <button id="openPage" title="Abrir a página selecionada em nova aba">Abrir página ↗</button>
   </div>
 </header>
@@ -1419,10 +1567,9 @@ const DASHBOARD_HTML = `<!doctype html>
       </div>
       <div class="overview-side">
         <div class="card"><h2>Funil de conversão</h2><div id="funnel"></div></div>
-        <div class="card donut-card">
-          <div class="h2row"><h2>Atribuição dos leads</h2><span class="hint" id="overviewSourcesHint"></span></div>
-          <div class="donut-wrap"><canvas id="sourceChart"></canvas></div>
-          <div class="legend-list" id="overviewSourcesLegend"></div>
+        <div class="card">
+          <div class="h2row"><h2>Campanhas que mais trazem lead</h2><span class="hint" id="topCampHint"></span></div>
+          <div id="overviewTopCamps"></div>
         </div>
       </div>
     </div>
@@ -1466,15 +1613,13 @@ const DASHBOARD_HTML = `<!doctype html>
   </section>
 
   <section class="tab-section" id="tab-campaigns">
-    <div class="kpis metric-strip" id="campKpis"></div>
-    <div class="am-bar">
-      <div class="am-crumb" id="campCrumb"></div>
-      <div class="am-levels">
-        <button class="am-level" id="lvl-campaign" onclick="setCampLevel('campaign')">Campanhas <b id="lvlnCampaign">0</b></button>
-        <button class="am-level" id="lvl-adset" onclick="setCampLevel('adset')">Conjuntos <b id="lvlnAdset">0</b></button>
-        <button class="am-level" id="lvl-ad" onclick="setCampLevel('ad')">Anúncios <b id="lvlnAd">0</b></button>
-      </div>
+    <div class="filterbar" style="margin:0 0 16px">
+      <label>Filtrar origem
+        <select id="campSrcSel"><option value="all">Todas as origens</option></select>
+      </label>
+      <span class="hint" id="campSrcHint">vale para toda esta aba — use para separar tráfego real de testes</span>
     </div>
+    <div class="kpis metric-strip" id="campKpis"></div>
     <div class="camp-grid">
       <div class="card">
         <div class="h2row"><h2 id="campChartTitle">Visitas e leads por dia</h2><span class="hint" id="campChartHint"></span></div>
@@ -1484,6 +1629,14 @@ const DASHBOARD_HTML = `<!doctype html>
         <div class="h2row"><h2>Mix de origem</h2><span class="hint" id="campSourceHint"></span></div>
         <div class="donut-wrap"><canvas id="campSourceChart"></canvas></div>
         <div class="legend-list" id="campSourceLegend"></div>
+      </div>
+    </div>
+    <div class="am-bar">
+      <div class="am-crumb" id="campCrumb"></div>
+      <div class="am-levels">
+        <button class="am-level" id="lvl-campaign" onclick="setCampLevel('campaign')">Campanhas <b id="lvlnCampaign">0</b></button>
+        <button class="am-level" id="lvl-adset" onclick="setCampLevel('adset')">Conjuntos <b id="lvlnAdset">0</b></button>
+        <button class="am-level" id="lvl-ad" onclick="setCampLevel('ad')">Anúncios <b id="lvlnAd">0</b></button>
       </div>
     </div>
     <div class="card">
@@ -1537,54 +1690,27 @@ const DASHBOARD_HTML = `<!doctype html>
     </div>
     <div class="kpis metric-strip" id="hmKpis"></div>
 
-    <div id="hmview-clicks">
+    <div class="hm-split">
       <div class="card">
-        <div class="h2row"><h2>Onde as pessoas clicam</h2><span class="hint">quanto mais quente, mais toques naquele ponto</span></div>
-        <div class="hm-note" id="hmNote">Escolha a página e clique em <b>Carregar</b>. As manchas mostram onde as pessoas mais clicaram/tocaram. Role a página para ver o mapa inteiro.</div>
+        <div class="h2row"><h2 id="hmStageTitle">Onde as pessoas clicam</h2><span class="hint" id="hmStageHint">quanto mais quente, mais toques</span></div>
+        <div class="hm-steps" id="hmSteps"></div>
+        <div class="hm-note" id="hmNote">Escolha a página e clique em <b>Carregar</b>. Tudo é desenhado por cima da própria página. Role para ver o resto.</div>
         <div class="hm-stage" id="hmStage">
           <div class="hm-viewport" id="hmViewport">
             <div class="hm-inner" id="hmInner">
               <div class="hm-sticky" id="hmSticky">
                 <iframe id="hmFrame" title="Página"></iframe>
                 <canvas id="hmCanvas"></canvas>
+                <div class="hm-badges" id="hmBadges"></div>
               </div>
             </div>
           </div>
         </div>
+        <div class="hm-legend" id="hmLegend"></div>
       </div>
-    </div>
-
-    <div id="hmview-depth">
-      <div class="hm-split">
-        <div class="card">
-          <div class="h2row"><h2>Até onde a página é vista</h2><span class="hint">% de quem chegou em cada trecho</span></div>
-          <div class="depth-scale" id="depthBands"></div>
-          <div class="fold-note" id="depthNote"></div>
-        </div>
-        <div class="card">
-          <div class="h2row"><h2>Seções realmente lidas</h2><span class="hint">bloco a bloco</span></div>
-          <div id="depthSections"></div>
-        </div>
-      </div>
-    </div>
-
-    <div id="hmview-elements">
       <div class="card">
-        <div class="h2row"><h2>Elementos mais clicados</h2><span class="hint">botões e links, do mais para o menos clicado</span></div>
-        <div id="elemBars"></div>
-      </div>
-    </div>
-
-    <div id="hmview-steps">
-      <div class="hm-split">
-        <div class="card">
-          <div class="h2row"><h2>Funil pergunta a pergunta</h2><span class="hint">quem chega em cada etapa e onde desiste</span></div>
-          <div id="stepFunnel"></div>
-        </div>
-        <div class="card">
-          <div class="h2row"><h2>Respostas escolhidas</h2><span class="hint">o que as pessoas respondem em cada pergunta</span></div>
-          <div id="stepChoices"></div>
-        </div>
+        <div class="h2row"><h2 id="hmPanelTitle">Elementos mais clicados</h2><span class="hint" id="hmPanelHint"></span></div>
+        <div id="hmPanel"></div>
       </div>
     </div>
   </section>
@@ -1696,7 +1822,7 @@ function render(d){
   renderOverviewModules(d);
   renderFunnel([["Visitantes",t.visitors],["Simulação iniciada",t.sim_start],["Simulação concluída",t.sim_complete],["Lead",t.leads]]);
   renderEventSummary(d);
-  renderOverviewSources(d.sources||[]);
+  renderOverviewTopCamps();
   var dl=d.daily||[]; drawLine("dailyChart",dl.map(function(x){return x.d.slice(5)}),dl.map(function(x){return x.v}),dl.map(function(x){return x.l||0}));
 }
 
@@ -1808,10 +1934,51 @@ function eventBars(rows,max,emptyMsg){
   }).join("")+'</div>';
 }
 
+/* Antes aqui morava um donut de "atribuição" que, na prática, só dizia quanto era
+   "direto" — não ajudava a decidir nada e ninguém entendia o nome. Trocado pelo
+   ranking das CAMPANHAS que mais trazem lead, com conversão e crédito. Os dados vêm
+   do /api/campaigns (mesmo carregamento da aba Campanhas), por isso o renderCampaigns
+   chama esta função de novo quando os dados chegam. */
+function renderOverviewTopCamps(){
+  var box=document.getElementById("overviewTopCamps");
+  var hint=document.getElementById("topCampHint");
+  if(!box)return;
+  if(!campData||!campData.rows){box.innerHTML='<div class="empty">Carregando campanhas…</div>';return;}
+  var map={},visits={};
+  campData.rows.forEach(function(r){
+    map[r.camp]=map[r.camp]||{leads:0,mql:0,valor:0};
+    map[r.camp].leads+=Number(r.leads||0);
+    map[r.camp].mql+=Number(r.mql||0);
+    map[r.camp].valor+=Number(r.valor||0);
+  });
+  (campData.visits||[]).forEach(function(r){ visits[r.camp]=(visits[r.camp]||0)+Number(r.n||0); });
+  var keys=Object.keys(map).sort(function(a,b){return map[b].leads-map[a].leads}).slice(0,5);
+  var totalLeads=Object.keys(map).reduce(function(a,k){return a+map[k].leads},0);
+  hint.textContent=totalLeads?(totalLeads+" leads no período"):"";
+  if(!keys.length){box.innerHTML='<div class="empty">Nenhum lead com campanha identificada no período.</div>';return;}
+  var max=Math.max.apply(null,keys.map(function(k){return map[k].leads}).concat([1]));
+  box.innerHTML=keys.map(function(k,i){
+    var m=map[k], v=visits[k]||0;
+    var nome=(k==="(sem campanha)")?"Sem campanha (direto/orgânico)":k;
+    return '<div class="am-row is-flat" style="grid-template-columns:26px minmax(0,1fr) 70px 74px">'+
+      '<span class="am-rank">'+(i+1)+'</span>'+
+      '<span class="am-main">'+
+        '<span class="am-name" title="'+esc(nome)+'">'+esc(nome)+'</span>'+
+        '<span class="am-tags"><span class="am-tag">'+(v?v+' visitas':'sem visita rastreada')+'</span><span class="am-tag">'+brlShort(m.valor)+'</span></span>'+
+        '<span class="am-track"><span style="width:'+Math.max(4,Math.round(m.leads/max*100))+'%"></span></span>'+
+      '</span>'+
+      '<span class="am-metric"><b>'+m.leads+'</b><small>leads</small></span>'+
+      '<span class="am-metric'+(v?' hot':'')+'"><b>'+(v?pct(m.leads,v)+"%":"—")+'</b><small>conversão</small></span>'+
+    '</div>';
+  }).join("")+
+  '<button class="btn-sm" style="margin-top:6px" onclick="showTab(&quot;campaigns&quot;)">Ver todas as campanhas →</button>';
+}
+
 function renderOverviewSources(rows){
   rows=rows||[];
   var hint=document.getElementById("overviewSourcesHint");
   var legend=document.getElementById("overviewSourcesLegend");
+  if(!hint||!legend)return;
   var total=rows.reduce(function(a,x){return a+(x.n||0)},0);
   var direct=rows.reduce(function(a,x){return a+((!x.source||x.source==="direto")?Number(x.n||0):0)},0);
   var withUtm=Math.max(0,total-direct);
@@ -1943,6 +2110,9 @@ function kvBars(rows, total, emptyMsg){
    cruas; a agregação por nível é feita aqui, então trocar de nível é instantâneo. */
 var campData=null, campChart=null, campSourceChart=null;
 var campLevel="campaign", campSel={camp:null,med:null};
+// Filtro de ORIGEM (utm_source) — vale pra aba Campanhas inteira. Serve pra separar
+// tráfego real (meta_ads, instagram…) do lixo de teste (teste-claude, codex-teste…).
+var campSrc="all";
 var LEVEL_NAME={campaign:"Campanhas",adset:"Conjuntos de anúncios",ad:"Anúncios"};
 var LEVEL_ONE={campaign:"campanha",adset:"conjunto",ad:"anúncio"};
 
@@ -1953,7 +2123,9 @@ function brlShort(v){
   return "R$ "+v;
 }
 function campKeyOf(r,level){return level==="campaign"?r.camp:(level==="adset"?r.med:r.cont);}
+function campSrcOk(r){ return campSrc==="all"||r.src===campSrc; }
 function campInScope(r,level){
+  if(!campSrcOk(r))return false;
   if(campSel.camp&&r.camp!==campSel.camp)return false;
   if(level==="ad"&&campSel.med&&r.med!==campSel.med)return false;
   return true;
@@ -2012,8 +2184,15 @@ function renderCampaigns(d){
   if(!hasCamp){campSel.camp=null;campSel.med=null;campLevel="campaign";}
   else if(!hasMed){campSel.med=null;if(campLevel==="ad")campLevel="adset";}
 
-  var t=campData.totals||{total:0,com_utm:0,direto:0,valor:0,mql:0};
-  var visitsTotal=(campData.visits||[]).reduce(function(a,x){return a+Number(x.n||0)},0);
+  campFillSrcOptions();
+  // KPIs saem das linhas FILTRADAS (não do total do servidor), senão o filtro de
+  // origem mostraria um número em cima e outro embaixo.
+  var t={total:0,com_utm:0,valor:0,mql:0};
+  rows.filter(campSrcOk).forEach(function(r){
+    t.total+=Number(r.leads||0); t.mql+=Number(r.mql||0); t.valor+=Number(r.valor||0);
+    if(r.src&&r.src!=="direto")t.com_utm+=Number(r.leads||0);
+  });
+  var visitsTotal=(campData.visits||[]).filter(campSrcOk).reduce(function(a,x){return a+Number(x.n||0)},0);
   var kpis=[
     ["Leads no período",pretty(t.total),pretty(t.com_utm)+" vieram de campanha"],
     ["Visitas rastreadas",pretty(visitsTotal),visitsTotal?"sessões no site":"sem sessões no período"],
@@ -2025,6 +2204,7 @@ function renderCampaigns(d){
     return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>';
   }).join("");
   renderCampScope();
+  renderOverviewTopCamps(); // a visão geral usa os mesmos dados
 }
 
 function renderCampScope(){
@@ -2092,13 +2272,35 @@ function renderCampRows(){
   }).join("")+(totalLeads?'':'');
 }
 
+// Opções do filtro de origem: sai das próprias linhas, com a contagem de leads —
+// assim dá pra ver de cara que "teste-claude" é ruído e "meta_ads" é o que importa.
+function campFillSrcOptions(){
+  var sel=document.getElementById("campSrcSel");
+  if(!sel||!campData)return;
+  var by={};
+  (campData.rows||[]).forEach(function(r){ by[r.src]=(by[r.src]||0)+Number(r.leads||0); });
+  (campData.visits||[]).forEach(function(r){ if(by[r.src]===undefined)by[r.src]=0; });
+  var keys=Object.keys(by).sort(function(a,b){return by[b]-by[a]});
+  if(campSrc!=="all"&&keys.indexOf(campSrc)<0)campSrc="all";
+  sel.innerHTML='<option value="all">Todas as origens</option>'+keys.map(function(k){
+    return '<option value="'+esc(k)+'"'+(k===campSrc?' selected':'')+'>'+esc(k)+' ('+by[k]+' lead'+(by[k]===1?'':'s')+')</option>';
+  }).join("");
+  sel.value=campSrc;
+  document.getElementById("campSrcHint").textContent=campSrc==="all"
+    ? "vale para toda esta aba — use para separar tráfego real de testes"
+    : "mostrando só "+campSrc+" em toda a aba";
+}
+function setCampSrc(v){ campSrc=v; campSel={camp:null,med:null}; campLevel="campaign"; renderCampaigns(campData); }
+
 function renderCampChart(){
   var byDay={};
   ((campData&&campData.daily)||[]).forEach(function(r){
+    if(!campSrcOk(r))return;
     if(campSel.camp&&r.camp!==campSel.camp)return;
     byDay[r.d]=byDay[r.d]||{l:0,v:0}; byDay[r.d].l+=Number(r.n||0);
   });
   ((campData&&campData.daily_visits)||[]).forEach(function(r){
+    if(!campSrcOk(r))return;
     if(campSel.camp&&r.camp!==campSel.camp)return;
     byDay[r.d]=byDay[r.d]||{l:0,v:0}; byDay[r.d].v+=Number(r.n||0);
   });
@@ -2121,6 +2323,7 @@ function renderCampChart(){
 function renderCampSources(){
   var map={};
   ((campData&&campData.rows)||[]).forEach(function(r){
+    if(!campSrcOk(r))return;
     if(campSel.camp&&r.camp!==campSel.camp)return;
     if(campSel.med&&r.med!==campSel.med)return;
     var k=(!r.src||r.src==="direto")?"Sem UTM / direto":r.src;
@@ -2146,6 +2349,7 @@ function renderCampAudience(){
   var box=document.getElementById("campAudience");
   var dims={};
   ((campData&&campData.audience)||[]).forEach(function(r){
+    if(!campSrcOk(r))return;
     if(campSel.camp&&r.camp!==campSel.camp)return;
     dims[r.dim]=dims[r.dim]||{};
     dims[r.dim][r.k]=(dims[r.dim][r.k]||0)+Number(r.n||0);
@@ -2469,17 +2673,27 @@ function hmDeviceDims(dev){
   return {w:390,vh:812}; // mobile
 }
 
+/* O canvas é a MESMA superfície pros modos visuais; o que muda é o que ele pinta:
+   manchas de clique (clicks) ou faixa de profundidade (depth). Nos modos elementos e
+   etapas o canvas fica limpo e quem fala são as etiquetas ancoradas nos elementos. */
 function drawSlice(){
   hmTick=false;
-  if(!hmLast||!hmH0)return;
+  if(!hmH0)return;
   var vp=document.getElementById("hmViewport");
   var fr=document.getElementById("hmFrame");
   var st=vp.scrollTop;
   try{ if(fr.contentWindow) fr.contentWindow.scrollTo(0, st); }catch(e){}
-  var radius=hmW>=1000?30:22;
   var cv=document.getElementById("hmCanvas");
   if(cv.width!==hmW||cv.height!==hmVH){cv.width=hmW;cv.height=hmVH;}
   var ctx=cv.getContext("2d");ctx.clearRect(0,0,hmW,hmVH);
+  if(hmMode==="clicks")drawClickHeat(ctx,st);
+  else if(hmMode==="depth")drawDepthOverlay(ctx,st);
+  positionBadges(st);
+}
+
+function drawClickHeat(ctx,st){
+  if(!hmLast)return;
+  var radius=hmW>=1000?30:22;
   var pts=hmLast.points||[], any=false;
   pts.forEach(function(p){
     var yy=p.y_pct*hmH0 - st;            // posição no viewport atual
@@ -2494,6 +2708,162 @@ function drawSlice(){
   for(var i=0;i<d.length;i+=4){var a=d[i+3];if(!a)continue;var idx=(a>255?255:a)*4;d[i]=ramp[idx];d[i+1]=ramp[idx+1];d[i+2]=ramp[idx+2];d[i+3]=Math.min(200,a+40);}
   ctx.putImageData(img,0,0);
 }
+
+/* Profundidade PINTADA NA PÁGINA (estilo Clarity): cada faixa horizontal recebe a cor
+   correspondente ao % de gente que chegou até ali — quente em cima (todo mundo viu),
+   esfriando pro azul conforme menos gente desce. Entre os marcos 25/50/75/100 a gente
+   interpola, e desenha a linha de cada marco com o número real por cima. */
+function depthReachAt(frac){
+  var d=hmPageData, s=(d&&d.sessions)||0;
+  if(!s)return 0;
+  var m=scrollReach(d);
+  var stops=[[0,1],[0.25,m[25]/s],[0.5,m[50]/s],[0.75,m[75]/s],[1,m[100]/s]];
+  if(frac<=0)return stops[0][1];
+  for(var i=1;i<stops.length;i++){
+    if(frac<=stops[i][0]){
+      var a=stops[i-1],b=stops[i];
+      var t=(frac-a[0])/((b[0]-a[0])||1);
+      return a[1]+(b[1]-a[1])*t;
+    }
+  }
+  return stops[stops.length-1][1];
+}
+function rampColor(v,alpha){
+  var ramp=heatRamp();
+  var idx=Math.max(0,Math.min(255,Math.round(v*255)))*4;
+  return "rgba("+ramp[idx]+","+ramp[idx+1]+","+ramp[idx+2]+","+alpha+")";
+}
+function drawDepthOverlay(ctx,st){
+  var d=hmPageData, s=(d&&d.sessions)||0;
+  if(!s){
+    ctx.fillStyle="rgba(11,45,114,.06)";ctx.fillRect(0,0,hmW,hmVH);
+    return;
+  }
+  var STEP=6;
+  for(var y=0;y<hmVH;y+=STEP){
+    var frac=(st+y)/hmH0;
+    if(frac>1)frac=1;
+    ctx.fillStyle=rampColor(depthReachAt(frac),.42);
+    ctx.fillRect(0,y,hmW,STEP);
+  }
+  // marcos com o número real
+  var m=scrollReach(d);
+  [[0.25,m[25]],[0.5,m[50]],[0.75,m[75]],[1,m[100]]].forEach(function(mk){
+    var y=mk[0]*hmH0-st;
+    if(y<12||y>hmVH-2)return;
+    ctx.strokeStyle="rgba(255,255,255,.85)";ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(hmW,y);ctx.stroke();
+    var txt=Math.round(mk[0]*100)+"% da página · "+Math.round(mk[1]/s*100)+"% das pessoas chegaram aqui";
+    ctx.font="700 12px Inter, sans-serif";
+    var w=ctx.measureText(txt).width+16;
+    ctx.fillStyle="rgba(6,26,66,.86)";
+    roundRect(ctx,8,y-24,w,20,7);ctx.fill();
+    ctx.fillStyle="#fff";ctx.fillText(txt,16,y-10);
+  });
+}
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
+}
+
+/* ---- Etiquetas ancoradas nos elementos reais da página ----
+   Acha o elemento dentro do iframe (por id, senão pelo texto do botão/link), guarda a
+   posição no documento e desenha uma pílula com a contagem. Clicar abre o balão com o
+   detalhe. É isto que responde "quantos cliques esse botão levou?" na própria página. */
+var hmBadgeList=[], hmPop=null;
+function hmFindEl(doc,row){
+  if(row.id){ var byId=null; try{byId=doc.getElementById(row.id);}catch(e){} if(byId)return byId; }
+  var txt=String(row.k||"").trim().toLowerCase();
+  if(!txt||txt.charAt(0)==="(")return null;
+  var cands=doc.querySelectorAll("a,button,[role=button],input[type=submit]");
+  for(var i=0;i<cands.length;i++){
+    var t=(cands[i].textContent||cands[i].value||"").trim().toLowerCase();
+    if(!t)continue;
+    if(t===txt||t.indexOf(txt)===0||txt.indexOf(t)===0)return cands[i];
+  }
+  return null;
+}
+function badgeRows(){
+  if(!hmPageData)return [];
+  if(hmMode==="steps"){
+    var st=hmStepList[hmStepIdx];
+    if(!st)return [];
+    return (hmPageData.choices||[]).filter(function(c){return c.step_id===st.id&&c.k})
+      .map(function(c){return {k:c.k,id:"",n:c.n,s:null,tipo:"resposta"};});
+  }
+  return (hmPageData.elements||[]).slice(0,14);
+}
+function computeBadges(){
+  hmBadgeList=[];
+  closeHmPop();
+  var box=document.getElementById("hmBadges");
+  if(!box)return;
+  if(hmMode!=="elements"&&hmMode!=="steps"){box.innerHTML="";return;}
+  var fr=document.getElementById("hmFrame"), doc=null, win=null;
+  try{doc=fr.contentDocument;win=fr.contentWindow;}catch(e){}
+  if(!doc){box.innerHTML="";return;}
+  var rows=badgeRows(), max=Math.max.apply(null,rows.map(function(r){return r.n||0}).concat([1]));
+  rows.forEach(function(r,i){
+    var el=hmFindEl(doc,r);
+    if(!el)return;
+    var rect=el.getBoundingClientRect();
+    if(!rect.width&&!rect.height)return;
+    hmBadgeList.push({
+      x:rect.left+(win.scrollX||0)+rect.width-6,
+      y:rect.top+(win.scrollY||0)+8,
+      n:r.n,label:r.k,sub:r.s,tipo:r.tipo,hot:(r.n||0)>=max*0.5,i:i
+    });
+  });
+  box.innerHTML=hmBadgeList.map(function(b,i){
+    var unidade=(b.tipo==="resposta"?"escolha":"clique")+(b.n===1?"":"s");
+    return '<button class="hm-badge'+(b.hot?'':' cool')+'" data-i="'+i+'" title="'+esc(b.label)+' — '+b.n+' '+unidade+'">'+b.n+'</button>';
+  }).join("");
+  [].forEach.call(box.querySelectorAll(".hm-badge"),function(el){
+    el.addEventListener("click",function(e){e.stopPropagation();openHmPop(Number(el.dataset.i));});
+  });
+  positionBadges(document.getElementById("hmViewport").scrollTop);
+}
+function positionBadges(st){
+  var box=document.getElementById("hmBadges");
+  if(!box)return;
+  var els=box.querySelectorAll(".hm-badge");
+  for(var i=0;i<els.length;i++){
+    var b=hmBadgeList[Number(els[i].dataset.i)];
+    if(!b)continue;
+    var y=b.y-st;
+    if(y<-20||y>hmVH+20){els[i].style.display="none";continue;}
+    els[i].style.display="";
+    els[i].style.left=Math.max(18,Math.min(hmW-18,b.x))+"px";
+    els[i].style.top=y+"px";
+  }
+  if(hmPop)positionHmPop(st);
+}
+function openHmPop(i){
+  var b=hmBadgeList[i];
+  if(!b)return;
+  closeHmPop();
+  var box=document.getElementById("hmBadges");
+  var el=document.createElement("div");
+  el.className="hm-pop";
+  el.innerHTML='<span class="x">&times;</span><b>'+esc(b.label)+'</b>'+
+    '<span class="n">'+b.n+'</span> '+(b.tipo==="resposta"?"escolhas":"cliques")+
+    (b.sub!=null?'<div style="margin-top:6px">'+b.sub+' sessões diferentes</div>':'')+
+    (b.tipo&&b.tipo!=="resposta"?'<div style="margin-top:4px">tipo: '+esc(b.tipo)+'</div>':'');
+  el.addEventListener("click",function(e){e.stopPropagation();if(e.target.className==="x")closeHmPop();});
+  box.appendChild(el);
+  hmPop={el:el,b:b};
+  positionHmPop(document.getElementById("hmViewport").scrollTop);
+}
+function positionHmPop(st){
+  if(!hmPop)return;
+  var w=hmPop.el.offsetWidth||190, h=hmPop.el.offsetHeight||90;
+  var x=Math.max(6,Math.min(hmW-w-6,hmPop.b.x-w/2));
+  var y=hmPop.b.y-st+14;
+  if(y+h>hmVH-6)y=Math.max(6,hmPop.b.y-st-h-14);
+  hmPop.el.style.left=x+"px";hmPop.el.style.top=y+"px";
+}
+function closeHmPop(){ if(hmPop){try{hmPop.el.remove()}catch(e){} hmPop=null;} }
 function measureAndLayout(){
   var fr=document.getElementById("hmFrame");
   var H0=0;
@@ -2504,6 +2874,8 @@ function measureAndLayout(){
   var vp=document.getElementById("hmViewport");
   vp.style.height=Math.min(hmVH,H0)+"px";
   drawSlice();
+  computeBadges();
+  detectSteps();
 }
 function loadHeatmap(){
   var page=document.getElementById("hmPageSel").value;
@@ -2526,12 +2898,7 @@ function loadHeatmap(){
   var pframe=new Promise(function(res){fr.onload=function(){res();};});
   Promise.all([pdataGuard(pdata),pframe]).then(function(r){
     hmLast=r[0]||{points:[],count:0,page:page,range:{start:"",end:""}};
-    var DEVN={mobile:"Mobile",tablet:"Tablet",desktop:"Desktop"};
-    var bd=hmLast.by_device||{mobile:0,tablet:0,desktop:0};
-    document.getElementById("hmNote").innerHTML=
-      '<b>'+hmLast.count+'</b> toque'+(hmLast.count===1?"":"s")+' em <b>'+label(hmLast.page||page)+'</b> · '+(DEVN[dev]||dev)+
-      ' <span style="color:var(--muted)">(distribuição no período: mobile '+bd.mobile+' · tablet '+bd.tablet+' · desktop '+bd.desktop+')</span>'+
-      ' · <span style="color:var(--muted)">role para ver o mapa inteiro</span>';
+    hmStageNote();
     try{
       var doc=fr.contentDocument;
       if(doc){
@@ -2554,18 +2921,108 @@ function pdataGuard(p){return p.then(function(d){return d}).catch(function(){ret
    e os eventos form_step/form_step_choice do formulário multi-step. */
 var hmMode="clicks", hmPageData=null, hmPageLoaded="";
 var HM_VIEWS=["clicks","depth","elements","steps"];
+var hmStepList=[], hmStepIdx=0;
+var HM_TITLE={
+  clicks:["Onde as pessoas clicam","quanto mais quente, mais toques naquele ponto"],
+  depth:["Até onde a página é vista","a cor esfria conforme menos gente chega"],
+  elements:["O que foi clicado","clique numa etiqueta para ver o detalhe"],
+  steps:["Etapa por etapa","navegue pelas perguntas e veja o que respondem"]
+};
+var HM_PANEL={
+  clicks:["Elementos mais clicados","o mesmo dado, em lista"],
+  depth:["Quem chega em cada trecho","marcos e seções lidas"],
+  elements:["Ranking de cliques","botões e links da página"],
+  steps:["Funil pergunta a pergunta","onde as pessoas desistem"]
+};
 
 function setHmMode(mode){
   hmMode=mode;
-  HM_VIEWS.forEach(function(m){
-    var v=document.getElementById("hmview-"+m);
-    if(v)v.style.display=(m===mode)?"block":"none";
+  ["clicks","depth","elements","steps"].forEach(function(m){
     var b=document.getElementById("hmmode-"+m);
     if(b)b.classList.toggle("active",m===mode);
   });
+  document.getElementById("hmStageTitle").textContent=HM_TITLE[mode][0];
+  document.getElementById("hmStageHint").textContent=HM_TITLE[mode][1];
+  document.getElementById("hmPanelTitle").textContent=HM_PANEL[mode][0];
+  document.getElementById("hmPanelHint").textContent=HM_PANEL[mode][1];
   var pageNow=document.getElementById("hmPageSel").value;
-  if(mode!=="clicks"&&hmPageLoaded!==pageNow)loadPageMap();
-  if(mode==="clicks"){ if(!hmH0)loadHeatmap(); else setTimeout(measureAndLayout,30); }
+  if(hmPageLoaded!==pageNow)loadPageMap();
+  if(!hmH0)loadHeatmap(); else {drawSlice();computeBadges();}
+  renderHmPanel(); hmStageNote(); hmLegend();
+}
+
+// Nota acima do palco: muda com o modo, sempre dizendo de onde vem o número.
+function hmStageNote(){
+  var el=document.getElementById("hmNote");
+  if(!el)return;
+  var d=hmPageData||{}, page=document.getElementById("hmPageSel").value;
+  var dev=document.getElementById("hmDevice").value;
+  var DEVN={mobile:"Mobile",tablet:"Tablet",desktop:"Desktop"};
+  if(hmMode==="clicks"){
+    var bd=(hmLast&&hmLast.by_device)||{mobile:0,tablet:0,desktop:0};
+    el.innerHTML='<b>'+((hmLast&&hmLast.count)||0)+'</b> toques em <b>'+label(page)+'</b> · '+(DEVN[dev]||dev)+
+      ' <span style="color:var(--muted)">(no período: mobile '+bd.mobile+' · tablet '+bd.tablet+' · desktop '+bd.desktop+')</span>';
+  }else if(hmMode==="depth"){
+    el.innerHTML='Faixa colorida por cima da página: <b>quente</b> onde quase todo mundo chegou, <b>azul</b> onde quase ninguém desceu. '+
+      'Base: <b>'+((d.sessions)||0)+'</b> sessões · rolagem média <b>'+(d.sessions?avgDepth(d):0)+'%</b>.';
+  }else if(hmMode==="elements"){
+    el.innerHTML='As etiquetas laranja/azul ficam em cima dos botões e links reais. <b>Clique numa etiqueta</b> para ver quantos cliques e quantas sessões.';
+  }else{
+    el.innerHTML=hmStepList.length
+      ? 'Escolha a etapa acima: a página abaixo pula para aquela pergunta e as etiquetas mostram <b>quantas pessoas escolheram cada resposta</b>.'
+      : 'Esta página não tem etapas — é uma página única. Use os outros modos.';
+  }
+}
+function hmLegend(){
+  var el=document.getElementById("hmLegend");
+  if(!el)return;
+  if(hmMode==="clicks"||hmMode==="depth"){
+    var txt=hmMode==="clicks"?["poucos cliques","muitos cliques"]:["quase ninguém chegou","todo mundo viu"];
+    el.style.display="";
+    el.innerHTML='<span>'+txt[0]+'</span>'+
+      '<span class="ramp" style="background:linear-gradient(90deg,#0b2d72,#22d3ee,#10b981,#f59e0b,#ef4444)"></span>'+
+      '<span>'+txt[1]+'</span>';
+  }else{ el.style.display="none"; el.innerHTML=""; }
+}
+
+/* Páginas com etapas (hoje o formulário) expõem window.inspiraFormPreview no iframe.
+   Se existir, montamos a barra de etapas — ela vale pra TODOS os modos, pra dar pra
+   ver clique, profundidade e respostas em cada pergunta. */
+function detectSteps(){
+  var bar=document.getElementById("hmSteps");
+  var fr=document.getElementById("hmFrame"), api=null;
+  try{ api=fr.contentWindow&&fr.contentWindow.inspiraFormPreview; }catch(e){}
+  if(!api||!api.steps){ hmStepList=[]; bar.innerHTML=""; bar.style.display="none"; return; }
+  try{ hmStepList=api.steps()||[]; }catch(e){ hmStepList=[]; }
+  if(!hmStepList.length){ bar.innerHTML=""; bar.style.display="none"; return; }
+  if(hmStepIdx>hmStepList.length-1)hmStepIdx=0;
+  bar.style.display="";
+  bar.innerHTML='<span class="am-tag" style="align-self:center">Etapas</span>'+hmStepList.map(function(s,i){
+    return '<button class="hm-step-btn'+(i===hmStepIdx?' active':'')+'" data-i="'+i+'" title="'+esc(s.title||s.id)+'">'+(i+1)+'. '+esc(s.title||s.id)+'</button>';
+  }).join("");
+  [].forEach.call(bar.querySelectorAll(".hm-step-btn"),function(b){
+    b.addEventListener("click",function(){ goHmStep(Number(b.dataset.i)); });
+  });
+}
+function goHmStep(i){
+  hmStepIdx=i;
+  var fr=document.getElementById("hmFrame");
+  try{ fr.contentWindow.inspiraFormPreview.goTo(i); }catch(e){}
+  var bar=document.getElementById("hmSteps");
+  [].forEach.call(bar.querySelectorAll(".hm-step-btn"),function(b){
+    b.classList.toggle("active",Number(b.dataset.i)===i);
+  });
+  setTimeout(function(){ measureAndLayout(); computeBadges(); renderHmPanel(); },90);
+}
+
+function renderHmPanel(){
+  var box=document.getElementById("hmPanel");
+  if(!box)return;
+  var d=hmPageData;
+  if(!d){box.innerHTML='<div class="empty">Clique em <b>Carregar</b> para trazer os dados desta página.</div>';return;}
+  if(hmMode==="depth"){ box.innerHTML=depthPanelHTML(d); return; }
+  if(hmMode==="steps"){ box.innerHTML=stepsPanelHTML(d); return; }
+  box.innerHTML=elementsPanelHTML(d);
 }
 
 function loadPageMap(){
@@ -2575,7 +3032,8 @@ function loadPageMap(){
   document.getElementById("hmKpis").innerHTML='<div class="kpi"><div class="label">Carregando…</div><div class="val">—</div><div class="sub"></div></div>';
   fetch("${API}/pagemap"+qs+"&_="+Date.now()).then(function(r){return r.json()}).then(function(d){
     hmPageData=d; hmPageLoaded=page;
-    renderPageMapKpis(d); renderDepth(d); renderSections(d); renderElements(d); renderSteps(d);
+    renderPageMapKpis(d); renderHmPanel(); hmStageNote(); hmLegend();
+    drawSlice(); computeBadges();
   }).catch(function(){
     document.getElementById("hmKpis").innerHTML='<div class="kpi"><div class="label">Erro</div><div class="val">—</div><div class="sub">não consegui carregar</div></div>';
   });
@@ -2612,10 +3070,9 @@ function renderPageMapKpis(d){
   }).join("");
 }
 
-function renderDepth(d){
-  var box=document.getElementById("depthBands"), note=document.getElementById("depthNote");
+function depthPanelHTML(d){
   var s=d.sessions||0, m=scrollReach(d);
-  if(!s){box.innerHTML='<div class="empty">Sem acessos nesta página no período.</div>';note.textContent="";return;}
+  if(!s)return '<div class="empty">Sem acessos nesta página no período.</div>';
   var bands=[
     ["Primeira dobra (topo)",s,"todo mundo que abriu a página"],
     ["Passou de 25%",m[25],"rolou para além do início"],
@@ -2623,7 +3080,7 @@ function renderDepth(d){
     ["Chegou em 75%",m[75],"trecho final"],
     ["Chegou ao fim",m[100],"viu o rodapé"]
   ];
-  box.innerHTML=bands.map(function(b){
+  var html='<div class="depth-scale">'+bands.map(function(b){
     var p=pct(b[1],s);
     // a barra de fundo É o dado: quanto mais larga e quente, mais gente chegou ali
     var color=p>=70?"#10b981":(p>=40?"#f59e0b":"#ef4444");
@@ -2632,50 +3089,41 @@ function renderDepth(d){
       '<span class="row"><span class="who">'+esc(b[0])+'</span><span class="pc">'+p+'%</span></span>'+
       '<div class="sub">'+pretty(b[1])+' de '+s+' sessões · '+esc(b[2])+'</div>'+
     '</div>';
-  }).join("");
+  }).join("")+'</div>';
   var perdaTopo=100-pct(m[25],s);
-  note.innerHTML='<b>Leitura rápida:</b> '+perdaTopo+'% das pessoas não passam do topo da página — '+
-    'é o trecho que precisa segurar a atenção. A rolagem média é de <b>'+avgDepth(d)+'%</b> da altura total. '+
-    'Os marcos são 25/50/75/100%, contados uma vez por sessão.';
+  html+='<div class="fold-note"><b>Leitura rápida:</b> '+perdaTopo+'% das pessoas não passam do topo — '+
+    'é o trecho que precisa segurar a atenção. Rolagem média: <b>'+avgDepth(d)+'%</b> da altura total.</div>';
+  var secs=(d.sections||[]).filter(function(r){return r.k});
+  html+='<div class="h2row" style="margin-top:18px"><h2>Seções realmente lidas</h2><span class="hint">bloco a bloco</span></div>';
+  if(!secs.length)html+='<div class="empty">Esta página não tem blocos marcados com <b>data-section</b>.</div>';
+  else{
+    var mx=Math.max.apply(null,secs.map(function(r){return r.n}).concat([1]));
+    html+=barList(secs.map(function(r){return {lbl:r.k,val:r.n,sub:s?pct(r.n,s)+"%":"",w:r.n/mx};}));
+  }
+  return html;
 }
 
-function renderSections(d){
-  var box=document.getElementById("depthSections");
-  var rows=(d.sections||[]).filter(function(r){return r.k});
-  var s=d.sessions||0;
-  if(!rows.length){box.innerHTML='<div class="empty">Esta página não tem blocos marcados com <b>data-section</b>.</div>';return;}
-  var max=Math.max.apply(null,rows.map(function(r){return r.n}).concat([1]));
-  box.innerHTML=barList(rows.map(function(r){
-    return {lbl:r.k,val:r.n,sub:s?pct(r.n,s)+"%":"",w:r.n/max};
-  }));
-}
-
-function renderElements(d){
-  var box=document.getElementById("elemBars");
+function elementsPanelHTML(d){
   var rows=d.elements||[];
-  if(!rows.length){box.innerHTML='<div class="empty">Nenhum clique registrado nesta página no período.</div>';return;}
+  if(!rows.length)return '<div class="empty">Nenhum clique registrado nesta página no período.</div>';
   var total=rows.reduce(function(a,r){return a+Number(r.n||0)},0);
   var max=Math.max.apply(null,rows.map(function(r){return r.n}).concat([1]));
-  box.innerHTML='<div class="hint" style="display:block;margin:0 0 12px">'+total+' cliques em '+rows.length+' elementos · o rótulo é o texto do botão/link</div>'+
+  return '<div class="hint" style="display:block;margin:0 0 12px">'+total+' cliques em '+rows.length+' elementos · o rótulo é o texto do botão/link</div>'+
     barList(rows.map(function(r){
       var extra=(r.tipo?r.tipo:(r.id?"#"+r.id:""));
       return {lbl:r.k+(extra?"  ("+extra+")":""),val:r.n,sub:r.s+" sessões",w:r.n/max};
     }));
 }
 
-function renderSteps(d){
-  var funil=document.getElementById("stepFunnel"), esc2=document.getElementById("stepChoices");
+function stepsPanelHTML(d){
   var steps=(d.steps||[]).filter(function(r){return r.k});
   if(!steps.length){
-    var msg=(d.page==="home_equity_form")
+    return '<div class="empty">'+((d.page==="home_equity_form")
       ? 'Ainda sem dados de etapa. O rastreio pergunta a pergunta entrou agora — os números aparecem conforme as pessoas usarem o formulário.'
-      : 'Esta página não tem etapas: é uma página única, sem perguntas em sequência. Use os outros modos.';
-    funil.innerHTML='<div class="empty">'+msg+'</div>';
-    esc2.innerHTML='<div class="empty">Sem respostas registradas.</div>';
-    return;
+      : 'Esta página não tem etapas: é uma página única, sem perguntas em sequência. Use os outros modos.')+'</div>';
   }
   var first=Number(steps[0].n||0);
-  funil.innerHTML=steps.map(function(st,i){
+  var html=steps.map(function(st,i){
     var n=Number(st.n||0);
     var prev=i?Number(steps[i-1].n||0):n;
     var drop=prev?Math.max(0,prev-n):0;
@@ -2692,8 +3140,9 @@ function renderSteps(d){
   var byStep={};
   (d.choices||[]).forEach(function(c){ if(!c.k)return; (byStep[c.step_id]=byStep[c.step_id]||[]).push(c); });
   var keys=steps.map(function(s){return s.k}).filter(function(k){return byStep[k]});
-  if(!keys.length){esc2.innerHTML='<div class="empty">Ainda sem respostas registradas neste período.</div>';return;}
-  esc2.innerHTML=keys.map(function(k){
+  html+='<div class="h2row" style="margin-top:18px"><h2>Respostas escolhidas</h2><span class="hint">o que respondem em cada pergunta</span></div>';
+  if(!keys.length){ html+='<div class="empty">Ainda sem respostas registradas neste período.</div>'; return html; }
+  html+=keys.map(function(k){
     var st=steps.filter(function(s){return s.k===k})[0]||{};
     var list=byStep[k].sort(function(a,b){return b.n-a.n});
     var tot=list.reduce(function(a,c){return a+Number(c.n||0)},0);
@@ -2704,6 +3153,7 @@ function renderSteps(d){
       }).join("")+'</div>'+
     '</div>';
   }).join("");
+  return html;
 }
 
 document.getElementById("refresh").addEventListener("click",loadAll);
@@ -2712,6 +3162,7 @@ document.getElementById("pageSel").addEventListener("change",loadAll);
 document.getElementById("openPage").addEventListener("click",function(){var u=PAGE_URLS[currentPage()];if(u)window.open(u,"_blank","noopener");});
 document.getElementById("csvBtn").addEventListener("click",exportCSV);
 document.getElementById("leadEventFilter").addEventListener("change",function(){renderLeads();});
+document.getElementById("campSrcSel").addEventListener("change",function(){setCampSrc(this.value);});
 document.getElementById("hmLoad").addEventListener("click",function(){loadHeatmap();loadPageMap();});
 document.getElementById("hmDevice").addEventListener("change",function(){if(hmMode==="clicks")loadHeatmap();});
 document.getElementById("hmPageSel").addEventListener("change",function(){

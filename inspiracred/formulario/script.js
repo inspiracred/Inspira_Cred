@@ -14,6 +14,7 @@
   var answers = {};
   var stepIndex = 0;
   var stepSeen = {};
+  var previewMode = false;
   var started = false;
   var submitting = false;
   var MIN_CREDIT_VALUE = 200000;
@@ -233,6 +234,7 @@
   // dashboard: quanta gente chega em cada pergunta e onde desiste. Vai pela tabela
   // `events` (coluna properties), sem precisar de coluna nova no D1.
   function trackStepView(step) {
+    if (previewMode) return;              // navegação do dashboard não vira dado
     if (!step || stepSeen[step.id]) return;
     stepSeen[step.id] = true;
     try {
@@ -250,6 +252,7 @@
   // Opção escolhida numa pergunta de múltipla escolha — mostra QUAL resposta cada
   // etapa recebeu (ex.: quantos responderam "não" em "possui imóvel").
   function trackStepChoice(step, value) {
+    if (previewMode) return;
     try {
       if (window.inspiraTrack) {
         window.inspiraTrack.event("form_step_choice", {
@@ -664,6 +667,48 @@
     stepIndex += 1;
     render();
   }
+
+  /* Ponte de PREVIEW pro dashboard (mapa de calor). O painel abre esta página num
+     iframe de mesma origem e precisa navegar pelas etapas pra mostrar o mapa de cada
+     pergunta. Só muda a tela: `previewMode` desliga o rastreio, nada é enviado e
+     nenhum lead é criado (o submit continua exigindo interação real do visitante). */
+  window.inspiraFormPreview = {
+    steps: function () {
+      previewMode = true;
+      var out = [], guard = 0, saved = { a: answers, i: stepIndex };
+      answers = {}; stepIndex = 0;
+      while (guard++ < 20) {
+        var vis = visibleSteps(), st = vis[stepIndex];
+        if (!st) break;
+        out.push({ id: st.id, title: st.title });
+        if (st.type === "choice" && st.options && st.options[0]) {
+          answers[st.id] = st.options[0].value;
+          normalizeAnswers(st.id);
+        }
+        if (stepIndex >= visibleSteps().length - 1) break;
+        stepIndex += 1;
+      }
+      answers = saved.a; stepIndex = saved.i;
+      return out;
+    },
+    goTo: function (n) {
+      previewMode = true;
+      answers = {}; stepIndex = 0;
+      for (var i = 0; i < n; i++) {
+        var st = currentStep();
+        if (!st) break;
+        if (st.type === "choice" && st.options && st.options[0]) {
+          answers[st.id] = st.options[0].value;
+          normalizeAnswers(st.id);
+        }
+        if (stepIndex >= visibleSteps().length - 1) break;
+        stepIndex += 1;
+      }
+      setHiddenInputs();
+      render();
+      return stepIndex;
+    }
+  };
 
   nextButton.addEventListener("click", function () {
     startTracking();
