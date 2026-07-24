@@ -830,24 +830,35 @@ async function sendCustomEventToMeta(event, env, ctx) {
 }
 
 /* ---- MÉTRICAS ---- */
+/* `src` = filtro GLOBAL de origem (utm_source), aplicado no dashboard inteiro. O padrão
+ * do painel é `meta_ads` porque é onde o cliente investe; dá pra trocar pra "todas".
+ * ⚠️ Só vale pro que tem origem gravada: LEADS e SESSÕES. page_views/clicks/events são
+ * chaveados pelo id de sessão do navegador (ic_sid) e não guardam UTM — por isso as
+ * métricas de tráfego não filtram, e o dashboard avisa isso na tela em vez de mentir.
+ */
 function params(url) {
   const p = new URL(url).searchParams;
   const today = new Date().toISOString().slice(0, 10);
   const past = new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10);
   const pageRaw = p.get("page");
+  const srcRaw = p.get("src");
   return {
     start: p.get("start") || past,
     end: p.get("end") || today,
     page: pageRaw && pageRaw !== "all" ? pageRaw : null,
+    src: srcRaw && srcRaw !== "all" ? srcRaw : null,
   };
 }
+// trecho de SQL + binds para o filtro de origem sobre a tabela `leads`
+const SRC_EXPR = "COALESCE(NULLIF(utm_source,''),'direto')";
 
 async function handleOverview(request, env) {
-  const { start, end, page } = params(request.url);
+  const { start, end, page, src } = params(request.url);
   const pv = page ? " AND page_name = ?" : "";   // filtro por página (page_views/clicks/forms/events)
-  const sc = page ? " AND source = ?" : "";      // filtro de leads (coluna source guarda a página)
+  // leads: filtra por página (coluna source) E por origem (utm_source), quando pedido
+  const sc = (page ? " AND source = ?" : "") + (src ? ` AND ${SRC_EXPR} = ?` : "");
   const bp = page ? [start, end, page] : [start, end];
-  const bs = page ? [start, end, page] : [start, end];
+  const bs = [start, end].concat(page ? [page] : []).concat(src ? [src] : []);
 
   const one = async (sql, b) => (await env.DB.prepare(sql).bind(...b).first()) || {};
   const many = async (sql, b) => (await env.DB.prepare(sql).bind(...b).all()).results || [];
@@ -869,7 +880,7 @@ async function handleOverview(request, env) {
         SELECT DATE(created_at) d, 0 v, COUNT(*) l
         FROM leads WHERE DATE(created_at) BETWEEN ? AND ?${sc} GROUP BY d
       ) GROUP BY d ORDER BY d
-    `, page ? [start, end, page, start, end, page] : [start, end, start, end]),
+    `, bp.concat(bs)),
     many(`SELECT event_type, event_name, COUNT(*) n, COUNT(DISTINCT session_id) sessions FROM events WHERE DATE(created_at) BETWEEN ? AND ?${pv} GROUP BY event_type, event_name ORDER BY n DESC`, bp),
     many(`SELECT COALESCE(NULLIF(lead_kind,''),'sem_classificacao') kind, COUNT(*) n, SUM(CASE WHEN rd_status='ok' THEN 1 ELSE 0 END) rd_ok, SUM(CASE WHEN meta_status='ok' THEN 1 ELSE 0 END) meta_ok, SUM(CASE WHEN meta_status='nao_enviado' THEN 1 ELSE 0 END) meta_skip, SUM(COALESCE(credit_value,0)) credit FROM leads WHERE DATE(created_at) BETWEEN ? AND ?${sc} GROUP BY kind ORDER BY n DESC`, bs),
   ]);
@@ -878,14 +889,38 @@ async function handleOverview(request, env) {
   forms.forEach((f) => { formsByPage[f.page_name] = f.n; });
   const pagesOut = pages.map((p) => ({ page_name: p.page_name, views: p.views, uniques: p.uniques, forms: formsByPage[p.page_name] || 0 }));
 
-  const v = visitors.n || 0, ss = simStart.n || 0, scv = simComplete.n || 0, ld = leadsN.n || 0;
-  const pct = (a, base) => (base ? +((a / base) * 100).toFixed(1) : 0);
+  // Com filtro de origem ligado, a VISITA passa a sair da tabela `sessions` (é a única
+  // que grava utm_source por acesso). As etapas do meio do funil (simulação iniciada/
+  // concluída) vivem em `events`, que não tem origem — então viram null e a tela mostra
+  // o funil curto (visita → lead) em vez de misturar número filtrado com não filtrado.
+  let v = visitors.n || 0, ss = simStart.n || 0, scv = simComplete.n || 0;
+  const ld = leadsN.n || 0;
+  let dailyOut = daily;
+  if (src) {
+    ss = null; scv = null;
+    try {
+      const sw = `WHERE DATE(created_at,'unixepoch') BETWEEN ? AND ? AND ${SRC_EXPR} = ?`;
+      const sv = await env.DB.prepare(`SELECT COUNT(*) n FROM sessions ${sw}`).bind(start, end, src).first();
+      v = (sv && sv.n) || 0;
+      const sd = (await env.DB.prepare(
+        `SELECT DATE(created_at,'unixepoch') d, COUNT(*) n FROM sessions ${sw} GROUP BY d ORDER BY d`
+      ).bind(start, end, src).all()).results || [];
+      const leadsByDay = {};
+      daily.forEach((r) => { leadsByDay[r.d] = r.l || 0; });
+      const dias = {};
+      sd.forEach((r) => { dias[r.d] = { d: r.d, v: r.n || 0, l: leadsByDay[r.d] || 0 }; });
+      Object.keys(leadsByDay).forEach((d) => { if (!dias[d]) dias[d] = { d, v: 0, l: leadsByDay[d] }; });
+      dailyOut = Object.keys(dias).sort().map((d) => dias[d]);
+    } catch (e) { /* sessions ausente: mantém o que veio de page_views */ }
+  }
+  const pct = (a, base) => (base && a != null ? +((a / base) * 100).toFixed(1) : 0);
 
   return json({
-    range: { start, end }, page: page || "all",
+    range: { start, end }, page: page || "all", src: src || "all",
+    visits_from_sessions: !!src,
     totals: { visitors: v, sim_start: ss, sim_complete: scv, leads: ld },
     rates: { visitor_to_start: pct(ss, v), start_to_complete: pct(scv, ss), complete_to_lead: pct(ld, scv), visitor_to_lead: pct(ld, v) },
-    pages: pagesOut, clicks, sources, daily,
+    pages: pagesOut, clicks, sources, daily: dailyOut,
     events_summary: eventRows,
     lead_kind_summary: leadKindRows,
   });
@@ -910,6 +945,7 @@ async function handleLeads(request, env) {
   const binds = [start, end];
   conds.push(`DATE(created_at) BETWEEN ? AND ?`);
   if (page) { conds.push(`source = ?`); binds.push(page); }
+  { const { src } = params(request.url); if (src) { conds.push(`${SRC_EXPR} = ?`); binds.push(src); } }
   if (kind === "nao_qualificado") conds.push(`lead_kind IN ('baixo_valor','descarte')`);
   else if (kind) { conds.push(`lead_kind = ?`); binds.push(kind); }
   const where = conds.length ? ` WHERE ${conds.join(" AND ")}` : ``;
@@ -1073,9 +1109,9 @@ async function handlePageMap(request, env) {
  * colunas ainda não existirem (0008 pendente), volta um aviso em vez de quebrar.
  */
 async function handleHealth(request, env) {
-  const { start, end, page } = params(request.url);
-  const sc = page ? " AND source = ?" : "";
-  const b = page ? [start, end, page] : [start, end];
+  const { start, end, page, src } = params(request.url);
+  const sc = (page ? " AND source = ?" : "") + (src ? ` AND ${SRC_EXPR} = ?` : "");
+  const b = [start, end].concat(page ? [page] : []).concat(src ? [src] : []);
   const WHERE = `WHERE DATE(created_at) BETWEEN ? AND ?${sc}`;
   const many = async (sql) => (await env.DB.prepare(sql).bind(...b).all()).results || [];
 
@@ -1339,6 +1375,15 @@ const DASHBOARD_HTML = `<!doctype html>
   .event-dot.off{background:var(--surface);color:var(--muted);border-color:var(--border)}
   .event-dot.err{background:var(--red-soft);color:var(--red-ink);border-color:rgba(239,68,68,.22)}
   .event-dot.bot{background:#eef2ff;color:#4338ca;border-color:rgba(67,56,202,.20)}
+  /* valores do lead: verde = atende ao mínimo, vermelho = abaixo */
+  .val-ok{color:var(--green-ink);font-weight:800;background:var(--green-soft);border-radius:8px;padding:2px 7px;white-space:nowrap}
+  .val-no{color:var(--red-ink);font-weight:800;background:var(--red-soft);border-radius:8px;padding:2px 7px;white-space:nowrap}
+  .val-na{color:var(--muted);font-weight:700}
+  .criteria{margin:0 0 14px;padding:13px 15px;border:1px solid var(--border);border-left:3px solid var(--orange);border-radius:13px;background:var(--surface)}
+  .criteria b{font-size:12.5px;color:var(--text)}
+  .criteria ul{margin:8px 0 0;padding-left:17px}
+  .criteria li{font-size:12.5px;line-height:1.65;color:var(--muted)}
+  .criteria small{display:block;margin-top:9px;font-size:11.5px;color:var(--muted);line-height:1.5}
   .event-legend{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
   /* ---- Campanhas: navegador de 3 níveis no espírito do Gerenciador do Meta ---- */
   .am-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:0 0 16px;padding:12px 14px;background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}
@@ -1532,6 +1577,10 @@ const DASHBOARD_HTML = `<!doctype html>
       <option value="obrigado_auto">Obrigado · Auto</option>
       <option value="obrigado_nao_elegivel">Obrigado · Não elegível</option>
     </select>
+    <select id="srcSel" title="Filtro de origem — vale para o dashboard inteiro">
+      <option value="meta_ads" selected>Origem: Meta Ads</option>
+      <option value="all">Origem: todas</option>
+    </select>
     <select id="rangeSel"><option value="7">Últimos 7 dias</option><option value="30" selected>Últimos 30 dias</option><option value="90">Últimos 90 dias</option></select>
     <button id="refresh" class="primary">Atualizar</button>
     <a href="/analytics/logout" class="btn-sm" style="text-decoration:none;display:inline-flex;align-items:center">Sair</a>
@@ -1574,8 +1623,9 @@ const DASHBOARD_HTML = `<!doctype html>
       </div>
       <div class="overview-side">
         <div class="card"><h2>Funil de conversão</h2><div id="funnel"></div></div>
-        <div class="card">
+        <div class="card donut-card">
           <div class="h2row"><h2>Campanhas que mais trazem lead</h2><span class="hint" id="topCampHint"></span></div>
+          <div class="donut-wrap"><canvas id="campMixChart"></canvas></div>
           <div id="overviewTopCamps"></div>
         </div>
       </div>
@@ -1620,12 +1670,6 @@ const DASHBOARD_HTML = `<!doctype html>
   </section>
 
   <section class="tab-section" id="tab-campaigns">
-    <div class="filterbar" style="margin:0 0 16px">
-      <label>Filtrar origem
-        <select id="campSrcSel"><option value="all">Todas as origens</option></select>
-      </label>
-      <span class="hint" id="campSrcHint">vale para toda esta aba — use para separar tráfego real de testes</span>
-    </div>
     <div class="kpis metric-strip" id="campKpis"></div>
     <div class="camp-grid">
       <div class="card">
@@ -1777,6 +1821,7 @@ function daysAgo(n){return new Date(Date.now()-n*864e5).toISOString().slice(0,10
 function brl(v){if(v==null)return"-";return "R$ "+Number(v).toLocaleString("pt-BR")}
 function pct(a,b){return b?Math.round((a/b)*100):0}
 function currentPage(){return document.getElementById("pageSel").value}
+function currentSrc(){var s=document.getElementById("srcSel");return s?s.value:"all"}
 function badge(s){if(s==="ok")return '<span class="pill ok">entregue</span>';if(s==="nao_enviado")return '<span class="pill wait">não enviado</span>';if(s==null||s==="")return '<span class="pill wait">pendente</span>';return '<span class="pill err">'+pretty(s)+'</span>';}
 
 function showTab(name){
@@ -1793,16 +1838,21 @@ function updateOpenBtn(){var b=document.getElementById("openPage");b.style.displ
 function loadAll(){
   var days=document.getElementById("rangeSel").value;
   var page=currentPage();
+  var src=currentSrc();
   var pageQ=(page&&page!=="all")?"&page="+encodeURIComponent(page):"";
+  // o filtro global vai pro servidor em tudo que TEM origem gravada (leads/sessões).
+  // /campaigns fica de fora de propósito: é dele que sai a lista de origens do seletor.
+  var srcQ=(src&&src!=="all")?"&src="+encodeURIComponent(src):"";
   var qs="?start="+daysAgo(parseInt(days)-1)+"&end="+new Date().toISOString().slice(0,10);
   updateOpenBtn();
   setLoading(true);
-  var scopeTxt="Exibindo: <b>"+(page==="all"?"Todas as páginas":label(page))+"</b> · últimos "+days+" dias";
+  var scopeTxt="Exibindo: <b>"+(page==="all"?"Todas as páginas":label(page))+"</b> · últimos "+days+" dias"+
+    (src!=="all"?' · origem <b>'+esc(src)+'</b>':' · <b>todas as origens</b>');
   document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--muted)">carregando…</span>';
-  var p1=fetch("${API}/overview"+qs+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(function(d){render(d);renderTraffic(d);});
-  var p2=fetch("${API}/leads"+qs+"&limit=500"+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderLeads);
+  var p1=fetch("${API}/overview"+qs+pageQ+srcQ+"&_="+Date.now()).then(function(r){return r.json()}).then(function(d){render(d);renderTraffic(d);});
+  var p2=fetch("${API}/leads"+qs+"&limit=500"+pageQ+srcQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderLeads);
   var p3=fetch("${API}/campaigns"+qs+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderCampaigns);
-  var p5=fetch("${API}/health"+qs+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderHealth);
+  var p5=fetch("${API}/health"+qs+pageQ+srcQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderHealth);
   if(hmPageLoaded)loadPageMap(); // mantém o mapa da página em sincronia com o período
   Promise.all([p1,p2,p3,p5]).then(function(){
     document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--green-ink)">atualizado às '+new Date().toLocaleTimeString("pt-BR")+'</span>';
@@ -1817,17 +1867,23 @@ function render(d){
   var mql=(byKind.home_equity_mql&&byKind.home_equity_mql.n)||0;
   var qualifRate=pct(mql,t.leads||0);
   document.getElementById("overviewMeta").innerHTML='<span class="chip">'+(d.page==="all"?"Todas as páginas":label(d.page||"all"))+'</span><span class="chip">'+(d.range?d.range.start+" → "+d.range.end:"período atual")+'</span>';
+  // Com filtro de origem ligado, "simulação iniciada/concluída" não existe filtrado
+  // (esses eventos não gravam origem) — some do KPI e do funil em vez de aparecer um
+  // número de OUTRO recorte do lado de um número filtrado.
+  var temFunilMeio=t.sim_start!=null;
   var kpis=[
-    ["Visitas",pretty(t.visitors),r.visitor_to_lead+"% viram lead"],
-    ["Engajados",pretty(t.sim_start),r.visitor_to_start+"% iniciaram"],
-    ["Simulações",pretty(t.sim_complete),r.start_to_complete+"% conclusão"],
+    [d.visits_from_sessions?"Visitas (sessões)":"Visitas",pretty(t.visitors),r.visitor_to_lead+"% viram lead"],
+    ["Engajados",temFunilMeio?pretty(t.sim_start):"—",temFunilMeio?r.visitor_to_start+"% iniciaram":"sem origem gravada"],
+    ["Simulações",temFunilMeio?pretty(t.sim_complete):"—",temFunilMeio?r.start_to_complete+"% conclusão":"sem origem gravada"],
     ["Tx. conv.",r.visitor_to_lead+"%",pretty(t.leads)+" leads"],
-    ["Leads",pretty(t.leads),r.complete_to_lead+"% pós-simulação"],
+    ["Leads",pretty(t.leads),temFunilMeio?r.complete_to_lead+"% pós-simulação":"no recorte atual"],
     ["% qualif.",qualifRate+"%",pretty(mql)+" MQLs"]
   ];
   document.getElementById("kpis").innerHTML=kpis.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>'}).join("");
   renderOverviewModules(d);
-  renderFunnel([["Visitantes",t.visitors],["Simulação iniciada",t.sim_start],["Simulação concluída",t.sim_complete],["Lead",t.leads]]);
+  renderFunnel(temFunilMeio
+    ? [["Visitantes",t.visitors],["Simulação iniciada",t.sim_start],["Simulação concluída",t.sim_complete],["Lead",t.leads]]
+    : [["Visitas da origem",t.visitors],["Lead",t.leads]]);
   renderEventSummary(d);
   renderOverviewTopCamps();
   var dl=d.daily||[]; drawLine("dailyChart",dl.map(function(x){return x.d.slice(5)}),dl.map(function(x){return x.v}),dl.map(function(x){return x.l||0}));
@@ -1963,22 +2019,18 @@ function renderOverviewTopCamps(){
   var totalLeads=Object.keys(map).reduce(function(a,k){return a+map[k].leads},0);
   hint.textContent=totalLeads?(totalLeads+" leads no período"):"";
   if(!keys.length){box.innerHTML='<div class="empty">Nenhum lead com campanha identificada no período.</div>';return;}
-  var max=Math.max.apply(null,keys.map(function(k){return map[k].leads}).concat([1]));
-  box.innerHTML=keys.map(function(k,i){
+  // rosca com a fatia de cada campanha + legenda com leads e conversão
+  var nomeCamp=function(k){return (k==="(sem campanha)")?"Sem campanha (direto/orgânico)":k;};
+  drawDonut("campMixChart",keys.map(nomeCamp),keys.map(function(k){return map[k].leads}));
+  box.innerHTML='<div class="legend-list">'+keys.map(function(k,i){
     var m=map[k], v=visits[k]||0;
-    var nome=(k==="(sem campanha)")?"Sem campanha (direto/orgânico)":k;
-    return '<div class="am-row is-flat" style="grid-template-columns:26px minmax(0,1fr) 70px 74px">'+
-      '<span class="am-rank">'+(i+1)+'</span>'+
-      '<span class="am-main">'+
-        '<span class="am-name" title="'+esc(nome)+'">'+esc(nome)+'</span>'+
-        '<span class="am-tags"><span class="am-tag">'+(v?v+' visitas':'sem visita rastreada')+'</span><span class="am-tag">'+brlShort(m.valor)+'</span></span>'+
-        '<span class="am-track"><span style="width:'+Math.max(4,Math.round(m.leads/max*100))+'%"></span></span>'+
-      '</span>'+
-      '<span class="am-metric"><b>'+m.leads+'</b><small>leads</small></span>'+
-      '<span class="am-metric'+(v?' hot':'')+'"><b>'+(v?pct(m.leads,v)+"%":"—")+'</b><small>conversão</small></span>'+
+    return '<div class="legend-item">'+
+      '<span class="legend-dot" style="background:'+CHART_PALETTE[i%CHART_PALETTE.length]+'"></span>'+
+      '<span class="name" title="'+esc(nomeCamp(k))+'">'+esc(nomeCamp(k))+'</span>'+
+      '<span class="num">'+m.leads+' · '+pct(m.leads,totalLeads)+'%'+(v?' <small style="color:var(--muted)">('+pct(m.leads,v)+'% conv.)</small>':'')+'</span>'+
     '</div>';
-  }).join("")+
-  '<button class="btn-sm" style="margin-top:6px" onclick="showTab(&quot;campaigns&quot;)">Ver todas as campanhas →</button>';
+  }).join("")+'</div>'+
+  '<button class="btn-sm" style="margin-top:10px" onclick="showTab(&quot;campaigns&quot;)">Ver todas as campanhas →</button>';
 }
 
 function renderOverviewSources(rows){
@@ -2117,9 +2169,10 @@ function kvBars(rows, total, emptyMsg){
    cruas; a agregação por nível é feita aqui, então trocar de nível é instantâneo. */
 var campData=null, campChart=null, campSourceChart=null;
 var campLevel="campaign", campSel={camp:null,med:null};
-// Filtro de ORIGEM (utm_source) — vale pra aba Campanhas inteira. Serve pra separar
-// tráfego real (meta_ads, instagram…) do lixo de teste (teste-claude, codex-teste…).
-var campSrc="all";
+// Filtro de ORIGEM (utm_source) — GLOBAL: sai do seletor do cabeçalho e vale pro
+// dashboard inteiro. Já abre em "meta_ads" (é onde o cliente investe); trocar pra
+// "todas" mostra tudo, inclusive o lixo de teste (teste-claude, codex-teste…).
+var campSrc="meta_ads";
 var LEVEL_NAME={campaign:"Campanhas",adset:"Conjuntos de anúncios",ad:"Anúncios"};
 var LEVEL_ONE={campaign:"campanha",adset:"conjunto",ad:"anúncio"};
 
@@ -2184,6 +2237,7 @@ function campReset(to){
 
 function renderCampaigns(d){
   campData=d||{};
+  campSrc=currentSrc(); // o filtro é global: vem do cabeçalho
   // se a seleção antiga sumiu do novo período, volta pro topo em vez de mostrar vazio
   var rows=campData.rows||[];
   var hasCamp=!campSel.camp||rows.some(function(r){return r.camp===campSel.camp});
@@ -2279,25 +2333,24 @@ function renderCampRows(){
   }).join("")+(totalLeads?'':'');
 }
 
-// Opções do filtro de origem: sai das próprias linhas, com a contagem de leads —
-// assim dá pra ver de cara que "teste-claude" é ruído e "meta_ads" é o que importa.
+/* Alimenta o seletor GLOBAL de origem do cabeçalho com as origens que existem de fato
+   no período (com a contagem de leads ao lado). O /api/campaigns é o único endpoint que
+   volta SEM o filtro aplicado — de propósito: é dele que sai a lista de opções. */
 function campFillSrcOptions(){
-  var sel=document.getElementById("campSrcSel");
+  var sel=document.getElementById("srcSel");
   if(!sel||!campData)return;
   var by={};
   (campData.rows||[]).forEach(function(r){ by[r.src]=(by[r.src]||0)+Number(r.leads||0); });
   (campData.visits||[]).forEach(function(r){ if(by[r.src]===undefined)by[r.src]=0; });
+  if(by.meta_ads===undefined)by.meta_ads=0; // sempre ofertar o padrão do painel
   var keys=Object.keys(by).sort(function(a,b){return by[b]-by[a]});
-  if(campSrc!=="all"&&keys.indexOf(campSrc)<0)campSrc="all";
-  sel.innerHTML='<option value="all">Todas as origens</option>'+keys.map(function(k){
-    return '<option value="'+esc(k)+'"'+(k===campSrc?' selected':'')+'>'+esc(k)+' ('+by[k]+' lead'+(by[k]===1?'':'s')+')</option>';
+  var atual=sel.value;
+  sel.innerHTML='<option value="all">Origem: todas</option>'+keys.map(function(k){
+    return '<option value="'+esc(k)+'">Origem: '+esc(k)+' ('+by[k]+')</option>';
   }).join("");
-  sel.value=campSrc;
-  document.getElementById("campSrcHint").textContent=campSrc==="all"
-    ? "vale para toda esta aba — use para separar tráfego real de testes"
-    : "mostrando só "+campSrc+" em toda a aba";
+  sel.value=(keys.indexOf(atual)>-1||atual==="all")?atual:"all";
+  campSrc=sel.value;
 }
-function setCampSrc(v){ campSrc=v; campSel={camp:null,med:null}; campLevel="campaign"; renderCampaigns(campData); }
 
 function renderCampChart(){
   var byDay={};
@@ -2487,6 +2540,29 @@ function eventLegend(){
     eventDot("não se aplica","off","Esse envio não existe para este tipo de lead")+
   '</div>';
 }
+/* Critérios de qualificação — os MESMOS números do formulário, da landing, da Home
+   Equity e do servidor. Ficam escritos na tela pra ninguém precisar adivinhar por que
+   um lead entrou como qualificado ou não. Se a regra mudar no código, muda aqui. */
+var MIN_IMOVEL=400000, MIN_CREDITO=200000, MQL_IMOVEL=1000000, MQL_CREDITO=500000;
+function valorCell(v,minimo,kind){
+  if(v==null||v==="")return '<span class="val-na">—</span>';
+  // automóvel e descarte não são avaliados pela régua do imóvel: mostra neutro
+  if(kind==="auto"||kind==="descarte")return '<span class="val-na">'+brl(v)+'</span>';
+  var ok=Number(v)>=minimo;
+  return '<span class="val-'+(ok?'ok':'no')+'" title="'+(ok?'atende ao mínimo de ':'abaixo do mínimo de ')+brl(minimo)+'">'+brl(v)+'</span>';
+}
+function criteriaBox(){
+  return '<div class="criteria">'+
+    '<b>Como um lead vira qualificado</b>'+
+    '<ul>'+
+      '<li><span class="val-ok">Imóvel a partir de '+brl(MIN_IMOVEL)+'</span> <b>E</b> <span class="val-ok">crédito a partir de '+brl(MIN_CREDITO)+'</span> → conta como <b>Lead</b> no Meta e vai pro RD.</li>'+
+      '<li>Imóvel a partir de '+brl(MQL_IMOVEL)+' <b>E</b> crédito a partir de '+brl(MQL_CREDITO)+' → <b>Lead qualificado</b> (MQL).</li>'+
+      '<li><span class="val-no">Abaixo de qualquer um dos dois</span> → <b>vai pro RD Station do mesmo jeito</b>, mas <b>não</b> dispara evento de conversão no Meta.</li>'+
+      '<li>Sem imóvel <b>e</b> sem veículo → fica só no nosso banco (não vai pro RD).</li>'+
+    '</ul>'+
+    '<small>As duas condições valem juntas (E, não OU): imóvel de R$ 1 milhão pedindo R$ 100 mil <b>não</b> é qualificado, porque o crédito está abaixo do mínimo.</small>'+
+  '</div>';
+}
 function pageLeadLink(source){
   var u=PAGE_URLS[source], txt=label(source);
   return u?'<a class="page-chip" href="'+u+'" target="_blank" rel="noopener">'+esc(txt)+' ↗</a>':'<span class="page-chip">'+esc(txt)+'</span>';
@@ -2504,12 +2580,14 @@ function renderLeads(d){
   document.getElementById("leadKpis").innerHTML=lk.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub">'+k[2]+'</div></div>'}).join("");
   renderLeadVisuals(lastLeads);
   if(!n){document.getElementById("leads").innerHTML='<div class="empty">Nenhum lead para este filtro.</div>';return}
-  var html=eventLegend();
-  html+='<table><thead><tr><th>Data</th><th>Nome</th><th>Classificação</th><th>Página</th><th>Crédito</th><th>RD</th><th>Meta Lead</th><th>MQL</th><th></th></tr></thead><tbody>';
+  var html=criteriaBox()+eventLegend();
+  html+='<table><thead><tr><th>Data</th><th>Nome</th><th>Classificação</th><th>Página</th><th>Imóvel</th><th>Crédito</th><th>RD</th><th>Meta Lead</th><th>MQL</th><th></th></tr></thead><tbody>';
   lastLeads.forEach(function(l,i){
     html+='<tr><td>'+(l.created_at||"").slice(0,16)+'</td>'+
       '<td><button class="lead-name-btn" onclick="showLead('+i+')">'+esc(l.name||"Lead sem nome")+'</button><div class="hint">'+esc(l.phone||"")+'</div></td>'+
-      '<td>'+leadKindPill(l.lead_kind)+'</td><td>'+pageLeadLink(l.source)+'</td><td>'+brl(l.credit_value)+'</td>'+
+      '<td>'+leadKindPill(l.lead_kind)+'</td><td>'+pageLeadLink(l.source)+'</td>'+
+      '<td>'+valorCell(l.property_value,MIN_IMOVEL,l.lead_kind)+'</td>'+
+      '<td>'+valorCell(l.credit_value,MIN_CREDITO,l.lead_kind)+'</td>'+
       '<td>'+leadEventDot(l,"rd")+'</td><td>'+leadEventDot(l,"lead")+'</td><td>'+leadEventDot(l,"mql")+'</td>'+
       '<td><button class="btn-sm" onclick="showLead('+i+')">Ver ficha</button></td></tr>';
   });
@@ -2561,8 +2639,9 @@ function showLead(i,list){
   sec("Bem & simulação");
   row("Tipo de bem",isAutoLead?"Automóvel":"Imóvel");
   if(!isAutoLead) row("Tipo de imóvel",pretty(l.property_type));
-  opt(isAutoLead?"Valor do automóvel":"Valor do imóvel",l.property_value?brl(l.property_value):null);
-  row("Crédito desejado",brl(l.credit_value));
+  // mesmo código de cor da tabela: verde atende ao mínimo, vermelho está abaixo
+  opt(isAutoLead?"Valor do automóvel":"Valor do imóvel",l.property_value?valorCell(l.property_value,MIN_IMOVEL,l.lead_kind):null);
+  row("Crédito desejado",valorCell(l.credit_value,MIN_CREDITO,l.lead_kind));
   opt("Faixa de crédito",l.faixa_credito);
   opt("Imóvel quitado?",l.imovel_quitado);
   opt(isAutoLead?"Situação do automóvel":"Situação do imóvel",l.situacao_imovel);
@@ -2644,14 +2723,13 @@ function drawLine(id,labels,visitors,leads){
     {label:"Leads",data:leads||[],borderColor:"#f97316",backgroundColor:"rgba(249,115,22,.10)",fill:false,tension:.38,pointRadius:2,pointBackgroundColor:"#f97316",borderWidth:3}
   ]},options:{maintainAspectRatio:false,interaction:{intersect:false,mode:"index"},plugins:{legend:{display:true,position:"bottom",labels:{boxWidth:22,usePointStyle:true,pointStyle:"line",color:"#6b7280",font:{family:"Inter",size:12,weight:"600"}}}},scales:{x:{ticks:{color:"#9ca3af"},grid:{display:false}},y:{beginAtZero:true,ticks:{color:"#9ca3af"},grid:{color:"#eef0f3"}}}}})
 }
+// cada canvas guarda a própria instância do Chart (senão um destrói o gráfico do outro)
+var donutCharts={};
 function drawDonut(id,labels,data){
   var ctx=document.getElementById(id);
   if(!ctx)return;
-  var key=id==="leadTypeChart"?"leadTypeChart":"sourceChart";
-  if(key==="leadTypeChart"&&leadTypeChart)leadTypeChart.destroy();
-  if(key==="sourceChart"&&sourceChart)sourceChart.destroy();
-  var chart=new Chart(ctx,{type:"doughnut",data:{labels:labels,datasets:[{data:data,backgroundColor:CHART_PALETTE,borderColor:"#fff",borderWidth:4,hoverOffset:4}]},options:{maintainAspectRatio:false,cutout:"66%",plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){var total=(c.dataset.data||[]).reduce(function(a,n){return a+Number(n||0)},0);return " "+c.label+": "+c.raw+" ("+pct(c.raw,total)+"%)";}}}}}});
-  if(key==="leadTypeChart")leadTypeChart=chart; else sourceChart=chart;
+  if(donutCharts[id]){try{donutCharts[id].destroy()}catch(e){}}
+  donutCharts[id]=new Chart(ctx,{type:"doughnut",data:{labels:labels,datasets:[{data:data,backgroundColor:CHART_PALETTE,borderColor:"#fff",borderWidth:4,hoverOffset:4}]},options:{maintainAspectRatio:false,cutout:"66%",plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){var total=(c.dataset.data||[]).reduce(function(a,n){return a+Number(n||0)},0);return " "+c.label+": "+c.raw+" ("+pct(c.raw,total)+"%)";}}}}}});
 }
 
 /* ---- Mapa de calor ---- */
@@ -3169,7 +3247,10 @@ document.getElementById("pageSel").addEventListener("change",loadAll);
 document.getElementById("openPage").addEventListener("click",function(){var u=PAGE_URLS[currentPage()];if(u)window.open(u,"_blank","noopener");});
 document.getElementById("csvBtn").addEventListener("click",exportCSV);
 document.getElementById("leadEventFilter").addEventListener("change",function(){renderLeads();});
-document.getElementById("campSrcSel").addEventListener("change",function(){setCampSrc(this.value);});
+document.getElementById("srcSel").addEventListener("change",function(){
+  campSel={camp:null,med:null}; campLevel="campaign"; // troca de origem reinicia a navegação
+  loadAll();
+});
 document.getElementById("hmLoad").addEventListener("click",function(){loadHeatmap();loadPageMap();});
 document.getElementById("hmDevice").addEventListener("change",function(){if(hmMode==="clicks")loadHeatmap();});
 document.getElementById("hmPageSel").addEventListener("change",function(){
