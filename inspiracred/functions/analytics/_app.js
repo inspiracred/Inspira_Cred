@@ -288,9 +288,9 @@ async function handleTrack(request, env, cors, context) {
  * silenciosamente; removido. Diferenciar variante hoje é só por `identificador`/UTM.)
  */
 const RD_PAGE_CONFIG = {
-  landing_page: { identificador: "landing-nova-raiz" },
-  home_equity_lp: { identificador: "home-equity-lp" },
-  home_equity_form: { identificador: "home-equity-typeform" },
+  landing_page: { identificador: "Simulação", label: "Simulação" },
+  home_equity_lp: { identificador: "Home Equity", label: "Home Equity" },
+  home_equity_form: { identificador: "Typeform", label: "Typeform" },
 };
 
 // Rótulo legível da classificação — vai no campo de Lead cf_classificacao_lead.
@@ -298,8 +298,8 @@ const RD_PAGE_CONFIG = {
 const LEAD_KIND_LABEL = {
   home_equity: "Lead",
   home_equity_mql: "Lead qualificado",
-  auto: "Lead automóvel",
-  baixo_valor: "Lead não qualificado",
+  auto: "Lead automotivo",
+  baixo_valor: "Lead desqualificado",
   descarte: "Banco de dados — não qualificado",
 };
 
@@ -356,11 +356,9 @@ async function recordMetaEventAudit(env, event, leadId) {
   }
 }
 
-// Identificador do RD por TIPO de lead. Descarte não chega aqui: fica só no D1.
-// Auto e baixo valor ganham identificador/tag próprios para diferenciar no RD.
-function rdIdentificador(cfg, kind) {
-  if (kind === "auto") return cfg.identificador + "-auto";
-  if (kind === "baixo_valor") return cfg.identificador + "-nao-qualificado";
+// Identificador do RD por PÁGINA. O tipo do lead vai separado por tag +
+// cf_classificacao_lead, pra não misturar página de origem com classificação.
+function rdIdentificador(cfg) {
   return cfg.identificador;
 }
 
@@ -403,7 +401,7 @@ async function sendLeadToRD(event, env, leadId) {
   })();
   const payload = {
     token_rdstation: env.RD_STATION_TOKEN,
-    identificador: rdIdentificador(cfg, event.lead_kind),
+    identificador: rdIdentificador(cfg),
     tags: event.lead_kind === "auto"
       ? ["lead automóvel"]
       : (event.lead_kind === "baixo_valor" ? ["lead não qualificado"] : undefined),
@@ -465,8 +463,8 @@ async function sendLeadToRD(event, env, leadId) {
     // "Formulário de Origem" — campo de Lead CRIADO em 2026-07-23 + mapeado pra Negociação.
     // ⚠️ O identificador tem "de": `cf_formulario_de_origem` (o RD gera o slug a partir do
     // nome e MANTÉM as preposições). Enviar `cf_formulario_origem` seria descartado em
-    // silêncio. Valor = a página de origem (landing_page / home_equity_lp / home_equity_form).
-    cf_formulario_de_origem: str(event.source),
+    // silêncio. Valor legível = Simulação / Home Equity / Typeform.
+    cf_formulario_de_origem: str(cfg.label || event.source),
   };
   Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
 
@@ -986,7 +984,7 @@ const DASHBOARD_HTML = `<!doctype html>
     --shadow:0 1px 2px rgba(6,26,66,.05),0 10px 26px rgba(6,26,66,.06);
   }
   *{box-sizing:border-box}
-  body{margin:0;font-family:"Inter",-apple-system,Segoe UI,Roboto,sans-serif;background:var(--surface);color:var(--text);-webkit-font-smoothing:antialiased}
+  body{margin:0;padding-left:246px;font-family:"Inter",-apple-system,Segoe UI,Roboto,sans-serif;background:var(--surface);color:var(--text);-webkit-font-smoothing:antialiased}
   .num,h2,.logo,.kpi .val{font-family:"Instrument Sans","Inter",sans-serif}
   header{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 26px;background:#fff;border-bottom:1px solid var(--border);flex-wrap:wrap}
   .logo{font-size:20px;font-weight:800;color:var(--blue);letter-spacing:-.02em;display:flex;align-items:baseline;gap:9px}
@@ -997,10 +995,17 @@ const DASHBOARD_HTML = `<!doctype html>
   select:hover,button:hover{border-color:var(--blue)}
   button.primary{background:var(--orange);border-color:var(--orange);color:#fff;font-weight:600}
   button.primary:hover{filter:brightness(1.04);box-shadow:0 6px 14px rgba(249,115,22,.28)}
-  .tabs{position:sticky;top:57px;z-index:19;display:flex;gap:2px;padding:0 26px;background:#fff;border-bottom:1px solid var(--border);flex-wrap:wrap}
-  .tab{padding:13px 15px;font-size:14px;font-weight:600;color:var(--muted);background:none;border:none;border-bottom:2px solid transparent;border-radius:0}
-  .tab:hover{color:var(--blue)}
-  .tab.active{color:var(--blue);border-bottom-color:var(--orange)}
+  .tabs{position:fixed;left:0;top:0;bottom:0;z-index:40;width:246px;display:flex;flex-direction:column;gap:6px;padding:18px 14px;background:linear-gradient(180deg,var(--blue-dark),var(--blue));border-right:1px solid rgba(255,255,255,.10);box-shadow:10px 0 30px rgba(6,26,66,.14)}
+  .side-mark{padding:8px 8px 18px;margin-bottom:8px;border-bottom:1px solid rgba(255,255,255,.14)}
+  .side-mark .brand{font-family:"Instrument Sans","Inter",sans-serif;font-size:22px;font-weight:850;color:#fff;letter-spacing:-.03em}
+  .side-mark .brand span{color:var(--orange)}
+  .side-mark small{display:block;margin-top:4px;color:rgba(255,255,255,.62);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  .side-help{margin-top:auto;padding:12px;border:1px solid rgba(255,255,255,.12);border-radius:15px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.72);font-size:11.5px;line-height:1.45}
+  .tab{display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;font-size:13.5px;font-weight:750;color:rgba(255,255,255,.72);background:transparent;border:1px solid transparent;border-radius:13px;text-align:left}
+  .tab .ico{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;background:rgba(255,255,255,.08);font-size:13px}
+  .tab:hover{color:#fff;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.12)}
+  .tab.active{color:var(--blue);background:#fff;border-color:#fff;box-shadow:0 10px 24px rgba(0,0,0,.16)}
+  .tab.active .ico{background:var(--orange-soft);color:var(--orange)}
   .wrap{padding:22px 26px;max-width:1240px;margin:0 auto}
   .scope{font-size:12.5px;color:var(--muted);margin-bottom:18px}
   .scope b{color:var(--blue)}
@@ -1020,6 +1025,15 @@ const DASHBOARD_HTML = `<!doctype html>
   .metric-strip .kpi{border-radius:14px;padding:13px 15px;box-shadow:0 1px 2px rgba(6,26,66,.04)}
   .metric-strip .kpi .val{font-size:25px;color:var(--text)}
   .metric-strip .kpi .sub b{color:var(--orange)}
+  .overview-modules{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:0 0 18px}
+  .module-card{position:relative;min-height:132px;display:flex;flex-direction:column;justify-content:space-between;text-align:left;background:#fff;border:1px solid var(--border);border-radius:17px;padding:15px;box-shadow:var(--shadow);overflow:hidden}
+  .module-card:before{content:"";position:absolute;right:-32px;top:-36px;width:94px;height:94px;border-radius:50%;background:rgba(249,115,22,.10)}
+  .module-card:hover{border-color:rgba(249,115,22,.46);box-shadow:0 12px 28px rgba(6,26,66,.10)}
+  .module-card .tag{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:11px;font-weight:850;text-transform:uppercase;letter-spacing:.055em}
+  .module-card .tag span{display:inline-flex;align-items:center;justify-content:center;width:23px;height:23px;border-radius:8px;background:var(--orange-soft);color:var(--orange)}
+  .module-card .value{font-family:"Instrument Sans","Inter",sans-serif;font-size:28px;font-weight:850;color:var(--blue);letter-spacing:-.03em;line-height:1;margin-top:14px}
+  .module-card .sub{font-size:12px;color:var(--muted);line-height:1.35;margin-top:7px}
+  .module-card .go{font-size:11.5px;font-weight:800;color:var(--orange);margin-top:12px}
   .grid{display:grid;grid-template-columns:1.5fr 1fr;gap:18px;margin-bottom:20px}
   .overview-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(330px,.85fr);gap:18px;align-items:start}
   .overview-stack{display:grid;gap:18px}
@@ -1058,6 +1072,34 @@ const DASHBOARD_HTML = `<!doctype html>
   .event-bar .fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--blue),var(--orange));transition:width .5s cubic-bezier(.22,1,.36,1)}
   .event-bar .name{font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .event-bar .count{font-family:"Instrument Sans","Inter",sans-serif;font-size:13px;font-weight:800;color:var(--blue)}
+  .signal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .signal-card{border:1px solid var(--border);border-radius:15px;padding:14px;background:linear-gradient(180deg,#fff 0%,#fafafa 100%)}
+  .signal-card.hot{border-color:rgba(249,115,22,.24);background:linear-gradient(180deg,#fff 0%,var(--orange-soft) 100%)}
+  .signal-card .top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+  .signal-card .name{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.045em}
+  .signal-card .num{font-family:"Instrument Sans","Inter",sans-serif;font-size:28px;font-weight:850;color:var(--blue);line-height:1}
+  .signal-card.hot .num{color:var(--orange)}
+  .signal-card .sub{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.35}
+  .signal-card .meter{height:7px;border-radius:999px;background:#eef0f3;overflow:hidden;margin-top:12px}
+  .signal-card .meter span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--blue),var(--orange))}
+  .source-mix{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+  .source-mix .mini{border:1px solid var(--border);border-radius:13px;padding:11px;background:var(--surface)}
+  .source-mix .mini span{display:block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .source-mix .mini strong{display:block;margin-top:4px;font-family:"Instrument Sans","Inter",sans-serif;font-size:22px;color:var(--blue)}
+  .source-mix .mini small{color:var(--muted);font-weight:700}
+  .source-note{margin-top:12px;padding:10px 12px;border-radius:13px;background:var(--orange-soft);color:#9a3412;font-size:12px;line-height:1.4}
+  .lead-visual-grid{display:grid;grid-template-columns:minmax(280px,.85fr) minmax(0,1.15fr);gap:18px}
+  .lead-name-btn{appearance:none;border:0;background:none;padding:0;color:var(--blue);font:inherit;font-weight:800;cursor:pointer;text-align:left;text-decoration:none}
+  .lead-name-btn:hover{text-decoration:underline}
+  .page-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:3px 9px;background:#fff;color:var(--blue);font-size:11.5px;font-weight:700;text-decoration:none}
+  .page-chip:hover{border-color:var(--orange);color:var(--orange)}
+  .event-dot{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:800;border:1px solid transparent}
+  .event-dot:before{content:"";width:7px;height:7px;border-radius:99px;background:currentColor}
+  .event-dot.sent{background:var(--green-soft);color:var(--green-ink);border-color:rgba(16,185,129,.22)}
+  .event-dot.skip{background:var(--orange-soft);color:var(--orange);border-color:rgba(249,115,22,.24)}
+  .event-dot.off{background:var(--surface);color:var(--muted);border-color:var(--border)}
+  .event-dot.err{background:var(--red-soft);color:var(--red-ink);border-color:rgba(239,68,68,.22)}
+  .event-legend{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
   /* tabela-resumo por página */
   .sumtable{width:100%;border-collapse:collapse;font-size:13px}
   .sumtable th{text-align:right;color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:0 10px 9px;border-bottom:1px solid var(--border)}
@@ -1134,8 +1176,9 @@ const DASHBOARD_HTML = `<!doctype html>
      assim o drawSlice sincroniza calor + página. scrollTo programático segue funcionando. */
   #hmFrame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
   #hmCanvas{position:absolute;inset:0;pointer-events:none}
-  @media(max-width:980px){.overview-grid{grid-template-columns:1fr}.metric-strip{grid-template-columns:repeat(2,minmax(0,1fr))}.dash-hero{align-items:flex-start;flex-direction:column}.hero-meta{justify-content:flex-start}}
-  @media(max-width:760px){.grid,.traffic-top{grid-template-columns:1fr}.tabs{top:auto}}
+  @media(max-width:1180px){.overview-modules{grid-template-columns:repeat(3,minmax(0,1fr))}}
+  @media(max-width:980px){body{padding-left:76px}.tabs{width:76px;padding:12px 9px}.side-mark{padding:6px 4px 12px}.side-mark .brand{font-size:0}.side-mark .brand:before{content:"IC";font-size:18px}.side-mark small,.side-help,.tab .txt{display:none}.tab{justify-content:center;padding:12px 8px}.tab .ico{width:28px;height:28px}.overview-grid,.lead-visual-grid{grid-template-columns:1fr}.metric-strip{grid-template-columns:repeat(2,minmax(0,1fr))}.dash-hero{align-items:flex-start;flex-direction:column}.hero-meta{justify-content:flex-start}}
+  @media(max-width:760px){.grid,.traffic-top,.signal-grid{grid-template-columns:1fr}.overview-modules{grid-template-columns:1fr}.wrap{padding:18px 16px}header{padding:12px 16px}.controls{width:100%}.controls select{max-width:100%}}
 </style>
 </head>
 <body>
@@ -1144,9 +1187,9 @@ const DASHBOARD_HTML = `<!doctype html>
   <div class="controls">
     <select id="pageSel">
       <option value="all" selected>Todas as páginas</option>
-      <option value="landing_page">Landing / Simulação</option>
+      <option value="landing_page">Simulação</option>
       <option value="home_equity_lp">Home Equity</option>
-      <option value="home_equity_form">Formulário Home Equity</option>
+      <option value="home_equity_form">Typeform</option>
       <option value="link_bio">Link na bio</option>
       <option value="obrigado_simulacao">Obrigado · Simulação</option>
       <option value="obrigado_home_equity">Obrigado · Home Equity</option>
@@ -1160,12 +1203,14 @@ const DASHBOARD_HTML = `<!doctype html>
   </div>
 </header>
 <div class="tabs">
-  <button class="tab" id="tabbtn-overview" onclick="showTab('overview')">Visão geral</button>
-  <button class="tab" id="tabbtn-leads" onclick="showTab('leads')">Leads</button>
-  <button class="tab" id="tabbtn-campaigns" onclick="showTab('campaigns')">Campanhas</button>
-  <button class="tab" id="tabbtn-traffic" onclick="showTab('traffic')">Tráfego</button>
-  <button class="tab" id="tabbtn-heatmap" onclick="showTab('heatmap')">Mapa de calor</button>
-  <button class="tab" id="tabbtn-health" onclick="showTab('health')">Saúde do tracking</button>
+  <div class="side-mark"><div class="brand">Inspira<span>Cred</span></div><small>Analytics</small></div>
+  <button class="tab" id="tabbtn-overview" onclick="showTab('overview')"><span class="ico">▦</span><span class="txt">Visão geral</span></button>
+  <button class="tab" id="tabbtn-leads" onclick="showTab('leads')"><span class="ico">◉</span><span class="txt">Leads</span></button>
+  <button class="tab" id="tabbtn-campaigns" onclick="showTab('campaigns')"><span class="ico">↗</span><span class="txt">Campanhas</span></button>
+  <button class="tab" id="tabbtn-traffic" onclick="showTab('traffic')"><span class="ico">≋</span><span class="txt">Tráfego</span></button>
+  <button class="tab" id="tabbtn-heatmap" onclick="showTab('heatmap')"><span class="ico">⌖</span><span class="txt">Mapa de calor</span></button>
+  <button class="tab" id="tabbtn-health" onclick="showTab('health')"><span class="ico">✓</span><span class="txt">Saúde do tracking</span></button>
+  <div class="side-help">Visão executiva primeiro, detalhe operacional nas abas. Bom pra abrir na TV e bater o olho sem garimpar tabela.</div>
 </div>
 <div class="wrap">
   <div class="scope" id="scope"></div>
@@ -1180,6 +1225,7 @@ const DASHBOARD_HTML = `<!doctype html>
       <div class="hero-meta" id="overviewMeta"></div>
     </div>
     <div class="kpis metric-strip" id="kpis"></div>
+    <div class="overview-modules" id="overviewModules"></div>
     <div class="overview-grid">
       <div class="overview-stack">
         <div class="card">
@@ -1187,14 +1233,14 @@ const DASHBOARD_HTML = `<!doctype html>
           <div class="chart-box chart-tall"><canvas id="dailyChart"></canvas></div>
         </div>
         <div class="card">
-          <div class="h2row"><h2>Conversões / eventos</h2><span class="hint">principais sinais do período</span></div>
+          <div class="h2row"><h2>Sinais de conversão</h2><span class="hint">leitura executiva do funil</span></div>
           <div id="overviewEvents"></div>
         </div>
       </div>
       <div class="overview-side">
         <div class="card"><h2>Funil de conversão</h2><div id="funnel"></div></div>
         <div class="card donut-card">
-          <div class="h2row"><h2>Leads por fonte</h2><span class="hint" id="overviewSourcesHint"></span></div>
+          <div class="h2row"><h2>Atribuição dos leads</h2><span class="hint" id="overviewSourcesHint"></span></div>
           <div class="donut-wrap"><canvas id="sourceChart"></canvas></div>
           <div class="legend-list" id="overviewSourcesLegend"></div>
         </div>
@@ -1203,28 +1249,39 @@ const DASHBOARD_HTML = `<!doctype html>
   </section>
 
   <section class="tab-section" id="tab-leads">
-    <div class="card" style="margin-bottom:18px">
-      <div class="h2row"><h2>Eventos enviados / registrados</h2><span class="hint">contagem do período e da página selecionada</span></div>
-      <div class="kpis" id="eventKpis"></div>
-      <div id="eventSummary"></div>
-    </div>
     <div class="kpis" id="leadKpis"></div>
     <div class="card">
-      <div class="h2row"><h2 id="leadsTitle">Leads</h2><button class="btn-sm" id="csvBtn">Baixar CSV</button></div>
+      <div class="h2row"><h2 id="leadsTitle">Mesa de leads</h2><button class="btn-sm" id="csvBtn">Baixar CSV</button></div>
       <div class="filterbar">
         <label>Filtrar por conversão
           <select id="leadEventFilter">
             <option value="all">Todas as conversões</option>
-            <option value="home_equity">Lead com imóvel</option>
+            <option value="home_equity">Lead</option>
             <option value="home_equity_mql">Lead qualificado</option>
-            <option value="auto">Lead automóvel</option>
-            <option value="nao_qualificado">Lead não qualificado</option>
+            <option value="auto">Lead automotivo</option>
+            <option value="nao_qualificado">Lead desqualificado</option>
             <option value="descarte">Sem imóvel/veículo</option>
           </select>
         </label>
         <div class="filter-note">A tabela agora junta todos os leads capturados. O filtro mostra qual evento/conversão aquele cadastro gerou — inclusive os que vão ao RD sem contar como Lead no Meta.</div>
       </div>
       <div class="table-scroll"><div id="leads"></div></div>
+    </div>
+    <div class="lead-visual-grid" style="margin-top:18px">
+      <div class="card donut-card">
+        <div class="h2row"><h2>Leads por tipo</h2><span class="hint" id="leadTypeHint"></span></div>
+        <div class="donut-wrap"><canvas id="leadTypeChart"></canvas></div>
+        <div class="legend-list" id="leadTypeLegend"></div>
+      </div>
+      <div class="card">
+        <div class="h2row"><h2>Entrega por evento</h2><span class="hint">RD, Meta Lead e MQL</span></div>
+        <div id="leadDeliveryBars"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:18px">
+      <div class="h2row"><h2>Eventos enviados / registrados</h2><span class="hint">apoio técnico do período</span></div>
+      <div class="kpis" id="eventKpis"></div>
+      <div id="eventSummary"></div>
     </div>
   </section>
 
@@ -1274,9 +1331,9 @@ const DASHBOARD_HTML = `<!doctype html>
         <div class="controls">
           <select id="hmPageSel">
             <option value="link_bio">Link na bio</option>
-            <option value="landing_page">Landing / Simulação</option>
+            <option value="landing_page">Simulação</option>
             <option value="home_equity_lp">Home Equity</option>
-            <option value="home_equity_form">Formulário Home Equity</option>
+            <option value="home_equity_form">Typeform</option>
           </select>
           <select id="hmDevice"><option value="mobile" selected>Mobile</option><option value="tablet">Tablet</option><option value="desktop">Desktop</option></select>
           <button id="hmLoad" class="primary">Carregar</button>
@@ -1335,9 +1392,9 @@ const DASHBOARD_HTML = `<!doctype html>
 </div>
 
 <script>
-var dailyChart=null, sourceChart=null, lastLeads=[], lastAllLeads=[], activeTab="overview";
-var PAGE_LABELS={landing_page:"Landing / Simulação",home_equity_lp:"Home Equity",home_equity_form:"Formulário Home Equity",link_bio:"Link na bio",obrigado_simulacao:"Obrigado · Simulação",obrigado_home_equity:"Obrigado · Home Equity",obrigado_formulario:"Obrigado · Formulário",obrigado_auto:"Obrigado · Auto",obrigado_nao_elegivel:"Obrigado · Não elegível",other:"Outras"};
-var LEAD_KIND_LABELS={home_equity:"Lead com imóvel",home_equity_mql:"Lead qualificado",baixo_valor:"Lead não qualificado",auto:"Lead automóvel",descarte:"Banco de dados (sem imóvel/veículo)"};
+var dailyChart=null, sourceChart=null, leadTypeChart=null, lastLeads=[], lastAllLeads=[], activeTab="overview";
+var PAGE_LABELS={landing_page:"Simulação",home_equity_lp:"Home Equity",home_equity_form:"Typeform",link_bio:"Link na bio",obrigado_simulacao:"Obrigado · Simulação",obrigado_home_equity:"Obrigado · Home Equity",obrigado_formulario:"Obrigado · Typeform",obrigado_auto:"Obrigado · Auto",obrigado_nao_elegivel:"Obrigado · Não elegível",other:"Outras"};
+var LEAD_KIND_LABELS={home_equity:"Lead",home_equity_mql:"Lead qualificado",baixo_valor:"Lead desqualificado",auto:"Lead automotivo",descarte:"Banco de dados (sem imóvel/veículo)"};
 var PAGE_URLS={landing_page:"https://nova.inspiracred.com.br/",home_equity_lp:"https://nova.inspiracred.com.br/homeequity/",home_equity_form:"https://nova.inspiracred.com.br/formulario/",link_bio:"https://links.inspiracred.com.br/",obrigado_simulacao:"https://nova.inspiracred.com.br/obrigado/simulacao/",obrigado_home_equity:"https://nova.inspiracred.com.br/obrigado/home-equity/",obrigado_formulario:"https://nova.inspiracred.com.br/obrigado/formulario/",obrigado_auto:"https://nova.inspiracred.com.br/obrigado/auto/",obrigado_nao_elegivel:"https://nova.inspiracred.com.br/obrigado/nao-elegivel/"};
 var CHART_PALETTE=["#f97316","#0b2d72","#10b981","#f59e0b","#3b82f6","#8b5cf6","#ec4899"];
 function pretty(n){return (n==null||n===""?"-":String(n))}
@@ -1394,10 +1451,43 @@ function render(d){
     ["% qualif.",qualifRate+"%",pretty(mql)+" MQLs"]
   ];
   document.getElementById("kpis").innerHTML=kpis.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>'}).join("");
+  renderOverviewModules(d);
   renderFunnel([["Visitantes",t.visitors],["Simulação iniciada",t.sim_start],["Simulação concluída",t.sim_complete],["Lead",t.leads]]);
   renderEventSummary(d);
   renderOverviewSources(d.sources||[]);
   var dl=d.daily||[]; drawLine("dailyChart",dl.map(function(x){return x.d.slice(5)}),dl.map(function(x){return x.v}),dl.map(function(x){return x.l||0}));
+}
+
+function renderOverviewModules(d){
+  d=d||{};
+  var t=d.totals||{}, kinds=d.lead_kind_summary||[], byKind={};
+  kinds.forEach(function(k){byKind[k.kind]=k;});
+  var mql=(byKind.home_equity_mql&&byKind.home_equity_mql.n)||0;
+  var rdOk=kinds.reduce(function(a,k){return a+Number(k.rd_ok||0)},0);
+  var metaOk=kinds.reduce(function(a,k){return a+Number(k.meta_ok||0)},0);
+  var metaSkip=kinds.reduce(function(a,k){return a+Number(k.meta_skip||0)},0);
+  var sources=d.sources||[];
+  var sourceTotal=sources.reduce(function(a,x){return a+Number(x.n||0)},0);
+  var direct=sources.reduce(function(a,x){return a+((!x.source||x.source==="direto")?Number(x.n||0):0)},0);
+  var withUtm=Math.max(0,sourceTotal-direct);
+  var pages=d.pages||[];
+  var views=pages.reduce(function(a,p){return a+Number(p.views||0)},0);
+  var topPage=pages[0]?label(pages[0].page_name):"sem página";
+  var clicks=(d.clicks||[]).reduce(function(a,c){return a+Number(c.clicks||0)},0);
+  var cards=[
+    {tab:"leads",ico:"◉",tag:"Leads",val:pretty(t.leads||0),sub:pretty(mql)+" qualificados · "+pretty(rdOk)+" entregues ao RD"},
+    {tab:"campaigns",ico:"↗",tag:"Campanhas",val:pretty(withUtm),sub:pct(withUtm,sourceTotal)+"% com UTM · "+pretty(direct)+" sem UTM"},
+    {tab:"traffic",ico:"≋",tag:"Tráfego",val:pretty(t.visitors||0),sub:pretty(views)+" views · topo: "+topPage},
+    {tab:"heatmap",ico:"⌖",tag:"Mapa de calor",val:pretty(clicks),sub:"cliques/taps mapeados nas páginas"},
+    {tab:"health",ico:"✓",tag:"Saúde",val:pretty(metaOk),sub:"Meta ok · "+pretty(metaSkip)+" sem Lead por regra"}
+  ];
+  document.getElementById("overviewModules").innerHTML=cards.map(function(c){
+    return '<button class="module-card" onclick="showTab(&quot;'+c.tab+'&quot;)">'+
+      '<span class="tag"><span>'+c.ico+'</span>'+esc(c.tag)+'</span>'+
+      '<span><span class="value">'+esc(c.val)+'</span><span class="sub">'+esc(c.sub)+'</span></span>'+
+      '<span class="go">Abrir aba →</span>'+
+    '</button>';
+  }).join("");
 }
 
 function eventLabel(name){
@@ -1411,6 +1501,18 @@ function eventLabel(name){
     LeadQualificado:"Lead qualificado"
   };
   return m[name]||name;
+}
+
+function signalCards(rows,max){
+  max=max||Math.max.apply(null,rows.map(function(x){return x.n||0}).concat([1]));
+  return '<div class="signal-grid">'+rows.map(function(x){
+    var w=Math.max(4,Math.round((x.n||0)/max*100));
+    return '<div class="signal-card '+(x.hot?'hot':'')+'">'+
+      '<div class="top"><span class="name">'+esc(x.name)+'</span><span class="num">'+pretty(x.n)+'</span></div>'+
+      '<div class="sub">'+x.sub+'</div>'+
+      '<div class="meter"><span style="width:'+w+'%"></span></div>'+
+    '</div>';
+  }).join("")+'</div>';
 }
 
 function renderEventSummary(d){
@@ -1429,18 +1531,26 @@ function renderEventSummary(d){
     ["Sem Lead no Meta",pretty(metaSkip),"não qualificados por regra"]
   ];
   document.getElementById("eventKpis").innerHTML=kpis.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>'}).join("");
+  var t=d.totals||{};
+  var signalRows=[
+    {name:"Iniciaram",n:t.sim_start||0,sub:pct(t.sim_start||0,t.visitors||0)+"% das visitas começaram a simulação"},
+    {name:"Concluíram",n:t.sim_complete||0,sub:pct(t.sim_complete||0,t.sim_start||0)+"% de quem iniciou chegou ao fim"},
+    {name:"Lead Meta",n:leadOk,sub:"evento Lead enviado ao Meta quando passa na regra",hot:true},
+    {name:"Lead qualificado",n:mqlOk,sub:"MQL enviado para otimização mais forte",hot:true},
+    {name:"RD Station",n:rdOk,sub:"cadastros entregues ao CRM / RD"},
+    {name:"Sem Lead no Meta",n:metaSkip,sub:"capturados no banco, mas sem evento Lead por regra"}
+  ];
+  document.getElementById("overviewEvents").innerHTML=signalCards(signalRows);
   var leadRows=kinds.map(function(k){
     return {name:LEAD_KIND_LABELS[k.kind]||k.kind,n:k.n||0,sessions:k.rd_ok||0,type:"Conversão"};
   });
   var eventRows=rows.slice(0,8).map(function(e){return {name:eventLabel(e.event_name),n:e.n||0,sessions:e.sessions||0,type:e.event_type||"Evento"};});
   var all=leadRows.concat(eventRows);
   if(!all.length){
-    document.getElementById("overviewEvents").innerHTML='<div class="empty">Nenhum evento registrado no período.</div>';
     document.getElementById("eventSummary").innerHTML='<div class="empty">Nenhum evento registrado no período.</div>';
     return;
   }
   var max=Math.max.apply(null,all.map(function(x){return x.n||0}).concat([1]));
-  document.getElementById("overviewEvents").innerHTML=eventBars(all.slice(0,7), max, "Nenhum evento registrado no período.");
   document.getElementById("eventSummary").innerHTML='<table class="sumtable"><thead><tr><th>Evento / conversão</th><th style="text-align:left">Tipo</th><th>Qtd.</th><th>Sessões / RD</th></tr></thead><tbody>'+
     all.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td style="text-align:left;font-weight:500;color:var(--muted)">'+esc(x.type)+'</td><td class="num">'+pretty(x.n)+'</td><td class="num">'+pretty(x.sessions)+'</td></tr>';}).join("")+
     '</tbody></table>';
@@ -1461,19 +1571,29 @@ function renderOverviewSources(rows){
   var hint=document.getElementById("overviewSourcesHint");
   var legend=document.getElementById("overviewSourcesLegend");
   var total=rows.reduce(function(a,x){return a+(x.n||0)},0);
-  hint.textContent=total?(total+(total===1?" lead":" leads")):"";
+  var direct=rows.reduce(function(a,x){return a+((!x.source||x.source==="direto")?Number(x.n||0):0)},0);
+  var withUtm=Math.max(0,total-direct);
+  hint.textContent=total?(total+(total===1?" lead":" leads")+" · "+pct(direct,total)+"% sem UTM"):"";
   if(!rows.length){
     legend.innerHTML='<div class="empty">Nenhuma fonte de lead no período.</div>';
     drawDonut("sourceChart",[],[]);
     return;
   }
-  var labels=rows.slice(0,6).map(function(x){return x.source||"direto"});
+  var sourceName=function(s){return (!s||s==="direto")?"Sem UTM / direto":s;};
+  var labels=rows.slice(0,6).map(function(x){return sourceName(x.source)});
   var vals=rows.slice(0,6).map(function(x){return x.n||0});
   drawDonut("sourceChart",labels,vals);
-  legend.innerHTML=rows.slice(0,6).map(function(x,i){
+  var list=rows.slice(0,6).map(function(x,i){
     var color=CHART_PALETTE[i%CHART_PALETTE.length];
-    return '<div class="legend-item"><span class="legend-dot" style="background:'+color+'"></span><span class="name" title="'+esc(x.source||"direto")+'">'+esc(x.source||"direto")+'</span><span class="num">'+pretty(x.n)+' · '+pct(x.n,total)+'%</span></div>';
+    var nm=sourceName(x.source);
+    return '<div class="legend-item"><span class="legend-dot" style="background:'+color+'"></span><span class="name" title="'+esc(nm)+'">'+esc(nm)+'</span><span class="num">'+pretty(x.n)+' · '+pct(x.n,total)+'%</span></div>';
   }).join("");
+  legend.innerHTML=list+
+    '<div class="source-mix">'+
+      '<div class="mini"><span>Com UTM</span><strong>'+pretty(withUtm)+'</strong><small>'+pct(withUtm,total)+'% rastreado por campanha</small></div>'+
+      '<div class="mini"><span>Sem UTM</span><strong>'+pretty(direct)+'</strong><small>'+pct(direct,total)+'% entra como direto</small></div>'+
+    '</div>'+
+    (direct?'<div class="source-note"><b>Direto</b> não é uma campanha. É lead sem <b>utm_source</b> identificado — normalmente link sem UTM, acesso digitado, WhatsApp/Instagram sem parâmetro ou navegador escondendo a origem.</div>':'');
 }
 
 /* Funil de conversão com silhueta real: cada etapa é um trapézio que vai da própria
@@ -1644,6 +1764,38 @@ function leadKindPill(k){
   var cls=k==="home_equity_mql"?"orange":(k==="home_equity"||k==="auto"?"blue":(k==="baixo_valor"||k==="descarte"?"wait":"green"));
   return '<span class="pill '+cls+'">'+esc(lb)+'</span>';
 }
+function leadHasMetaLead(l){
+  return (l.lead_kind==="home_equity"||l.lead_kind==="home_equity_mql"||l.lead_kind==="auto")&&l.meta_status==="ok";
+}
+function leadHasMql(l){return l.lead_kind==="home_equity_mql"&&l.meta_status==="ok";}
+function eventDot(label,state){
+  var cls=state==="sent"?"sent":(state==="skip"?"skip":(state==="err"?"err":"off"));
+  return '<span class="event-dot '+cls+'">'+label+'</span>';
+}
+function leadEventDot(l,type){
+  if(type==="rd"){
+    if(l.rd_status==="ok")return eventDot("RD","sent");
+    if(l.rd_status==="nao_enviado")return eventDot("RD","skip");
+    if(l.rd_status&&l.rd_status!=="")return eventDot("RD","err");
+    return eventDot("RD","off");
+  }
+  if(type==="lead"){
+    if(leadHasMetaLead(l))return eventDot("Lead","sent");
+    if(l.meta_status==="nao_enviado")return eventDot("Lead","skip");
+    if(l.meta_status&&l.meta_status!=="")return eventDot("Lead","err");
+    return eventDot("Lead","off");
+  }
+  if(type==="mql"){
+    if(leadHasMql(l))return eventDot("MQL","sent");
+    if(l.lead_kind==="home_equity_mql")return l.meta_status==="nao_enviado"?eventDot("MQL","skip"):eventDot("MQL","err");
+    return eventDot("MQL","off");
+  }
+  return eventDot(type,"off");
+}
+function pageLeadLink(source){
+  var u=PAGE_URLS[source], txt=label(source);
+  return u?'<a class="page-chip" href="'+u+'" target="_blank" rel="noopener">'+esc(txt)+' ↗</a>':'<span class="page-chip">'+esc(txt)+'</span>';
+}
 function renderLeads(d){
   if(d) lastAllLeads=d.leads||[];
   var filter=currentLeadFilter();
@@ -1655,13 +1807,46 @@ function renderLeads(d){
   lastLeads.forEach(function(l){totalCredit+=Number(l.credit_value||0);if(l.rd_status==="ok")rdOk++;if(l.meta_status==="ok")metaOk++;});
   var lk=[["Filtro ativo",filterLabel,pretty(n)+" registro(s)"],["Valor total solicitado",brl(totalCredit),"em crédito"],["Ticket médio",n?brl(Math.round(totalCredit/n)):"-","por lead"],["Entrega RD Station",rdOk+"/"+n,pct(rdOk,n)+"% no CRM"],["Entrega Meta CAPI",metaOk+"/"+n,pct(metaOk,n)+"% no Pixel"]];
   document.getElementById("leadKpis").innerHTML=lk.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub">'+k[2]+'</div></div>'}).join("");
+  renderLeadVisuals(lastLeads);
   if(!n){document.getElementById("leads").innerHTML='<div class="empty">Nenhum lead para este filtro.</div>';return}
-  var html='<table><thead><tr><th>Data</th><th>Nome</th><th>Telefone</th><th>Conversão</th><th>Bem</th><th>Crédito</th><th>Origem</th><th>RD</th><th>Meta</th><th></th></tr></thead><tbody>';
+  var html='<div class="event-legend">'+eventDot("enviado","sent")+eventDot("não enviado por regra","skip")+eventDot("não aplicável","off")+'</div>';
+  html+='<table><thead><tr><th>Data</th><th>Nome</th><th>Classificação</th><th>Página</th><th>Crédito</th><th>RD</th><th>Meta Lead</th><th>MQL</th><th></th></tr></thead><tbody>';
   lastLeads.forEach(function(l,i){
-    var bem=l.lead_kind==="auto"?"Automóvel":pretty(l.property_type);
-    html+='<tr><td>'+(l.created_at||"").slice(0,16)+'</td><td>'+pretty(l.name)+'</td><td>'+pretty(l.phone)+'</td><td>'+leadKindPill(l.lead_kind)+'</td><td>'+bem+'</td><td>'+brl(l.credit_value)+'</td><td>'+pretty(l.utm_source||l.source||"direto")+'</td><td>'+badge(l.rd_status)+'</td><td>'+badge(l.meta_status)+'</td><td><button class="btn-sm" onclick="showLead('+i+')">Ver ficha</button></td></tr>';
+    html+='<tr><td>'+(l.created_at||"").slice(0,16)+'</td>'+
+      '<td><button class="lead-name-btn" onclick="showLead('+i+')">'+esc(l.name||"Lead sem nome")+'</button><div class="hint">'+esc(l.phone||"")+'</div></td>'+
+      '<td>'+leadKindPill(l.lead_kind)+'</td><td>'+pageLeadLink(l.source)+'</td><td>'+brl(l.credit_value)+'</td>'+
+      '<td>'+leadEventDot(l,"rd")+'</td><td>'+leadEventDot(l,"lead")+'</td><td>'+leadEventDot(l,"mql")+'</td>'+
+      '<td><button class="btn-sm" onclick="showLead('+i+')">Ver ficha</button></td></tr>';
   });
   document.getElementById("leads").innerHTML=html+'</tbody></table>';
+}
+
+function renderLeadVisuals(rows){
+  rows=rows||[];
+  var counts={}, rd=0, metaLead=0, mql=0;
+  rows.forEach(function(l){
+    var k=l.lead_kind||"sem_classificacao";
+    counts[k]=(counts[k]||0)+1;
+    if(l.rd_status==="ok")rd++;
+    if(leadHasMetaLead(l))metaLead++;
+    if(leadHasMql(l))mql++;
+  });
+  var keys=Object.keys(counts).sort(function(a,b){return counts[b]-counts[a];});
+  var labels=keys.map(function(k){return LEAD_KIND_LABELS[k]||k});
+  var vals=keys.map(function(k){return counts[k]});
+  var total=rows.length;
+  document.getElementById("leadTypeHint").textContent=total?(total+(total===1?" lead":" leads")):"";
+  drawDonut("leadTypeChart",labels,vals);
+  document.getElementById("leadTypeLegend").innerHTML=keys.length?keys.map(function(k,i){
+    var color=CHART_PALETTE[i%CHART_PALETTE.length];
+    return '<div class="legend-item"><span class="legend-dot" style="background:'+color+'"></span><span class="name">'+esc(LEAD_KIND_LABELS[k]||k)+'</span><span class="num">'+counts[k]+' · '+pct(counts[k],total)+'%</span></div>';
+  }).join(""):'<div class="empty">Nenhum lead para este filtro.</div>';
+  document.getElementById("leadDeliveryBars").innerHTML=eventBars([
+    {name:"RD Station",n:rd},
+    {name:"Meta Lead",n:metaLead},
+    {name:"Lead qualificado",n:mql},
+    {name:"Sem Lead no Meta",n:Math.max(0,total-metaLead)}
+  ], Math.max(total,1), "Nenhum lead para este filtro.");
 }
 
 function showLead(i,list){
@@ -1691,7 +1876,7 @@ function showLead(i,list){
   opt("Possui matrícula?",l.possui_matricula);
   opt("Saldo devedor",l.saldo_devedor?brl(l.saldo_devedor):null);
   sec("Origem & campanha");
-  row("Origem (página)",label(l.source));
+  row("Origem (página)",pageLeadLink(l.source));
   row("Origem (utm_source)",pretty(l.utm_source));
   row("Mídia (utm_medium)",pretty(l.utm_medium));
   row("Campanha (utm_campaign)",pretty(l.utm_campaign));
@@ -1767,8 +1952,11 @@ function drawLine(id,labels,visitors,leads){
 function drawDonut(id,labels,data){
   var ctx=document.getElementById(id);
   if(!ctx)return;
-  if(sourceChart)sourceChart.destroy();
-  sourceChart=new Chart(ctx,{type:"doughnut",data:{labels:labels,datasets:[{data:data,backgroundColor:CHART_PALETTE,borderColor:"#fff",borderWidth:4,hoverOffset:4}]},options:{maintainAspectRatio:false,cutout:"66%",plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){var total=(c.dataset.data||[]).reduce(function(a,n){return a+Number(n||0)},0);return " "+c.label+": "+c.raw+" ("+pct(c.raw,total)+"%)";}}}}}})
+  var key=id==="leadTypeChart"?"leadTypeChart":"sourceChart";
+  if(key==="leadTypeChart"&&leadTypeChart)leadTypeChart.destroy();
+  if(key==="sourceChart"&&sourceChart)sourceChart.destroy();
+  var chart=new Chart(ctx,{type:"doughnut",data:{labels:labels,datasets:[{data:data,backgroundColor:CHART_PALETTE,borderColor:"#fff",borderWidth:4,hoverOffset:4}]},options:{maintainAspectRatio:false,cutout:"66%",plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){var total=(c.dataset.data||[]).reduce(function(a,n){return a+Number(n||0)},0);return " "+c.label+": "+c.raw+" ("+pct(c.raw,total)+"%)";}}}}}});
+  if(key==="leadTypeChart")leadTypeChart=chart; else sourceChart=chart;
 }
 
 /* ---- Mapa de calor ---- */
