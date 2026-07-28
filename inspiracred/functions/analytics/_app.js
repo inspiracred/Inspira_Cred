@@ -458,17 +458,12 @@ function normalizeLeadKind(event) {
 
   const credit = Number(event.credit_value || 0);
   const property = Number(event.property_value || 0);
-  // Único impeditivo além do valor: imóvel SEM matrícula (sem ela o bem não serve de
-  // garantia). Imóvel FINANCIADO e documentação irregular deixaram de desqualificar —
-  // viram marcador de evento no Meta (Financiado50Mais/Menos, DocumentacaoIrregular),
-  // porque o que define a faixa é o valor. (decisão do cliente, 28/07/2026)
-  // ⚠️ Testa o "não" EXPLÍCITO: página que nem faz a pergunta (Home Equity não pergunta
-  // matrícula) não pode cair como não qualificada por falta de resposta.
-  const semMatricula = ["não", "nao"].indexOf(
-    String(event.possui_matricula || "").trim().toLowerCase()
-  ) !== -1;
-
-  if (semMatricula || credit < 200000 || property < 400000) return "baixo_valor";
+  // ⚠️ SÓ O VALOR desqualifica. Nada de qualificador vira impeditivo: imóvel financiado
+  // e documentação irregular (= "possui matrícula? não", a mesma pergunta com outro nome
+  // no formulário) viram MARCADOR de evento no Meta — Financiado50Mais/Menos e
+  // DocumentacaoIrregular. A ideia é conseguir excluir esses públicos no Meta depois sem
+  // perder o lead agora. (decisão do cliente, 28/07/2026)
+  if (credit < 200000 || property < 400000) return "baixo_valor";
   if (credit >= 500000 && property >= 1000000) return "home_equity_mql";
   return "home_equity";
 }

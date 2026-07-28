@@ -610,7 +610,9 @@
       var creditValue = selectedCreditValue();
       var propertyValue = selectedAssetValue();
       if (creditValue < MIN_CREDIT_VALUE || propertyValue < MIN_RD_PROPERTY_VALUE) return "baixo_valor";
-      if (answers.possui_matricula !== "sim") return "baixo_valor";
+      // Sem matrícula NÃO desqualifica mais: "Seu imóvel possui matrícula?" é a mesma
+      // pergunta que "Documentação regularizada?" da landing, e ela virou marcador
+      // (DocumentacaoIrregular) em vez de gate. Só o valor decide. (cliente, 28/07/2026)
       if (creditValue >= MQL_CREDIT_VALUE && propertyValue >= MQL_PROPERTY_VALUE) return "home_equity_mql";
       if (creditValue >= MIN_RD_CREDIT_VALUE && propertyValue >= MIN_RD_PROPERTY_VALUE) return "home_equity";
       return "baixo_valor";
@@ -695,6 +697,11 @@
     var saldoValue = parseMoney(answers.saldo_devedor || "");
     if (metaEvents.length && answers.imovel_quitado === "nao") {
       metaEvents = metaEvents.concat(saldoValue > assetValue * 0.5 ? "Financiado50Menos" : "Financiado50Mais");
+    }
+    // Sem matrícula = documentação irregular (mesma pergunta da landing, outro nome).
+    // Marcador, não impeditivo: serve pra excluir esse público no Meta depois.
+    if (metaEvents.length && answers.possui_matricula === "nao") {
+      metaEvents = metaEvents.concat("DocumentacaoIrregular");
     }
 
     var payload = {
