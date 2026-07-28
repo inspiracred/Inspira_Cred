@@ -990,6 +990,33 @@ async function handleLeads(request, env) {
     if (kind) { rows = []; }
     else rows = (await env.DB.prepare(`SELECT ${BASE} FROM leads${where}${tail}`).bind(...binds).all()).results || [];
   }
+
+  // Eventos que foram REALMENTE disparados pro Meta em cada lead (auditoria que o
+  // recordMetaEventAudit grava na tabela `events`). Antes isso só dava pra ver abrindo a
+  // jornada e garimpando linha por linha — agora vai direto na ficha.
+  // Uma query só pra página inteira: busca por session_id e depois casa pelo lead_id que
+  // vai dentro do `properties` (a mesma sessão pode gerar mais de um lead).
+  rows.forEach((r) => { r.meta_events = []; });
+  try {
+    const sids = [...new Set(rows.map((r) => r.session_id).filter(Boolean))];
+    if (sids.length) {
+      const ph = sids.map(() => "?").join(",");
+      const evs = (await env.DB.prepare(
+        `SELECT session_id, event_name, properties, created_at FROM events
+          WHERE event_type = 'meta' AND session_id IN (${ph}) ORDER BY created_at`
+      ).bind(...sids).all()).results || [];
+      const porLead = new Map();
+      for (const e of evs) {
+        let leadId = null;
+        try { leadId = JSON.parse(e.properties || "{}").lead_id; } catch (x) { /* properties inválido */ }
+        if (leadId == null) continue;
+        if (!porLead.has(leadId)) porLead.set(leadId, []);
+        porLead.get(leadId).push({ name: e.event_name, at: e.created_at });
+      }
+      rows.forEach((r) => { r.meta_events = porLead.get(r.id) || []; });
+    }
+  } catch (e) { /* sem tabela/coluna de auditoria — a ficha só não lista os eventos */ }
+
   return json({ leads: rows, count: rows.length });
 }
 
@@ -2656,9 +2683,13 @@ function leadMatchesFilter(l,filter){
   if(filter==="nao_qualificado")return k==="baixo_valor"||k==="descarte";
   return k===filter;
 }
+/* Escala de cor da classificação, do melhor pro pior (pedido do cliente 28/07/2026 —
+   antes o qualificado era LARANJA, que lê como alerta/negativo):
+     verde = Lead qualificado (o melhor) · azul = Lead / Lead automotivo (normal)
+     vermelho = Lead desqualificado · cinza = banco de dados (sem imóvel nem veículo) */
 function leadKindPill(k){
   var lb=LEAD_KIND_LABELS[k]||pretty(k);
-  var cls=k==="home_equity_mql"?"orange":(k==="home_equity"||k==="auto"?"blue":(k==="baixo_valor"||k==="descarte"?"wait":"green"));
+  var cls=k==="home_equity_mql"?"green":(k==="home_equity"||k==="auto"?"blue":(k==="baixo_valor"?"err":"wait"));
   return '<span class="pill '+cls+'">'+esc(lb)+'</span>';
 }
 function leadHasMetaLead(l){
@@ -2835,6 +2866,19 @@ function showLead(i,list){
   row("RD Station", badge(l.rd_status));
   row("Meta CAPI",badge(l.meta_status));
   if(l.fbp_source||l.fbc_source) row("Origem fbp/fbc", pretty(l.fbp_source)+" / "+pretty(l.fbc_source));
+  // Quais eventos foram DE FATO disparados pro Meta neste lead. Antes só dava pra
+  // descobrir garimpando a jornada evento por evento.
+  var evs=l.meta_events||[];
+  if(evs.length){
+    row("Eventos disparados", evs.map(function(e){
+      return '<span class="pill blue" style="margin:0 4px 4px 0"'+(e.at?' title="'+esc(e.at.slice(11,16))+'"':'')+'>'+esc(e.name)+'</span>';
+    }).join(""));
+  }else{
+    var semEvento=(l.lead_kind==="baixo_valor"||l.lead_kind==="descarte")
+      ? "nenhum — não qualificado não conta conversão (por regra)"
+      : "nenhum registrado";
+    row("Eventos disparados",'<span class="pill wait">'+semEvento+'</span>');
+  }
   document.getElementById("modalBody").innerHTML=h;
   var jb=document.getElementById("journeyBtn");
   document.getElementById("journey").innerHTML="";
