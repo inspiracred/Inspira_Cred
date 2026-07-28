@@ -102,11 +102,37 @@
     var bemSelect = document.getElementById("f-bem");
     var tipoField = document.getElementById("f-tipo-field");
     var situacaoLabel = document.getElementById("f-situacao-label");
+    var situacaoSelect = document.getElementById("f-situacao");
     var valorBemLabel = document.getElementById("f-valor-imovel-label");
     var valorBemInput = document.getElementById("f-valor-imovel");
+    var saldoField = document.getElementById("f-saldo-field");
+    var saldoInput = document.getElementById("f-saldo");
+    var saldoLabel = document.getElementById("f-saldo-label");
 
     function isAutoBem() {
       return bemSelect && bemSelect.value === "Automóvel";
+    }
+
+    function isFinanciado() {
+      return situacaoSelect && situacaoSelect.value === "Financiado";
+    }
+
+    // Saldo devedor só existe quando o bem está financiado. É ele que separa
+    // Financiado50Mais de Financiado50Menos no Meta e alimenta o cf_saldo_devedor do RD.
+    function syncSaldoField() {
+      if (!saldoField) return;
+      var mostrar = isFinanciado();
+      saldoField.classList.toggle("is-hidden", !mostrar);
+      saldoField.setAttribute("aria-hidden", String(!mostrar));
+      if (saldoLabel) {
+        saldoLabel.innerHTML = isAutoBem()
+          ? 'Quanto ainda falta pagar do automóvel? <span class="req">*</span>'
+          : 'Quanto ainda falta pagar do imóvel? <span class="req">*</span>';
+      }
+      if (!mostrar && saldoInput) {
+        saldoInput.value = "";
+        clearError("saldo_devedor");
+      }
     }
 
     function syncBemFields() {
@@ -121,6 +147,7 @@
       clearError("tipo_imovel");
       clearError("situacao_imovel");
       clearError("valor_imovel");
+      syncSaldoField();
     }
 
     if (bemSelect) {
@@ -129,6 +156,11 @@
         syncBemFields();
       });
       syncBemFields();
+    }
+
+    if (situacaoSelect) {
+      situacaoSelect.addEventListener("change", syncSaldoField);
+      syncSaldoField();
     }
 
     function validate(data) {
@@ -146,6 +178,13 @@
       if (!isAuto && !data.tipo_imovel) { setError("tipo_imovel", "Selecione o tipo de imóvel."); ok = false; }
       if (!data.situacao_imovel) { setError("situacao_imovel", isAuto ? "Selecione a situação do automóvel." : "Selecione a situação do imóvel."); ok = false; }
       if (!data.valor_imovel || propertyValue <= 0) { setError("valor_imovel", isAuto ? "Informe o valor do automóvel." : "Informe o valor do imóvel."); ok = false; }
+      // Financiado: o saldo devedor é obrigatório porque é ele que separa
+      // Financiado50Mais de Financiado50Menos. Não é trava de perfil — qualquer valor
+      // passa, só precisa estar preenchido.
+      if (data.situacao_imovel === "Financiado" && (!data.saldo_devedor || parseMoney(data.saldo_devedor) <= 0)) {
+        setError("saldo_devedor", isAuto ? "Informe quanto falta pagar do automóvel." : "Informe quanto falta pagar do imóvel.");
+        ok = false;
+      }
       // Sem trava de valor: a pessoa pode pedir o quanto quiser. Quem decide se é
       // qualificado é a classificação (nossos eventos), não um bloqueio no formulário —
       // travar aqui só fazia a gente perder o contato. (decisão do cliente, 24/07/2026)
@@ -164,7 +203,8 @@
         valor_emprestimo: document.getElementById("f-valor-emp").value.trim(),
         tipo_imovel: document.getElementById("f-tipo").value,
         situacao_imovel: document.getElementById("f-situacao").value,
-        valor_imovel: document.getElementById("f-valor-imovel").value.trim()
+        valor_imovel: document.getElementById("f-valor-imovel").value.trim(),
+        saldo_devedor: saldoInput ? saldoInput.value.trim() : ""
       };
 
       if (!validate(data)) return;
@@ -180,15 +220,27 @@
           // mas fica sem evento Lead no Meta.
           // Imóvel precisa ter no mínimo R$400 mil. A partir de R$500 mil de crédito +
           // imóvel de R$1M vira LeadQualificado. Automóvel quitado vai ao RD como auto.
+          // ⚠️ Quem decide a faixa é SÓ o valor. Bem financiado não desqualifica mais —
+          // vira marcador de evento (metaMarkers), pra dar pra separar/excluir esse
+          // público depois sem perder o lead. (decisão do cliente, 28/07/2026)
           var creditValue = parseMoney(data.valor_emprestimo);
           var propertyValue = parseMoney(data.valor_imovel);
+          var saldoValue = parseMoney(data.saldo_devedor || "");
           var isAuto = data.tipo_bem === "Automóvel";
-          var docsOk = isAuto ? true : data.situacao_imovel === "Quitado";
           var isLowValue = creditValue < MIN_EMP || (!isAuto && propertyValue < MIN_RD_IMOVEL);
-          var isLead = docsOk && (isAuto || (!isLowValue && creditValue >= MIN_RD_EMP));
+          var isLead = isAuto || (!isLowValue && creditValue >= MIN_RD_EMP);
           var isMql = !isAuto && isLead && creditValue >= MQL_EMP && propertyValue >= MQL_IMOVEL;
           var leadKind = isLead ? (isAuto ? "auto" : (isMql ? "home_equity_mql" : "home_equity")) : "baixo_valor";
           var shouldSendMetaLead = isLead && (!isAuto || creditValue >= MIN_EMP);
+
+          // Marcadores: acompanham o Lead, nunca vão sozinhos.
+          var metaMarkers = [];
+          if (data.situacao_imovel === "Financiado") {
+            metaMarkers.push(saldoValue > propertyValue * 0.5 ? "Financiado50Menos" : "Financiado50Mais");
+          }
+          var metaEvents = shouldSendMetaLead
+            ? (isMql ? ["Lead", "LeadQualificado"] : ["Lead"]).concat(metaMarkers)
+            : [];
           window.inspiraTrack.lead(Object.assign({
             name: data.nome,
             phone: "+55" + data.celular.replace(/\D/g, ""),
@@ -197,9 +249,10 @@
             property_value: propertyValue,
             credit_value: creditValue,
             situacao_imovel: data.situacao_imovel || null, // "Quitado"/"Financiado" -> normalizado p/ Sim/Não no RD cf_imovel_quitado (Negociação "Imóvel Quitado?")
+            saldo_devedor: data.situacao_imovel === "Financiado" ? saldoValue : null,
             source: "home_equity_lp",
             lead_kind: leadKind,
-            meta_events: shouldSendMetaLead ? (isMql ? ["Lead", "LeadQualificado"] : ["Lead"]) : [],
+            meta_events: metaEvents,
             possui_imovel: isAuto ? "Não" : "Sim",
             possui_automovel: isAuto ? "Sim" : "Não",
             automovel_quitado: isAuto ? data.situacao_imovel || null : null,
@@ -217,8 +270,8 @@
         var creditValue = parseMoney(data.valor_emprestimo);
         var propertyValue = parseMoney(data.valor_imovel);
         var isAuto = data.tipo_bem === "Automóvel";
-        var docsOk = isAuto ? true : data.situacao_imovel === "Quitado";
-        var isLead = docsOk && (isAuto || (creditValue >= MIN_RD_EMP && propertyValue >= MIN_RD_IMOVEL));
+        // Mesma regra do envio acima: só o valor decide (financiado não desqualifica).
+        var isLead = isAuto || (creditValue >= MIN_RD_EMP && propertyValue >= MIN_RD_IMOVEL);
         window.location.href = isLead ? (isAuto ? "/obrigado/auto/" : "/obrigado/home-equity/") : "/obrigado/nao-elegivel/";
       }, 900);
     });

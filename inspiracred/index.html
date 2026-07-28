@@ -587,7 +587,6 @@
         const isAuto = state.assetType === "Automóvel";
         const creditLimit = 0.5;
         let isValid = true;
-        let profileMessage = "";
 
         clearFieldErrors();
         clearMessage(elements.formMessage);
@@ -599,6 +598,14 @@
 
         if (!state.paid) {
           setFieldError("paid", "Selecione uma opção para continuar.");
+          isValid = false;
+        }
+
+        // Bem financiado: o saldo devedor é obrigatório porque é ele que separa
+        // Financiado50Mais de Financiado50Menos no Meta. Não é trava de perfil —
+        // qualquer valor passa, só precisa estar preenchido.
+        if (state.paid === "Não" && (!debtInput.value.trim() || debtValue <= 0)) {
+          setFieldError("debtValue", isAuto ? "Informe quanto falta pagar do automóvel." : "Informe quanto falta pagar do imóvel.");
           isValid = false;
         }
 
@@ -619,15 +626,10 @@
           return { valid: false, propertyValue, creditValue, debtValue };
         }
 
-        if (!isAuto && state.paid === "Não" && propertyValue > 0 && debtValue > propertyValue * 0.5) {
-          setFieldError("debtValue", "O saldo devedor informado está acima do limite permitido.");
-          profileMessage = "Infelizmente, não conseguimos atender seu perfil no momento. O saldo devedor do seu imóvel está acima do limite permitido para essa modalidade de crédito.";
-        }
-
-        if (profileMessage) {
-          return { valid: false, profileMessage, propertyValue, creditValue, debtValue };
-        }
-
+        // Sem trava de saldo devedor: quem ainda deve mais da metade do bem CONTINUA
+        // virando lead. A diferença aparece só nos marcadores de evento do Meta
+        // (Financiado50Mais / Financiado50Menos) — nunca em bloqueio, que só fazia a
+        // gente perder o contato. (decisão do cliente, 28/07/2026)
         return { valid: true, propertyValue, creditValue, debtValue };
       };
 
@@ -771,12 +773,7 @@
         trackStart();
         hideSimulationOutcome();
         const result = validateSimulation();
-        if (!result.valid) {
-          if (result.profileMessage) {
-            showMessage(elements.formMessage, result.profileMessage, "error");
-          }
-          return;
-        }
+        if (!result.valid) return;
         renderSimulationResult(result);
       });
 
@@ -817,13 +814,30 @@
         // mas fica sem evento Lead no Meta.
         // Imóvel precisa ter no mínimo R$400 mil. A partir de R$500 mil de crédito +
         // imóvel de R$1M vira LeadQualificado. Automóvel quitado vai ao RD como auto.
+        // ⚠️ Quem decide a faixa é SÓ o valor. Imóvel financiado e documentação
+        // irregular não desqualificam mais — viram marcador de evento (metaMarkers
+        // abaixo), pra dar pra separar/excluir esse público depois. (cliente, 28/07/2026)
         var isAuto = lastSimulation && lastSimulation.assetType === "Automóvel";
-        var docsOk = lastSimulation && (isAuto ? true : lastSimulation.docs === "Sim");
         var isLowValue = !lastSimulation || lastSimulation.creditValue < MIN_CREDIT_VALUE || (!isAuto && lastSimulation.propertyValue < MIN_RD_PROPERTY_VALUE);
-        var isLead = docsOk && (isAuto || (!isLowValue && lastSimulation.creditValue >= MIN_RD_CREDIT_VALUE));
+        var isLead = !!lastSimulation && (isAuto || (!isLowValue && lastSimulation.creditValue >= MIN_RD_CREDIT_VALUE));
         var isMql = !isAuto && isLead && lastSimulation.creditValue >= MQL_CREDIT_VALUE && lastSimulation.propertyValue >= MQL_PROPERTY_VALUE;
         var leadKind = isLead ? (isAuto ? "auto" : (isMql ? "home_equity_mql" : "home_equity")) : "baixo_valor";
         var shouldSendMetaLead = isLead && (!isAuto || lastSimulation.creditValue >= MIN_CREDIT_VALUE);
+
+        // Marcadores: acompanham o Lead (nunca sozinhos). Só fazem sentido junto da
+        // conversão — lead sem Lead no Meta também não leva marcador.
+        var metaMarkers = [];
+        if (lastSimulation) {
+          if (lastSimulation.paid === "Não") {
+            var debtValueLead = Number(lastSimulation.debtValue) || 0;
+            var halfAsset = (Number(lastSimulation.propertyValue) || 0) * 0.5;
+            metaMarkers.push(debtValueLead > halfAsset ? "Financiado50Menos" : "Financiado50Mais");
+          }
+          if (!isAuto && lastSimulation.docs === "Não") metaMarkers.push("DocumentacaoIrregular");
+        }
+        var metaEvents = shouldSendMetaLead
+          ? (isMql ? ["Lead", "LeadQualificado"] : ["Lead"]).concat(metaMarkers)
+          : [];
 
         try {
           if (shouldSendMetaLead) {
@@ -843,7 +857,7 @@
             credit_value: lastSimulation.creditValue,
             source: "landing_page",
             lead_kind: leadKind,
-            meta_events: shouldSendMetaLead ? (isMql ? ["Lead", "LeadQualificado"] : ["Lead"]) : [],
+            meta_events: metaEvents,
             // já eram coletados na simulação (lastSimulation) mas nunca chegavam a
             // lugar nenhum — nem RD nem nosso banco. Ver sendLeadToRD em _app.js.
             imovel_quitado: isAuto ? null : lastSimulation.paid || null,

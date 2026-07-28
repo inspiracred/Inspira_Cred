@@ -131,6 +131,14 @@
                     <input class="input money" id="f-valor-imovel" name="valor_imovel" type="text" inputmode="numeric" placeholder="Valor mínimo R$ 400.000" />
                     <p class="field-error" data-error="valor_imovel"></p>
                   </div>
+                  <!-- Condicional: só aparece quando a situação do bem é "Financiado".
+                       O valor separa Financiado50Mais de Financiado50Menos no Meta e vai
+                       pro RD no campo cf_saldo_devedor. -->
+                  <div class="field is-hidden" id="f-saldo-field" aria-hidden="true">
+                    <label for="f-saldo" id="f-saldo-label">Quanto ainda falta pagar? <span class="req">*</span></label>
+                    <input class="input money" id="f-saldo" name="saldo_devedor" type="text" inputmode="numeric" placeholder="Saldo devedor aproximado" />
+                    <p class="field-error" data-error="saldo_devedor"></p>
+                  </div>
                 </div>
               </div>
               <p class="form-message" id="form-message"></p>

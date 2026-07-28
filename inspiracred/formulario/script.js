@@ -122,6 +122,26 @@
       showIf: function () { return answers.possui_imovel === "sim"; }
     },
     {
+      id: "imovel_quitado",
+      type: "choice",
+      kicker: "Situação do imóvel",
+      title: "Seu imóvel está quitado?",
+      options: [
+        { label: "Sim", value: "sim" },
+        { label: "Não", value: "nao" }
+      ],
+      // Responder "Não" abre a caixa do saldo devedor NA MESMA tela (sem etapa extra).
+      // É esse valor que separa Financiado50Mais de Financiado50Menos no Meta e que vai
+      // pro RD no campo cf_saldo_devedor. Financiado NÃO desqualifica o lead.
+      conditional: {
+        when: "nao",
+        id: "saldo_devedor",
+        label: "Quanto ainda falta pagar?",
+        placeholder: "Ex.: R$ 150.000"
+      },
+      showIf: function () { return answers.possui_imovel === "sim"; }
+    },
+    {
       id: "faixa_credito",
       type: "choice",
       kicker: "Crédito desejado",
@@ -284,6 +304,8 @@
         delete answers.tipo_imovel;
         delete answers.possui_matricula;
         delete answers.valor_imovel;
+        delete answers.imovel_quitado;
+        delete answers.saldo_devedor;
         delete answers.faixa_credito;
       }
       if (answers.possui_imovel !== "nao") {
@@ -292,6 +314,10 @@
         delete answers.valor_automovel;
         delete answers.faixa_emprestimo_auto;
       }
+    }
+    // Voltou pra "quitado" -> o saldo devedor que tinha sido digitado não vale mais.
+    if (changedId === "imovel_quitado" && answers.imovel_quitado !== "nao") {
+      delete answers.saldo_devedor;
     }
     if (changedId === "possui_automovel" && answers.possui_automovel !== "sim") {
       delete answers.automovel_quitado;
@@ -305,6 +331,16 @@
   function setProgress(current, total) {
     if (progressLabel && total) progressLabel.textContent = "Pergunta " + current + " de " + total;
     if (!progressSteps) return;
+    // Os segmentos acompanham o total do ramo (imóvel tem 7 perguntas, automóvel 6) —
+    // o HTML nasce com 6, então acrescenta/remove conforme o caminho escolhido.
+    while (total && progressSteps.children.length < total) {
+      var seg = document.createElement("span");
+      seg.className = "pstep";
+      progressSteps.appendChild(seg);
+    }
+    while (total && progressSteps.children.length > total) {
+      progressSteps.removeChild(progressSteps.lastChild);
+    }
     var segs = progressSteps.children;
     for (var i = 0; i < segs.length; i++) {
       segs[i].classList.toggle("is-done", i < current);
@@ -324,13 +360,28 @@
 
   function renderChoice(step) {
     var selected = answers[step.id] || "";
-    return '<div class="options">' + step.options.map(function (option) {
+    var html = '<div class="options">' + step.options.map(function (option) {
       var isSelected = selected === option.value;
       return '<button class="option' + (isSelected ? " is-selected" : "") + '" type="button" data-value="' + escapeHtml(option.value) + '">' +
         '<span class="option-text"><strong>' + escapeHtml(option.label) + '</strong>' +
         (option.detail ? '<small>' + escapeHtml(option.detail) + '</small>' : '') +
         '</span><span class="option-dot" aria-hidden="true"></span></button>';
-    }).join("") + '</div><p class="error" id="step-error">Escolha uma opção para continuar.</p>';
+    }).join("") + '</div>';
+
+    // Caixa condicional: aparece embaixo das opções, na MESMA etapa, quando a resposta
+    // escolhida é a que a pergunta marcou como gatilho (ex.: imóvel não quitado).
+    var cond = step.conditional;
+    if (cond && selected === cond.when) {
+      html += '<div class="fields">' +
+        '<div class="field">' +
+        '<label for="field-' + cond.id + '">' + escapeHtml(cond.label) + '</label>' +
+        '<input class="input" id="field-' + cond.id + '" name="' + cond.id + '" type="text" inputmode="numeric" ' +
+        'placeholder="' + escapeHtml(cond.placeholder) + '" value="' + escapeHtml(answers[cond.id] || "") + '" />' +
+        '<p class="error" data-error-for="' + cond.id + '"></p>' +
+        '</div></div>';
+    }
+
+    return html + '<p class="error" id="step-error">Escolha uma opção para continuar.</p>';
   }
 
   function renderFields(step) {
@@ -346,6 +397,27 @@
         '<p class="error" data-error-for="' + field.id + '"></p>' +
         '</div>';
     }).join("") + '</div>';
+  }
+
+  // Liga a caixa condicional de um passo de múltipla escolha (máscara de dinheiro +
+  // gravação da resposta), do mesmo jeito que os campos de um passo "fields".
+  function bindConditionalInput(step) {
+    var cond = step.conditional;
+    if (!cond || answers[step.id] !== cond.when) return;
+    var input = document.getElementById("field-" + cond.id);
+    if (!input) return;
+    input.addEventListener("input", function () {
+      startTracking();
+      input.value = formatMoney(input.value);
+      if (input.value) {
+        var pos = input.value.length - 3;
+        try { input.setSelectionRange(pos, pos); } catch (e) {}
+      }
+      answers[cond.id] = input.value.trim();
+      setHiddenInputs();
+      clearFieldError(cond.id);
+    });
+    setTimeout(function () { input.focus(); }, 60);
   }
 
   function render() {
@@ -369,9 +441,13 @@
           normalizeAnswers(step.id);
           setHiddenInputs();
           render();
+          // Se a resposta abriu a caixa condicional, NÃO avança sozinho — a pessoa ainda
+          // precisa digitar o valor e clicar em Continuar.
+          if (step.conditional && value === step.conditional.when) return;
           setTimeout(function () { goNext(); }, 140);
         });
       });
+      bindConditionalInput(step);
     } else {
       step.fields.forEach(function (field) {
         var input = document.getElementById("field-" + field.id);
@@ -447,7 +523,25 @@
       // se é qualificado ou não.
       if (error) error.textContent = "Escolha uma opção para continuar.";
       if (error) error.classList.toggle("is-visible", !ok);
-      return ok;
+      if (!ok) return false;
+
+      // Caixa condicional aberta (ex.: imóvel não quitado -> saldo devedor): o valor é
+      // obrigatório porque é ele que separa Financiado50Mais de Financiado50Menos.
+      // Não é trava de perfil — qualquer valor passa, só não pode ficar vazio.
+      var cond = step.conditional;
+      if (cond && answers[step.id] === cond.when) {
+        var condInput = document.getElementById("field-" + cond.id);
+        var condValue = condInput ? condInput.value.trim() : (answers[cond.id] || "");
+        answers[cond.id] = condValue;
+        clearFieldError(cond.id);
+        if (parseMoney(condValue) <= 0) {
+          setFieldError(cond.id, "Informe quanto ainda falta pagar.");
+          setHiddenInputs();
+          return false;
+        }
+      }
+      setHiddenInputs();
+      return true;
     }
 
     var okFields = true;
@@ -595,6 +689,13 @@
     if (kind === "auto") {
       metaEvents = creditValue >= MIN_CREDIT_VALUE ? ["Lead"] : [];
     }
+    // Marcador: acompanha o Lead, nunca vai sozinho. Imóvel financiado NÃO desqualifica
+    // (quem decide a faixa é o valor) — só ganha a marcação, pra dar pra separar ou
+    // excluir esse público depois. (decisão do cliente, 28/07/2026)
+    var saldoValue = parseMoney(answers.saldo_devedor || "");
+    if (metaEvents.length && answers.imovel_quitado === "nao") {
+      metaEvents = metaEvents.concat(saldoValue > assetValue * 0.5 ? "Financiado50Menos" : "Financiado50Mais");
+    }
 
     var payload = {
       name: answers.nome || null,
@@ -607,6 +708,12 @@
       lead_kind: kind,
       possui_imovel: labelFor("possui_imovel", answers.possui_imovel),      // "Sim" / "Não"
       possui_matricula: labelFor("possui_matricula", answers.possui_matricula),
+      // "Quitado"/"Financiado" (mesmo vocabulário da Home Equity) — o servidor normaliza
+      // pra Sim/Não no cf_imovel_quitado do RD.
+      situacao_imovel: isAutoBranch || !answers.imovel_quitado
+        ? null
+        : (answers.imovel_quitado === "sim" ? "Quitado" : "Financiado"),
+      saldo_devedor: answers.imovel_quitado === "nao" ? saldoValue : null,
       valor_imovel: isAutoBranch ? null : assetValue,
       faixa_credito: isAutoBranch ? null : labelFor("faixa_credito", answers.faixa_credito),
       // ramo auto (garantia de veículo)
@@ -627,6 +734,8 @@
           possui_imovel: answers.possui_imovel || null,
           tipo_imovel: answers.tipo_imovel || null,
           possui_matricula: answers.possui_matricula || null,
+          imovel_quitado: answers.imovel_quitado || null,
+          saldo_devedor: answers.imovel_quitado === "nao" ? saldoValue : null,
           valor_imovel: isAutoBranch ? null : assetValue,
           faixa_credito: answers.faixa_credito || null,
           possui_automovel: answers.possui_automovel || null,
@@ -639,7 +748,8 @@
       }
     } catch (e) {}
 
-    setProgress(6, 6);
+    var totalSteps = Math.max(visibleSteps().length, 6);
+    setProgress(totalSteps, totalSteps);
     var nav = document.querySelector(".nav-actions");
     if (nav) nav.hidden = true;
     renderThankYou(kind);

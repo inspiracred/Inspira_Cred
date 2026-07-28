@@ -458,16 +458,19 @@ function normalizeLeadKind(event) {
 
   const credit = Number(event.credit_value || 0);
   const property = Number(event.property_value || 0);
-  const docsOk =
-    event.documentacao_ok === "Sim" ||
-    event.possui_matricula === "Sim" ||
-    event.possui_matricula === "sim" ||
-    event.situacao_imovel === "Quitado";
+  // Único impeditivo além do valor: imóvel SEM matrícula (sem ela o bem não serve de
+  // garantia). Imóvel FINANCIADO e documentação irregular deixaram de desqualificar —
+  // viram marcador de evento no Meta (Financiado50Mais/Menos, DocumentacaoIrregular),
+  // porque o que define a faixa é o valor. (decisão do cliente, 28/07/2026)
+  // ⚠️ Testa o "não" EXPLÍCITO: página que nem faz a pergunta (Home Equity não pergunta
+  // matrícula) não pode cair como não qualificada por falta de resposta.
+  const semMatricula = ["não", "nao"].indexOf(
+    String(event.possui_matricula || "").trim().toLowerCase()
+  ) !== -1;
 
-  if (!docsOk || credit < 200000 || property < 400000) return "baixo_valor";
+  if (semMatricula || credit < 200000 || property < 400000) return "baixo_valor";
   if (credit >= 500000 && property >= 1000000) return "home_equity_mql";
-  if (credit >= 200000 && property >= 400000) return "home_equity";
-  return "baixo_valor";
+  return "home_equity";
 }
 
 function shouldSendLeadToRD(kind) {
@@ -584,7 +587,12 @@ async function sendLeadToRD(event, env, leadId) {
     cf_imovel_quitado: imovelQuitado,
     // "cidade" — campo PADRÃO do RD (nome de API "city", não é cf_*). Vem do multi-step.
     city: str(event.city),
-    // saldo_devedor (landing) segue sem campo correspondente no RD — fica só no nosso D1.
+    // "Saldo Devedor" (cf_saldo_devedor, TEXTO) — campo de Lead CRIADO em 2026-07-28.
+    // ⚠️ Identificador LIDO na tela depois de criar (o RD gera o slug a partir do nome);
+    // conferido: `cf_saldo_devedor`. Só vem preenchido quando o bem está financiado —
+    // é o valor que separa Financiado50Mais de Financiado50Menos no Meta.
+    // Falta criar a Combinação de Campos p/ subir pra Negociação (texto->texto).
+    cf_saldo_devedor: str(event.saldo_devedor),
     traffic_source: event.utm_source || undefined,
     traffic_medium: event.utm_medium || undefined,
     traffic_campaign: event.utm_campaign || undefined,
