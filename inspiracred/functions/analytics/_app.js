@@ -857,10 +857,14 @@ function params(url) {
   const srcList = srcRaw && srcRaw !== "all"
     ? srcRaw.split(",").map((s) => s.trim()).filter(Boolean)
     : [];
+  // `page` segue a mesma ideia: aceita várias páginas separadas por vírgula.
+  const pageList = pageRaw && pageRaw !== "all"
+    ? pageRaw.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
   return {
     start: p.get("start") || past,
     end: p.get("end") || today,
-    page: pageRaw && pageRaw !== "all" ? pageRaw : null,
+    page: pageList.length ? pageList : null,
     src: srcList.length ? srcList : null,
   };
 }
@@ -877,11 +881,11 @@ function inCond(expr, list) {
 
 async function handleOverview(request, env) {
   const { start, end, page, src } = params(request.url);
-  const pv = page ? " AND page_name = ?" : "";   // filtro por página (page_views/clicks/forms/events)
+  const pv = page ? ` AND ${inCond("page_name", page)}` : "";   // filtro por página (page_views/clicks/forms/events)
   // leads: filtra por página (coluna source) E por origem (utm_source), quando pedido
-  const sc = (page ? " AND source = ?" : "") + (src ? ` AND ${inCond(SRC_EXPR, src)}` : "");
-  const bp = page ? [start, end, page] : [start, end];
-  const bs = [start, end].concat(page ? [page] : []).concat(src || []);
+  const sc = (page ? ` AND ${inCond("source", page)}` : "") + (src ? ` AND ${inCond(SRC_EXPR, src)}` : "");
+  const bp = [start, end].concat(page || []);
+  const bs = [start, end].concat(page || []).concat(src || []);
 
   const one = async (sql, b) => (await env.DB.prepare(sql).bind(...b).first()) || {};
   const many = async (sql, b) => (await env.DB.prepare(sql).bind(...b).all()).results || [];
@@ -929,7 +933,7 @@ async function handleOverview(request, env) {
     scv = null;
     try {
       const EVSRC = `COALESCE(NULLIF(json_extract(properties,'$.utm_source'),''),'direto')`;
-      const evBinds = [start, end].concat(page ? [page] : []).concat(src);
+      const evBinds = [start, end].concat(page || []).concat(src);
       const r = await env.DB.prepare(
         `SELECT COUNT(DISTINCT session_id) n FROM events
          WHERE event_name='simulation_start' AND DATE(created_at) BETWEEN ? AND ?${pv} AND ${inCond(EVSRC, src)}`
@@ -970,11 +974,9 @@ async function handleOverview(request, env) {
 }
 
 async function handleLeads(request, env) {
-  const { start, end } = params(request.url);
+  const { start, end, page } = params(request.url);   // page já vem como lista (ou null)
   const p = new URL(request.url).searchParams;
   const limit = Math.min(parseInt(p.get("limit")) || 100, 500);
-  const pageRaw = p.get("page");
-  const page = pageRaw && pageRaw !== "all" ? pageRaw : null;
   // kind=nao_qualificado -> lead_kind IN baixo_valor/descarte; baixo_valor vai ao RD
   // como não qualificado, descarte fica só no nosso D1. kind=<valor específico> filtra
   // por um lead_kind exato.
@@ -987,7 +989,7 @@ async function handleLeads(request, env) {
   const conds = [];
   const binds = [start, end];
   conds.push(`DATE(created_at) BETWEEN ? AND ?`);
-  if (page) { conds.push(`source = ?`); binds.push(page); }
+  if (page) { conds.push(inCond("source", page)); binds.push(...page); }
   { const { src } = params(request.url); if (src) { conds.push(inCond(SRC_EXPR, src)); binds.push(...src); } }
   if (kind === "nao_qualificado") conds.push(`lead_kind IN ('baixo_valor','descarte')`);
   else if (kind) { conds.push(`lead_kind = ?`); binds.push(kind); }
@@ -1054,8 +1056,8 @@ async function handleLeads(request, env) {
  */
 async function handleCampaigns(request, env) {
   const { start, end, page } = params(request.url);
-  const sc = page ? " AND source = ?" : "";
-  const b = page ? [start, end, page] : [start, end];
+  const sc = page ? ` AND ${inCond("source", page)}` : "";
+  const b = [start, end].concat(page || []);
   const many = async (sql) => (await env.DB.prepare(sql).bind(...b).all()).results || [];
   const manyS = async (sql) => (await env.DB.prepare(sql).bind(start, end).all()).results || [];
 
@@ -1180,8 +1182,8 @@ async function handlePageMap(request, env) {
  */
 async function handleHealth(request, env) {
   const { start, end, page, src } = params(request.url);
-  const sc = (page ? " AND source = ?" : "") + (src ? ` AND ${inCond(SRC_EXPR, src)}` : "");
-  const b = [start, end].concat(page ? [page] : []).concat(src || []);
+  const sc = (page ? ` AND ${inCond("source", page)}` : "") + (src ? ` AND ${inCond(SRC_EXPR, src)}` : "");
+  const b = [start, end].concat(page || []).concat(src || []);
   const WHERE = `WHERE DATE(created_at) BETWEEN ? AND ?${sc}`;
   const many = async (sql) => (await env.DB.prepare(sql).bind(...b).all()).results || [];
 
@@ -1759,18 +1761,16 @@ const DASHBOARD_HTML = `<!doctype html>
 <header>
   <div class="logo">Inspira<span class="o">Cred</span><small>Analytics</small></div>
   <div class="controls">
-    <select id="pageSel">
-      <option value="all" selected>Todas as páginas</option>
-      <option value="landing_page">Simulação</option>
-      <option value="home_equity_lp">Home Equity</option>
-      <option value="home_equity_form">Typeform</option>
-      <option value="link_bio">Link na bio</option>
-      <option value="obrigado_simulacao">Obrigado · Simulação</option>
-      <option value="obrigado_home_equity">Obrigado · Home Equity</option>
-      <option value="obrigado_formulario">Obrigado · Formulário</option>
-      <option value="obrigado_auto">Obrigado · Auto</option>
-      <option value="obrigado_nao_elegivel">Obrigado · Não elegível</option>
-    </select>
+    <div class="msel" id="pageWrap">
+      <button type="button" id="pageBtn" title="Filtro de página — dá para marcar mais de uma">Página: todas ▾</button>
+      <div class="msel-panel" id="pagePanel" style="display:none">
+        <div class="msel-actions">
+          <button type="button" id="pageAll" title="Sem filtro de página">Todas</button>
+          <button type="button" id="pageCapt" title="Só as páginas que capturam lead">Só captação</button>
+        </div>
+        <div id="pageList"></div>
+      </div>
+    </div>
     <div class="msel" id="srcWrap">
       <button type="button" id="srcBtn" title="Filtro de origem — dá para marcar mais de uma. Vale para o dashboard inteiro.">Origem: Meta Ads ▾</button>
       <div class="msel-panel" id="srcPanel" style="display:none">
@@ -1781,7 +1781,12 @@ const DASHBOARD_HTML = `<!doctype html>
         <div id="srcList"></div>
       </div>
     </div>
-    <select id="rangeSel"><option value="7">Últimos 7 dias</option><option value="30" selected>Últimos 30 dias</option><option value="90">Últimos 90 dias</option></select>
+    <select id="rangeSel"><option value="7">Últimos 7 dias</option><option value="30" selected>Últimos 30 dias</option><option value="90">Últimos 90 dias</option><option value="custom">Período personalizado…</option></select>
+    <span id="customRange" style="display:none;gap:6px;align-items:center">
+      <input type="date" id="dateFrom" title="Data inicial">
+      <span style="color:var(--muted);font-size:12px">até</span>
+      <input type="date" id="dateTo" title="Data final">
+    </span>
     <button id="refresh" class="primary">Atualizar</button>
     <button id="saveFilter" title="Guardar página, origem e período como padrão deste navegador">☆ Salvar filtro</button>
     <a href="/analytics/logout" class="btn-sm" style="text-decoration:none;display:inline-flex;align-items:center">Sair</a>
@@ -1843,15 +1848,17 @@ const DASHBOARD_HTML = `<!doctype html>
         </div>
       </div>
       <div class="filterbar">
-        <label>Filtrar por conversão
-          <select id="leadEventFilter">
-            <option value="all">Todas as conversões</option>
-            <option value="home_equity">Lead</option>
-            <option value="home_equity_mql">Lead qualificado</option>
-            <option value="auto">Lead automotivo</option>
-            <option value="nao_qualificado">Lead desqualificado</option>
-            <option value="descarte">Sem imóvel/veículo</option>
-          </select>
+        <label style="display:flex;align-items:center;gap:8px">Filtrar por classificação
+          <span class="msel" id="kindWrap">
+            <button type="button" id="kindBtn" title="Classificação do lead — dá para marcar mais de uma">Classificação: todas ▾</button>
+            <span class="msel-panel" id="kindPanel" style="display:none">
+              <span class="msel-actions">
+                <button type="button" id="kindAll" title="Sem filtro de classificação">Todas</button>
+                <button type="button" id="kindConv" title="Só quem conta conversão no Meta">Só conversões</button>
+              </span>
+              <span id="kindList"></span>
+            </span>
+          </span>
         </label>
         <div class="filter-note">A tabela agora junta todos os leads capturados. O filtro mostra qual evento/conversão aquele cadastro gerou — inclusive os que vão ao RD sem contar como Lead no Meta.</div>
       </div>
@@ -2035,56 +2042,85 @@ function label(p){return PAGE_LABELS[p]||p}
 function daysAgo(n){return new Date(Date.now()-n*864e5).toISOString().slice(0,10)}
 function brl(v){if(v==null)return"-";return "R$ "+Number(v).toLocaleString("pt-BR")}
 function pct(a,b){return b?Math.round((a/b)*100):0}
-function currentPage(){return document.getElementById("pageSel").value}
-/* ---- Filtro de origem (multi-seleção) ----
-   srcSelected é a fonte da verdade: lista vazia = TODAS as origens. Vai pro servidor
-   como "src=a,b,c" (o params() do backend quebra na vírgula e monta um IN).
+/* ---- Filtro multi-seleção (genérico) ----
+   Um só componente serve origem, página e classificação. O estado de cada filtro é
+   uma LISTA de valores; lista vazia = TODAS as opções (sem filtro). Vai pro servidor
+   como "chave=a,b,c" e o params() do backend quebra na vírgula e monta um IN.
+   Só aplica QUANDO O PAINEL FECHA e se a seleção mudou — aplicar a cada checkbox
+   faria 3 rodadas de request só pra marcar 3 opções.
    ⚠️ Este bloco vive dentro do DASHBOARD_HTML, que é template string: nada de crase
    nem de cifrão-chave nos comentários, senão a string termina no meio. */
-var srcSelected=["meta_ads"];       // padrão do painel: é onde o cliente investe
-var srcCounts={};                   // origem -> nº de leads no período (vem de /api/campaigns)
-function currentSrcList(){return srcSelected.slice()}
-function currentSrc(){return srcSelected.length?srcSelected.join(","):"all"}
-function srcBtnLabel(){
-  var b=document.getElementById("srcBtn"); if(!b)return;
-  var n=srcSelected.length;
-  b.textContent="Origem: "+(n===0?"todas":n===1?srcSelected[0]:n+" selecionadas")+" ▾";
-  b.title=n?("Origens: "+srcSelected.join(", ")):"Todas as origens";
+var MSEL={};
+function mselInit(id,cfg){
+  MSEL[id]={sel:(cfg.inicial||[]).slice(),opts:cfg.opts||[],rotulo:cfg.rotulo,
+            vazio:cfg.vazio||"todas",onApply:cfg.onApply,snap:null,fixo:!!cfg.fixo};
+  var btn=document.getElementById(id+"Btn"), pan=document.getElementById(id+"Panel");
+  if(!btn||!pan)return;
+  btn.addEventListener("click",function(e){e.stopPropagation();mselToggle(id);});
+  pan.addEventListener("click",function(e){e.stopPropagation();});
+  mselLabel(id);
 }
-function renderSrcOptions(){
-  var box=document.getElementById("srcList"); if(!box)return;
-  var keys=Object.keys(srcCounts).sort(function(a,b){return srcCounts[b]-srcCounts[a]});
-  if(!keys.length){box.innerHTML='<div class="msel-empty">Nenhuma origem no período.</div>';return;}
-  box.innerHTML=keys.map(function(k){
-    var on=srcSelected.indexOf(k)>-1;
-    return '<label class="msel-opt"><input type="checkbox" value="'+esc(k)+'"'+(on?" checked":"")+'>'+
-      '<span>'+esc(k)+'</span><span class="n">'+srcCounts[k]+'</span></label>';
+function mselList(id){return (MSEL[id]&&MSEL[id].sel||[]).slice()}
+function mselValue(id){var s=mselList(id);return s.length?s.join(","):"all"}
+function mselSet(id,lista){var m=MSEL[id];if(!m)return;m.sel=(lista||[]).slice();mselLabel(id);mselRender(id);}
+// opts = [{value,label,n}] — n é opcional (contagem exibida à direita)
+function mselSetOptions(id,opts){
+  var m=MSEL[id]; if(!m)return;
+  m.opts=opts||[];
+  // descarta o que foi marcado mas sumiu do período: senão o filtro zera tudo em
+  // silêncio e parece que o dashboard quebrou
+  if(!m.fixo){
+    var validos={}; m.opts.forEach(function(o){validos[o.value]=1});
+    m.sel=m.sel.filter(function(v){return validos[v]});
+  }
+  mselLabel(id); mselRender(id);
+}
+function mselLabel(id){
+  var m=MSEL[id], b=document.getElementById(id+"Btn"); if(!m||!b)return;
+  var n=m.sel.length, txt;
+  if(n===0)txt=m.vazio;
+  else if(n===1){var o=m.opts.filter(function(x){return x.value===m.sel[0]})[0];txt=o?o.label:m.sel[0];}
+  else txt=n+" selecionadas";
+  b.textContent=m.rotulo+": "+txt+" ▾";
+  b.title=n?(m.rotulo+": "+m.sel.join(", ")):("Sem filtro de "+m.rotulo.toLowerCase());
+}
+function mselRender(id){
+  var m=MSEL[id], box=document.getElementById(id+"List"); if(!m||!box)return;
+  if(!m.opts.length){box.innerHTML='<div class="msel-empty">Nada no período.</div>';return;}
+  box.innerHTML=m.opts.map(function(o){
+    var on=m.sel.indexOf(o.value)>-1;
+    return '<label class="msel-opt"><input type="checkbox" value="'+esc(o.value)+'"'+(on?" checked":"")+'>'+
+      '<span>'+esc(o.label)+'</span>'+(o.n!=null?'<span class="n">'+o.n+'</span>':'')+'</label>';
   }).join("");
   box.querySelectorAll("input").forEach(function(cb){
     cb.addEventListener("change",function(){
-      var v=cb.value, i=srcSelected.indexOf(v);
-      if(cb.checked&&i<0)srcSelected.push(v); else if(!cb.checked&&i>-1)srcSelected.splice(i,1);
-      srcBtnLabel();
+      var i=m.sel.indexOf(cb.value);
+      if(cb.checked&&i<0)m.sel.push(cb.value); else if(!cb.checked&&i>-1)m.sel.splice(i,1);
+      mselLabel(id);
     });
   });
 }
-/* Abre/fecha o painel. Só recarrega o dashboard AO FECHAR e se a seleção mudou — se
-   recarregasse a cada checkbox, marcar 3 origens dispararia 3 rodadas de requests. */
-var srcOpenSnapshot=null;
-function srcTogglePanel(open){
-  var p=document.getElementById("srcPanel"), b=document.getElementById("srcBtn");
+function mselToggle(id,open){
+  var m=MSEL[id]; if(!m)return;
+  var p=document.getElementById(id+"Panel"), b=document.getElementById(id+"Btn");
   if(!p||!b)return;
-  var isOpen=p.style.display!=="none";
-  if(open===undefined)open=!isOpen;
-  if(open===isOpen)return;
+  var aberto=p.style.display!=="none";
+  if(open===undefined)open=!aberto;
+  if(open===aberto)return;
   p.style.display=open?"":"none";
   b.classList.toggle("on",open);
-  if(open){srcOpenSnapshot=currentSrc();renderSrcOptions();}
-  else if(srcOpenSnapshot!==null&&srcOpenSnapshot!==currentSrc()){
-    campSel={camp:null,med:null}; campLevel="campaign"; // troca de origem reinicia a navegação
-    syncSaveBtn(); loadAll();
-  }
+  if(open){m.snap=mselValue(id);mselRender(id);}
+  else if(m.snap!==null&&m.snap!==mselValue(id)&&m.onApply)m.onApply();
 }
+function mselCloseAll(){Object.keys(MSEL).forEach(function(id){mselToggle(id,false)});}
+
+/* Atalhos de cada filtro (origem/página/classificação): sempre uma lista de valores. */
+function mselAtalho(id,lista){mselSet(id,lista);}
+
+function currentPage(){return mselValue("page")}
+function currentPageList(){return mselList("page")}
+function currentSrcList(){return mselList("src")}
+function currentSrc(){return mselValue("src")}
 function badge(s){if(s==="ok")return '<span class="pill ok">entregue</span>';if(s==="nao_enviado")return '<span class="pill wait">não enviado</span>';if(s==null||s==="")return '<span class="pill wait">pendente</span>';return '<span class="pill err">'+pretty(s)+'</span>';}
 
 function showTab(name){
@@ -2097,19 +2133,37 @@ function showTab(name){
 }
 
 function setLoading(on){var b=document.getElementById("refresh");b.disabled=on;b.textContent=on?"Atualizando…":"Atualizar";}
-function updateOpenBtn(){var b=document.getElementById("openPage");b.style.display=PAGE_URLS[currentPage()]?"":"none";}
+// "Abrir página ↗" só faz sentido quando UMA página está selecionada.
+function updateOpenBtn(){
+  var b=document.getElementById("openPage"), l=currentPageList();
+  b.style.display=(l.length===1&&PAGE_URLS[l[0]])?"":"none";
+}
+/* Período: 7/30/90 dias ou intervalo escolhido à mão. Devolve {start,end,rotulo}. */
+function currentRange(){
+  var v=document.getElementById("rangeSel").value;
+  if(v==="custom"){
+    var de=document.getElementById("dateFrom").value, ate=document.getElementById("dateTo").value;
+    var hoje=new Date().toISOString().slice(0,10);
+    if(!de&&!ate)return {start:daysAgo(29),end:hoje,rotulo:"últimos 30 dias"};
+    if(!de)de=ate; if(!ate)ate=hoje;
+    if(de>ate){var t=de;de=ate;ate=t;}   // datas invertidas: corrige em vez de zerar tudo
+    return {start:de,end:ate,rotulo:de+" a "+ate};
+  }
+  return {start:daysAgo(parseInt(v)-1),end:new Date().toISOString().slice(0,10),rotulo:"últimos "+v+" dias"};
+}
 function loadAll(){
-  var days=document.getElementById("rangeSel").value;
-  var page=currentPage();
+  var r=currentRange();
+  var page=currentPage(), pages=currentPageList();
   var src=currentSrc();
   var pageQ=(page&&page!=="all")?"&page="+encodeURIComponent(page):"";
   // o filtro global vai pro servidor em tudo que TEM origem gravada (leads/sessões).
   // /campaigns fica de fora de propósito: é dele que sai a lista de origens do seletor.
   var srcQ=(src&&src!=="all")?"&src="+encodeURIComponent(src):"";
-  var qs="?start="+daysAgo(parseInt(days)-1)+"&end="+new Date().toISOString().slice(0,10);
+  var qs="?start="+r.start+"&end="+r.end;
   updateOpenBtn();
   setLoading(true);
-  var scopeTxt="Exibindo: <b>"+(page==="all"?"Todas as páginas":label(page))+"</b> · últimos "+days+" dias"+
+  var pgTxt=pages.length===0?"Todas as páginas":pages.length===1?label(pages[0]):pages.length+" páginas";
+  var scopeTxt="Exibindo: <b>"+pgTxt+"</b> · "+r.rotulo+
     (src!=="all"?' · origem <b>'+esc(src)+'</b>':' · <b>todas as origens</b>');
   document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--muted)">carregando…</span>';
   var p1=fetch("${API}/overview"+qs+pageQ+srcQ+"&_="+Date.now()).then(function(r){return r.json()}).then(function(d){render(d);renderTraffic(d);});
@@ -2619,11 +2673,9 @@ function campFillSrcOptions(){
   (campData.rows||[]).forEach(function(r){ by[r.src]=(by[r.src]||0)+Number(r.leads||0); });
   (campData.visits||[]).forEach(function(r){ if(by[r.src]===undefined)by[r.src]=0; });
   if(by.meta_ads===undefined)by.meta_ads=0; // sempre ofertar o padrão do painel
-  srcCounts=by;
-  // Descarta origens marcadas que não existem mais no período (senão o filtro zera
-  // tudo em silêncio e parece que o dashboard quebrou).
-  srcSelected=srcSelected.filter(function(k){return by[k]!==undefined});
-  srcBtnLabel(); renderSrcOptions();
+  var opts=Object.keys(by).sort(function(a,b){return by[b]-by[a]})
+    .map(function(k){return {value:k,label:k,n:by[k]}});
+  mselSetOptions("src",opts);
   campSrc=currentSrcList();
 }
 
@@ -2754,12 +2806,12 @@ function renderClicksByPage(pages,clicks){
   }).join("");
 }
 
-function currentLeadFilter(){var el=document.getElementById("leadEventFilter");return el?el.value:"all";}
-function leadMatchesFilter(l,filter){
-  var k=l.lead_kind||"sem_classificacao";
-  if(filter==="all")return true;
-  if(filter==="nao_qualificado")return k==="baixo_valor"||k==="descarte";
-  return k===filter;
+function currentLeadFilter(){return mselValue("kind")}
+// Filtro de classificação: lista vazia = todas. Filtra no cliente (a tabela já veio).
+function leadMatchesFilter(l){
+  var lista=mselList("kind");
+  if(!lista.length)return true;
+  return lista.indexOf(l.lead_kind||"sem_classificacao")>-1;
 }
 /* Escala de cor da classificação, do melhor pro pior (pedido do cliente 28/07/2026 —
    antes o qualificado era LARANJA, que lê como alerta/negativo):
@@ -2853,9 +2905,10 @@ function pageLeadLink(source){
 function renderLeads(d){
   if(d) lastAllLeads=d.leads||[];
   var filter=currentLeadFilter();
-  lastLeads=lastAllLeads.filter(function(l){return leadMatchesFilter(l,filter);});
+  lastLeads=lastAllLeads.filter(leadMatchesFilter);
   var n=lastLeads.length, totalAll=lastAllLeads.length;
-  var filterLabel=document.getElementById("leadEventFilter")?document.getElementById("leadEventFilter").selectedOptions[0].textContent:"Todas";
+  var kinds=mselList("kind");
+  var filterLabel=kinds.length?kinds.map(function(k){return LEAD_KIND_LABELS[k]||k}).join(", "):"Todas";
   document.getElementById("leadsTitle").textContent="Leads ("+n+(filter==="all"?"":" de "+totalAll)+")";
   var totalCredit=0, rdOk=0, metaOk=0;
   lastLeads.forEach(function(l){totalCredit+=Number(l.credit_value||0);if(l.rd_status==="ok")rdOk++;if(l.meta_status==="ok")metaOk++;});
@@ -3262,7 +3315,7 @@ function loadHeatmap(){
   var page=document.getElementById("hmPageSel").value;
   var dev=document.getElementById("hmDevice").value;
   var dims=hmDeviceDims(dev), W=dims.w;
-  var days=document.getElementById("rangeSel").value;
+  var per=currentRange();
   var fr=document.getElementById("hmFrame"), cv=document.getElementById("hmCanvas");
   hmW=W; hmVH=dims.vh; hmH0=0;
   if(hmObs){try{hmObs.disconnect()}catch(e){}hmObs=null;}
@@ -3274,7 +3327,7 @@ function loadHeatmap(){
   cv.width=W; cv.height=hmVH; cv.getContext("2d").clearRect(0,0,W,hmVH);
   document.getElementById("hmInner").style.height=hmVH+"px";
   fr.src=location.origin+(HM_PATHS[page]||"/");
-  var qs="?page="+encodeURIComponent(page)+"&device="+dev+"&start="+daysAgo(parseInt(days)-1)+"&end="+new Date().toISOString().slice(0,10);
+  var qs="?page="+encodeURIComponent(page)+"&device="+dev+"&start="+per.start+"&end="+per.end;
   var pdata=fetch("${API}/heatmap"+qs+"&_="+Date.now()).then(function(r){return r.json()});
   var pframe=new Promise(function(res){fr.onload=function(){res();};});
   Promise.all([pdataGuard(pdata),pframe]).then(function(r){
@@ -3408,8 +3461,8 @@ function renderHmPanel(){
 
 function loadPageMap(){
   var page=document.getElementById("hmPageSel").value;
-  var days=document.getElementById("rangeSel").value;
-  var qs="?page="+encodeURIComponent(page)+"&start="+daysAgo(parseInt(days)-1)+"&end="+new Date().toISOString().slice(0,10);
+  var r=currentRange();
+  var qs="?page="+encodeURIComponent(page)+"&start="+r.start+"&end="+r.end;
   document.getElementById("hmKpis").innerHTML='<div class="kpi"><div class="label">Carregando…</div><div class="val">—</div><div class="sub"></div></div>';
   fetch("${API}/pagemap"+qs+"&_="+Date.now()).then(function(r){return r.json()}).then(function(d){
     hmPageData=d; hmPageLoaded=page;
@@ -3537,19 +3590,64 @@ function stepsPanelHTML(d){
   return html;
 }
 
+/* ---- Monta os três filtros multi-seleção ----
+   Origem: as opções vêm de /api/campaigns (campFillSrcOptions). Página e classificação
+   têm lista fixa, então já nascem prontas. */
+mselInit("src",{rotulo:"Origem",inicial:["meta_ads"],vazio:"todas",onApply:function(){
+  campSel={camp:null,med:null}; campLevel="campaign"; // troca de origem reinicia a navegação
+  syncSaveBtn(); loadAll();
+}});
+var PAGE_OPTS=[
+  {value:"landing_page",label:"Simulação"},
+  {value:"home_equity_lp",label:"Home Equity"},
+  {value:"home_equity_form",label:"Typeform"},
+  {value:"link_bio",label:"Link na bio"},
+  {value:"obrigado_simulacao",label:"Obrigado · Simulação"},
+  {value:"obrigado_home_equity",label:"Obrigado · Home Equity"},
+  {value:"obrigado_formulario",label:"Obrigado · Formulário"},
+  {value:"obrigado_auto",label:"Obrigado · Auto"},
+  {value:"obrigado_nao_elegivel",label:"Obrigado · Não elegível"}
+];
+mselInit("page",{rotulo:"Página",inicial:[],vazio:"todas",fixo:true,onApply:function(){syncSaveBtn();loadAll();}});
+mselSetOptions("page",PAGE_OPTS);
+var KIND_OPTS=[
+  {value:"home_equity_mql",label:"Lead qualificado"},
+  {value:"home_equity",label:"Lead"},
+  {value:"auto",label:"Lead automotivo"},
+  {value:"baixo_valor",label:"Lead desqualificado"},
+  {value:"descarte",label:"Sem imóvel/veículo"}
+];
+// a classificação filtra no cliente: não recarrega, só redesenha a tabela
+mselInit("kind",{rotulo:"Classificação",inicial:[],vazio:"todas",fixo:true,onApply:function(){renderLeads();}});
+mselSetOptions("kind",KIND_OPTS);
+
 document.getElementById("refresh").addEventListener("click",loadAll);
-document.getElementById("rangeSel").addEventListener("change",loadAll);
-document.getElementById("pageSel").addEventListener("change",loadAll);
-document.getElementById("openPage").addEventListener("click",function(){var u=PAGE_URLS[currentPage()];if(u)window.open(u,"_blank","noopener");});
+document.getElementById("rangeSel").addEventListener("change",function(){
+  var custom=this.value==="custom";
+  document.getElementById("customRange").style.display=custom?"inline-flex":"none";
+  // ao entrar no modo personalizado, semeia com o período que estava valendo
+  if(custom&&!document.getElementById("dateFrom").value){
+    document.getElementById("dateFrom").value=daysAgo(29);
+    document.getElementById("dateTo").value=new Date().toISOString().slice(0,10);
+  }
+  loadAll();
+});
+document.getElementById("dateFrom").addEventListener("change",loadAll);
+document.getElementById("dateTo").addEventListener("change",loadAll);
+document.getElementById("openPage").addEventListener("click",function(){
+  var l=currentPageList(); var u=l.length===1?PAGE_URLS[l[0]]:null;
+  if(u)window.open(u,"_blank","noopener");
+});
 document.getElementById("csvBtn").addEventListener("click",exportCSV);
-document.getElementById("leadEventFilter").addEventListener("change",function(){renderLeads();});
-document.getElementById("srcBtn").addEventListener("click",function(e){e.stopPropagation();srcTogglePanel();});
-document.getElementById("srcPanel").addEventListener("click",function(e){e.stopPropagation();});
-document.getElementById("srcAll").addEventListener("click",function(){srcSelected=[];srcBtnLabel();renderSrcOptions();});
-document.getElementById("srcOnlyMeta").addEventListener("click",function(){srcSelected=["meta_ads"];srcBtnLabel();renderSrcOptions();});
-// clicar fora fecha o painel — é aí que o filtro é aplicado (ver srcTogglePanel)
-document.addEventListener("click",function(){srcTogglePanel(false);});
-document.addEventListener("keydown",function(e){if(e.key==="Escape")srcTogglePanel(false);});
+document.getElementById("srcAll").addEventListener("click",function(){mselAtalho("src",[]);});
+document.getElementById("srcOnlyMeta").addEventListener("click",function(){mselAtalho("src",["meta_ads"]);});
+document.getElementById("pageAll").addEventListener("click",function(){mselAtalho("page",[]);});
+document.getElementById("pageCapt").addEventListener("click",function(){mselAtalho("page",["landing_page","home_equity_lp","home_equity_form"]);});
+document.getElementById("kindAll").addEventListener("click",function(){mselAtalho("kind",[]);});
+document.getElementById("kindConv").addEventListener("click",function(){mselAtalho("kind",["home_equity","home_equity_mql","auto"]);});
+// clicar fora (ou Esc) fecha os painéis — é ao fechar que o filtro é aplicado
+document.addEventListener("click",mselCloseAll);
+document.addEventListener("keydown",function(e){if(e.key==="Escape")mselCloseAll();});
 document.getElementById("hmLoad").addEventListener("click",function(){loadHeatmap();loadPageMap();});
 document.getElementById("hmDevice").addEventListener("change",function(){if(hmMode==="clicks")loadHeatmap();});
 document.getElementById("hmPageSel").addEventListener("change",function(){
@@ -3571,7 +3669,8 @@ document.getElementById("hmViewport").addEventListener("wheel",function(e){
    preferência de quem abre — não faz sentido gravar no servidor pra todo mundo. */
 var FILTER_KEY="ic_dash_filter";
 function saveFilter(){
-  var f={page:currentPage(),src:currentSrc(),days:document.getElementById("rangeSel").value};
+  var f={page:currentPage(),src:currentSrc(),days:document.getElementById("rangeSel").value,
+         de:document.getElementById("dateFrom").value,ate:document.getElementById("dateTo").value};
   try{ localStorage.setItem(FILTER_KEY,JSON.stringify(f)); }catch(e){}
   var b=document.getElementById("saveFilter");
   b.textContent="★ Filtro salvo"; b.classList.add("saved");
@@ -3593,18 +3692,22 @@ function syncSaveBtn(){
   b.title=igual?"Este é o filtro padrão deste navegador — clique para remover":"Guardar página, origem e período como padrão deste navegador";
   b.textContent=igual?"★ Filtro salvo":"☆ Salvar filtro";
 }
-// Aplica o filtro salvo aos seletores no carregamento. A lista de origens só é montada
-// depois que /api/campaigns responde — como o estado agora é a variável srcSelected (e
-// não as <option> de um select), basta atribuir: o painel se desenha certo quando abrir.
+// Aplica o filtro salvo no carregamento. A lista de origens só é montada depois que
+// /api/campaigns responde — como o estado dos filtros são listas (e não as <option> de
+// um select), basta atribuir: o painel se desenha certo quando abrir.
+function txtParaLista(v){return (v==null||v==="all"||v==="")?[]:String(v).split(",").filter(Boolean)}
 function applySavedFilter(){
   var s=readSavedFilter(); if(!s)return;
-  var pageSel=document.getElementById("pageSel"), rangeSel=document.getElementById("rangeSel");
-  if(s.page){ pageSel.value=s.page; }
-  if(s.days){ rangeSel.value=String(s.days); }
-  if(s.src!=null){
-    srcSelected=(s.src==="all"||s.src==="")?[]:String(s.src).split(",").filter(Boolean);
-    campSrc=currentSrcList();
-    srcBtnLabel();
+  var rangeSel=document.getElementById("rangeSel");
+  if(s.page!=null) mselSet("page",txtParaLista(s.page));
+  if(s.src!=null){ mselSet("src",txtParaLista(s.src)); campSrc=currentSrcList(); }
+  if(s.days){
+    rangeSel.value=String(s.days);
+    if(s.days==="custom"){
+      document.getElementById("customRange").style.display="inline-flex";
+      if(s.de)document.getElementById("dateFrom").value=s.de;
+      if(s.ate)document.getElementById("dateTo").value=s.ate;
+    }
   }
 }
 document.getElementById("saveFilter").addEventListener("click",function(){
@@ -3612,7 +3715,7 @@ document.getElementById("saveFilter").addEventListener("click",function(){
   var igual=s&&s.page===currentPage()&&s.src===currentSrc()&&String(s.days)===document.getElementById("rangeSel").value;
   if(igual) clearFilter(); else saveFilter();
 });
-document.getElementById("pageSel").addEventListener("change",syncSaveBtn);
+// (página e origem chamam syncSaveBtn no onApply do próprio filtro, ao fechar o painel)
 document.getElementById("rangeSel").addEventListener("change",syncSaveBtn);
 // (a origem chama syncSaveBtn dentro do srcTogglePanel, ao fechar o painel)
 document.getElementById("criteriaBtn").addEventListener("click",openCriteria);
