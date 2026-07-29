@@ -852,23 +852,36 @@ function params(url) {
   const past = new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10);
   const pageRaw = p.get("page");
   const srcRaw = p.get("src");
+  // `src` aceita VÁRIAS origens separadas por vírgula (o seletor do cabeçalho virou
+  // multi-seleção — ex.: "meta_ads,ig,fb"). Sempre devolve ARRAY ou null (= todas).
+  const srcList = srcRaw && srcRaw !== "all"
+    ? srcRaw.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
   return {
     start: p.get("start") || past,
     end: p.get("end") || today,
     page: pageRaw && pageRaw !== "all" ? pageRaw : null,
-    src: srcRaw && srcRaw !== "all" ? srcRaw : null,
+    src: srcList.length ? srcList : null,
   };
 }
 // trecho de SQL + binds para o filtro de origem sobre a tabela `leads`
 const SRC_EXPR = "COALESCE(NULLIF(utm_source,''),'direto')";
+/* Monta a condição do filtro de origem SEM o "AND" na frente (quem chama encaixa).
+   Uma origem vira "= ?", várias viram "IN (?,?,…)" — os binds são o próprio array.
+   Recebe a expressão porque cada tabela guarda a origem de um jeito (leads/sessions
+   têm coluna utm_source; events guarda dentro do JSON `properties`). */
+function inCond(expr, list) {
+  if (!list || !list.length) return "";
+  return list.length === 1 ? `${expr} = ?` : `${expr} IN (${list.map(() => "?").join(",")})`;
+}
 
 async function handleOverview(request, env) {
   const { start, end, page, src } = params(request.url);
   const pv = page ? " AND page_name = ?" : "";   // filtro por página (page_views/clicks/forms/events)
   // leads: filtra por página (coluna source) E por origem (utm_source), quando pedido
-  const sc = (page ? " AND source = ?" : "") + (src ? ` AND ${SRC_EXPR} = ?` : "");
+  const sc = (page ? " AND source = ?" : "") + (src ? ` AND ${inCond(SRC_EXPR, src)}` : "");
   const bp = page ? [start, end, page] : [start, end];
-  const bs = [start, end].concat(page ? [page] : []).concat(src ? [src] : []);
+  const bs = [start, end].concat(page ? [page] : []).concat(src || []);
 
   const one = async (sql, b) => (await env.DB.prepare(sql).bind(...b).first()) || {};
   const many = async (sql, b) => (await env.DB.prepare(sql).bind(...b).all()).results || [];
@@ -916,10 +929,10 @@ async function handleOverview(request, env) {
     scv = null;
     try {
       const EVSRC = `COALESCE(NULLIF(json_extract(properties,'$.utm_source'),''),'direto')`;
-      const evBinds = page ? [start, end, page, src] : [start, end, src];
+      const evBinds = [start, end].concat(page ? [page] : []).concat(src);
       const r = await env.DB.prepare(
         `SELECT COUNT(DISTINCT session_id) n FROM events
-         WHERE event_name='simulation_start' AND DATE(created_at) BETWEEN ? AND ?${pv} AND ${EVSRC} = ?`
+         WHERE event_name='simulation_start' AND DATE(created_at) BETWEEN ? AND ?${pv} AND ${inCond(EVSRC, src)}`
       ).bind(...evBinds).first();
       ss = (r && r.n) || 0;
       const since = await env.DB.prepare(
@@ -928,12 +941,13 @@ async function handleOverview(request, env) {
       eventsSrcSince = (since && since.d) || null;
     } catch (e) { ss = null; }
     try {
-      const sw = `WHERE DATE(created_at,'unixepoch') BETWEEN ? AND ? AND ${SRC_EXPR} = ?`;
-      const sv = await env.DB.prepare(`SELECT COUNT(*) n FROM sessions ${sw}`).bind(start, end, src).first();
+      const sw = `WHERE DATE(created_at,'unixepoch') BETWEEN ? AND ? AND ${inCond(SRC_EXPR, src)}`;
+      const sb = [start, end].concat(src);
+      const sv = await env.DB.prepare(`SELECT COUNT(*) n FROM sessions ${sw}`).bind(...sb).first();
       v = (sv && sv.n) || 0;
       const sd = (await env.DB.prepare(
         `SELECT DATE(created_at,'unixepoch') d, COUNT(*) n FROM sessions ${sw} GROUP BY d ORDER BY d`
-      ).bind(start, end, src).all()).results || [];
+      ).bind(...sb).all()).results || [];
       const leadsByDay = {};
       daily.forEach((r) => { leadsByDay[r.d] = r.l || 0; });
       const dias = {};
@@ -974,7 +988,7 @@ async function handleLeads(request, env) {
   const binds = [start, end];
   conds.push(`DATE(created_at) BETWEEN ? AND ?`);
   if (page) { conds.push(`source = ?`); binds.push(page); }
-  { const { src } = params(request.url); if (src) { conds.push(`${SRC_EXPR} = ?`); binds.push(src); } }
+  { const { src } = params(request.url); if (src) { conds.push(inCond(SRC_EXPR, src)); binds.push(...src); } }
   if (kind === "nao_qualificado") conds.push(`lead_kind IN ('baixo_valor','descarte')`);
   else if (kind) { conds.push(`lead_kind = ?`); binds.push(kind); }
   const where = conds.length ? ` WHERE ${conds.join(" AND ")}` : ``;
@@ -1166,8 +1180,8 @@ async function handlePageMap(request, env) {
  */
 async function handleHealth(request, env) {
   const { start, end, page, src } = params(request.url);
-  const sc = (page ? " AND source = ?" : "") + (src ? ` AND ${SRC_EXPR} = ?` : "");
-  const b = [start, end].concat(page ? [page] : []).concat(src ? [src] : []);
+  const sc = (page ? " AND source = ?" : "") + (src ? ` AND ${inCond(SRC_EXPR, src)}` : "");
+  const b = [start, end].concat(page ? [page] : []).concat(src || []);
   const WHERE = `WHERE DATE(created_at) BETWEEN ? AND ?${sc}`;
   const many = async (sql) => (await env.DB.prepare(sql).bind(...b).all()).results || [];
 
@@ -1438,6 +1452,18 @@ const DASHBOARD_HTML = `<!doctype html>
   button.primary{background:var(--orange);border-color:var(--orange);color:#fff;font-weight:600}
   button.primary:hover{filter:brightness(1.04);box-shadow:0 6px 14px rgba(249,115,22,.28)}
   #saveFilter.saved{background:var(--orange-soft);border-color:rgba(249,115,22,.4);color:#9a3412;font-weight:700}
+  /* Filtro multi-seleção (origem): parece um select, mas deixa marcar várias opções. */
+  .msel{position:relative}
+  .msel>button{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .msel>button.on{border-color:var(--blue);box-shadow:0 0 0 3px rgba(11,45,114,.10)}
+  .msel-panel{position:absolute;top:calc(100% + 6px);left:0;z-index:70;min-width:250px;max-height:320px;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 16px 38px rgba(6,26,66,.18);padding:8px}
+  .msel-actions{display:flex;gap:6px;padding:0 2px 8px;border-bottom:1px solid var(--border);margin-bottom:6px}
+  .msel-actions button{padding:4px 10px;font-size:12px;border-radius:8px}
+  .msel-opt{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:8px;font-size:13px;cursor:pointer}
+  .msel-opt:hover{background:var(--surface)}
+  .msel-opt input{cursor:pointer;margin:0;accent-color:var(--blue)}
+  .msel-opt .n{margin-left:auto;color:var(--muted);font-size:12px}
+  .msel-empty{padding:8px;color:var(--muted);font-size:12px}
   .tabs{position:fixed;left:0;top:0;bottom:0;z-index:40;width:246px;display:flex;flex-direction:column;gap:6px;padding:18px 14px;background:linear-gradient(180deg,var(--blue-dark),var(--blue));border-right:1px solid rgba(255,255,255,.10);box-shadow:10px 0 30px rgba(6,26,66,.14)}
   .side-mark{padding:8px 8px 18px;margin-bottom:8px;border-bottom:1px solid rgba(255,255,255,.14)}
   .side-mark .brand{font-family:"Instrument Sans","Inter",sans-serif;font-size:22px;font-weight:850;color:#fff;letter-spacing:-.03em}
@@ -1745,10 +1771,16 @@ const DASHBOARD_HTML = `<!doctype html>
       <option value="obrigado_auto">Obrigado · Auto</option>
       <option value="obrigado_nao_elegivel">Obrigado · Não elegível</option>
     </select>
-    <select id="srcSel" title="Filtro de origem — vale para o dashboard inteiro">
-      <option value="meta_ads" selected>Origem: Meta Ads</option>
-      <option value="all">Origem: todas</option>
-    </select>
+    <div class="msel" id="srcWrap">
+      <button type="button" id="srcBtn" title="Filtro de origem — dá para marcar mais de uma. Vale para o dashboard inteiro.">Origem: Meta Ads ▾</button>
+      <div class="msel-panel" id="srcPanel" style="display:none">
+        <div class="msel-actions">
+          <button type="button" id="srcAll" title="Sem filtro de origem">Todas</button>
+          <button type="button" id="srcOnlyMeta" title="Volta ao padrão do painel">Só Meta Ads</button>
+        </div>
+        <div id="srcList"></div>
+      </div>
+    </div>
     <select id="rangeSel"><option value="7">Últimos 7 dias</option><option value="30" selected>Últimos 30 dias</option><option value="90">Últimos 90 dias</option></select>
     <button id="refresh" class="primary">Atualizar</button>
     <button id="saveFilter" title="Guardar página, origem e período como padrão deste navegador">☆ Salvar filtro</button>
@@ -2004,7 +2036,55 @@ function daysAgo(n){return new Date(Date.now()-n*864e5).toISOString().slice(0,10
 function brl(v){if(v==null)return"-";return "R$ "+Number(v).toLocaleString("pt-BR")}
 function pct(a,b){return b?Math.round((a/b)*100):0}
 function currentPage(){return document.getElementById("pageSel").value}
-function currentSrc(){var s=document.getElementById("srcSel");return s?s.value:"all"}
+/* ---- Filtro de origem (multi-seleção) ----
+   srcSelected é a fonte da verdade: lista vazia = TODAS as origens. Vai pro servidor
+   como "src=a,b,c" (o params() do backend quebra na vírgula e monta um IN).
+   ⚠️ Este bloco vive dentro do DASHBOARD_HTML, que é template string: nada de crase
+   nem de cifrão-chave nos comentários, senão a string termina no meio. */
+var srcSelected=["meta_ads"];       // padrão do painel: é onde o cliente investe
+var srcCounts={};                   // origem -> nº de leads no período (vem de /api/campaigns)
+function currentSrcList(){return srcSelected.slice()}
+function currentSrc(){return srcSelected.length?srcSelected.join(","):"all"}
+function srcBtnLabel(){
+  var b=document.getElementById("srcBtn"); if(!b)return;
+  var n=srcSelected.length;
+  b.textContent="Origem: "+(n===0?"todas":n===1?srcSelected[0]:n+" selecionadas")+" ▾";
+  b.title=n?("Origens: "+srcSelected.join(", ")):"Todas as origens";
+}
+function renderSrcOptions(){
+  var box=document.getElementById("srcList"); if(!box)return;
+  var keys=Object.keys(srcCounts).sort(function(a,b){return srcCounts[b]-srcCounts[a]});
+  if(!keys.length){box.innerHTML='<div class="msel-empty">Nenhuma origem no período.</div>';return;}
+  box.innerHTML=keys.map(function(k){
+    var on=srcSelected.indexOf(k)>-1;
+    return '<label class="msel-opt"><input type="checkbox" value="'+esc(k)+'"'+(on?" checked":"")+'>'+
+      '<span>'+esc(k)+'</span><span class="n">'+srcCounts[k]+'</span></label>';
+  }).join("");
+  box.querySelectorAll("input").forEach(function(cb){
+    cb.addEventListener("change",function(){
+      var v=cb.value, i=srcSelected.indexOf(v);
+      if(cb.checked&&i<0)srcSelected.push(v); else if(!cb.checked&&i>-1)srcSelected.splice(i,1);
+      srcBtnLabel();
+    });
+  });
+}
+/* Abre/fecha o painel. Só recarrega o dashboard AO FECHAR e se a seleção mudou — se
+   recarregasse a cada checkbox, marcar 3 origens dispararia 3 rodadas de requests. */
+var srcOpenSnapshot=null;
+function srcTogglePanel(open){
+  var p=document.getElementById("srcPanel"), b=document.getElementById("srcBtn");
+  if(!p||!b)return;
+  var isOpen=p.style.display!=="none";
+  if(open===undefined)open=!isOpen;
+  if(open===isOpen)return;
+  p.style.display=open?"":"none";
+  b.classList.toggle("on",open);
+  if(open){srcOpenSnapshot=currentSrc();renderSrcOptions();}
+  else if(srcOpenSnapshot!==null&&srcOpenSnapshot!==currentSrc()){
+    campSel={camp:null,med:null}; campLevel="campaign"; // troca de origem reinicia a navegação
+    syncSaveBtn(); loadAll();
+  }
+}
 function badge(s){if(s==="ok")return '<span class="pill ok">entregue</span>';if(s==="nao_enviado")return '<span class="pill wait">não enviado</span>';if(s==null||s==="")return '<span class="pill wait">pendente</span>';return '<span class="pill err">'+pretty(s)+'</span>';}
 
 function showTab(name){
@@ -2369,7 +2449,7 @@ var campLevel="campaign", campSel={camp:null,med:null};
 // Filtro de ORIGEM (utm_source) — GLOBAL: sai do seletor do cabeçalho e vale pro
 // dashboard inteiro. Já abre em "meta_ads" (é onde o cliente investe); trocar pra
 // "todas" mostra tudo, inclusive o lixo de teste (teste-claude, codex-teste…).
-var campSrc="meta_ads";
+var campSrc=["meta_ads"];   // lista vazia = todas as origens (espelha o srcSelected)
 var LEVEL_NAME={campaign:"Campanhas",adset:"Conjuntos de anúncios",ad:"Anúncios"};
 var LEVEL_ONE={campaign:"campanha",adset:"conjunto",ad:"anúncio"};
 
@@ -2380,7 +2460,7 @@ function brlShort(v){
   return "R$ "+v;
 }
 function campKeyOf(r,level){return level==="campaign"?r.camp:(level==="adset"?r.med:r.cont);}
-function campSrcOk(r){ return campSrc==="all"||r.src===campSrc; }
+function campSrcOk(r){ return !campSrc.length||campSrc.indexOf(r.src)>-1; }
 function campInScope(r,level){
   if(!campSrcOk(r))return false;
   if(campSel.camp&&r.camp!==campSel.camp)return false;
@@ -2434,7 +2514,7 @@ function campReset(to){
 
 function renderCampaigns(d){
   campData=d||{};
-  campSrc=currentSrc(); // o filtro é global: vem do cabeçalho
+  campSrc=currentSrcList(); // o filtro é global: vem do cabeçalho
   // se a seleção antiga sumiu do novo período, volta pro topo em vez de mostrar vazio
   var rows=campData.rows||[];
   var hasCamp=!campSel.camp||rows.some(function(r){return r.camp===campSel.camp});
@@ -2534,19 +2614,17 @@ function renderCampRows(){
    no período (com a contagem de leads ao lado). O /api/campaigns é o único endpoint que
    volta SEM o filtro aplicado — de propósito: é dele que sai a lista de opções. */
 function campFillSrcOptions(){
-  var sel=document.getElementById("srcSel");
-  if(!sel||!campData)return;
+  if(!campData)return;
   var by={};
   (campData.rows||[]).forEach(function(r){ by[r.src]=(by[r.src]||0)+Number(r.leads||0); });
   (campData.visits||[]).forEach(function(r){ if(by[r.src]===undefined)by[r.src]=0; });
   if(by.meta_ads===undefined)by.meta_ads=0; // sempre ofertar o padrão do painel
-  var keys=Object.keys(by).sort(function(a,b){return by[b]-by[a]});
-  var atual=sel.value;
-  sel.innerHTML='<option value="all">Origem: todas</option>'+keys.map(function(k){
-    return '<option value="'+esc(k)+'">Origem: '+esc(k)+' ('+by[k]+')</option>';
-  }).join("");
-  sel.value=(keys.indexOf(atual)>-1||atual==="all")?atual:"all";
-  campSrc=sel.value;
+  srcCounts=by;
+  // Descarta origens marcadas que não existem mais no período (senão o filtro zera
+  // tudo em silêncio e parece que o dashboard quebrou).
+  srcSelected=srcSelected.filter(function(k){return by[k]!==undefined});
+  srcBtnLabel(); renderSrcOptions();
+  campSrc=currentSrcList();
 }
 
 function renderCampChart(){
@@ -3465,10 +3543,13 @@ document.getElementById("pageSel").addEventListener("change",loadAll);
 document.getElementById("openPage").addEventListener("click",function(){var u=PAGE_URLS[currentPage()];if(u)window.open(u,"_blank","noopener");});
 document.getElementById("csvBtn").addEventListener("click",exportCSV);
 document.getElementById("leadEventFilter").addEventListener("change",function(){renderLeads();});
-document.getElementById("srcSel").addEventListener("change",function(){
-  campSel={camp:null,med:null}; campLevel="campaign"; // troca de origem reinicia a navegação
-  loadAll();
-});
+document.getElementById("srcBtn").addEventListener("click",function(e){e.stopPropagation();srcTogglePanel();});
+document.getElementById("srcPanel").addEventListener("click",function(e){e.stopPropagation();});
+document.getElementById("srcAll").addEventListener("click",function(){srcSelected=[];srcBtnLabel();renderSrcOptions();});
+document.getElementById("srcOnlyMeta").addEventListener("click",function(){srcSelected=["meta_ads"];srcBtnLabel();renderSrcOptions();});
+// clicar fora fecha o painel — é aí que o filtro é aplicado (ver srcTogglePanel)
+document.addEventListener("click",function(){srcTogglePanel(false);});
+document.addEventListener("keydown",function(e){if(e.key==="Escape")srcTogglePanel(false);});
 document.getElementById("hmLoad").addEventListener("click",function(){loadHeatmap();loadPageMap();});
 document.getElementById("hmDevice").addEventListener("change",function(){if(hmMode==="clicks")loadHeatmap();});
 document.getElementById("hmPageSel").addEventListener("change",function(){
@@ -3512,19 +3593,18 @@ function syncSaveBtn(){
   b.title=igual?"Este é o filtro padrão deste navegador — clique para remover":"Guardar página, origem e período como padrão deste navegador";
   b.textContent=igual?"★ Filtro salvo":"☆ Salvar filtro";
 }
-// Aplica o filtro salvo aos seletores no carregamento. A origem salva pode não estar
-// na lista de opções ainda (o srcSel começa só com meta_ads/todas até /campaigns
-// popular) — então injeta a opção pra o valor "pegar".
+// Aplica o filtro salvo aos seletores no carregamento. A lista de origens só é montada
+// depois que /api/campaigns responde — como o estado agora é a variável srcSelected (e
+// não as <option> de um select), basta atribuir: o painel se desenha certo quando abrir.
 function applySavedFilter(){
   var s=readSavedFilter(); if(!s)return;
-  var pageSel=document.getElementById("pageSel"), srcSel=document.getElementById("srcSel"), rangeSel=document.getElementById("rangeSel");
-  if(s.page){ if(![].some.call(pageSel.options,function(o){return o.value===s.page})){} pageSel.value=s.page; }
+  var pageSel=document.getElementById("pageSel"), rangeSel=document.getElementById("rangeSel");
+  if(s.page){ pageSel.value=s.page; }
   if(s.days){ rangeSel.value=String(s.days); }
-  if(s.src){
-    if(![].some.call(srcSel.options,function(o){return o.value===s.src})){
-      var o=document.createElement("option"); o.value=s.src; o.textContent="Origem: "+s.src; srcSel.appendChild(o);
-    }
-    srcSel.value=s.src; campSrc=s.src;
+  if(s.src!=null){
+    srcSelected=(s.src==="all"||s.src==="")?[]:String(s.src).split(",").filter(Boolean);
+    campSrc=currentSrcList();
+    srcBtnLabel();
   }
 }
 document.getElementById("saveFilter").addEventListener("click",function(){
@@ -3534,7 +3614,7 @@ document.getElementById("saveFilter").addEventListener("click",function(){
 });
 document.getElementById("pageSel").addEventListener("change",syncSaveBtn);
 document.getElementById("rangeSel").addEventListener("change",syncSaveBtn);
-document.getElementById("srcSel").addEventListener("change",syncSaveBtn);
+// (a origem chama syncSaveBtn dentro do srcTogglePanel, ao fechar o painel)
 document.getElementById("criteriaBtn").addEventListener("click",openCriteria);
 document.getElementById("criteriaClose").addEventListener("click",function(){document.getElementById("criteriaModal").classList.remove("show");});
 document.getElementById("criteriaModal").addEventListener("click",function(e){if(e.target.id==="criteriaModal")this.classList.remove("show");});
