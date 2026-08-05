@@ -210,13 +210,13 @@
       id: "contato",
       type: "fields",
       kicker: "Informações de contato",
-      title: "Como falamos com você?",
-      subtitle: "A InspiraCred pode entrar em contato com você para acompanhamento.",
+      title: "Quase lá! Onde falamos com você?",
+      subtitle: "Um especialista da InspiraCred vai retornar com o resultado da sua simulação.",
       fields: [
-        { id: "nome", label: "Nome completo", type: "text", autocomplete: "name", placeholder: "Insira sua resposta.", required: true },
-        { id: "email", label: "E-mail", type: "email", autocomplete: "email", placeholder: "Insira sua resposta.", required: false },
-        { id: "whatsapp", label: "Número do WhatsApp", type: "tel", autocomplete: "tel", inputmode: "tel", placeholder: "Insira sua resposta.", required: true },
-        { id: "cidade", label: "Cidade", type: "text", autocomplete: "address-level2", placeholder: "Insira sua resposta.", required: true }
+        { id: "nome", label: "Nome completo", type: "text", autocomplete: "name", placeholder: "Ex.: Maria Oliveira", required: true },
+        { id: "email", label: "E-mail", type: "email", autocomplete: "email", placeholder: "voce@email.com", required: false, helper: "Opcional — se preferir, seguimos só pelo WhatsApp." },
+        { id: "whatsapp", label: "WhatsApp com DDD", type: "tel", autocomplete: "tel", inputmode: "tel", placeholder: "(21) 99999-9999", required: true, helper: "Digite só o DDD e o número. Não precisa colocar o +55." },
+        { id: "cidade", label: "Cidade", type: "text", autocomplete: "address-level2", placeholder: "Ex.: Niterói", required: true }
       ],
       // Etapa comum a TODOS os ramos que terminam em lead (inclusive "descarte" —
       // sem imóvel e sem automóvel), pra sempre capturar o contato antes de finalizar.
@@ -393,7 +393,7 @@
         (field.inputmode ? 'inputmode="' + field.inputmode + '" ' : '') +
         (field.autocomplete ? 'autocomplete="' + field.autocomplete + '" ' : '') +
         'placeholder="' + escapeHtml(field.placeholder) + '" value="' + escapeHtml(value) + '" />' +
-        (field.id === "email" ? '<p class="helper">Se preferir, você pode seguir só com WhatsApp.</p>' : '') +
+        (field.helper ? '<p class="helper">' + escapeHtml(field.helper) + '</p>' : '') +
         '<p class="error" data-error-for="' + field.id + '"></p>' +
         '</div>';
     }).join("") + '</div>';
@@ -473,7 +473,13 @@
   }
 
   function formatPhone(value) {
-    var digits = value.replace(/\D/g, "").slice(0, 11);
+    var digits = value.replace(/\D/g, "");
+    // Se a pessoa digitou o DDI do Brasil (+55) na frente, remove ANTES de cortar em 11.
+    // Sem isso, o slice(0, 11) mantinha o "55" e empurrava os 2 últimos dígitos do número
+    // pra fora — o lead chegava no RD com o 55 dobrado e faltando os 2 números finais.
+    // Um telefone BR válido (DDD + número) tem no máx. 11 dígitos; só passa disso com DDI.
+    if (digits.length > 11 && digits.slice(0, 2) === "55") digits = digits.slice(2);
+    digits = digits.slice(0, 11);
     if (!digits) return "";
     if (digits.length <= 2) return "(" + digits;
     if (digits.length <= 6) return "(" + digits.slice(0, 2) + ") " + digits.slice(2);
