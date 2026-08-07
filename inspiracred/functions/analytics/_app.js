@@ -1198,7 +1198,9 @@ async function handleHealth(request, env) {
               SUM(CASE WHEN has_phone=1 THEN 1 ELSE 0 END) com_telefone,
               SUM(CASE WHEN has_name=1 THEN 1 ELSE 0 END) com_nome,
               SUM(CASE WHEN fbclid_source IN ('url','session') THEN 1 ELSE 0 END) com_fbclid,
-              SUM(CASE WHEN meta_status='ok' THEN 1 ELSE 0 END) meta_ok
+              SUM(CASE WHEN meta_status='ok' THEN 1 ELSE 0 END) meta_ok,
+              SUM(CASE WHEN meta_status='nao_enviado' THEN 1 ELSE 0 END) meta_skip,
+              SUM(CASE WHEN meta_status='bot_skip' THEN 1 ELSE 0 END) meta_bot
        FROM leads ${WHERE}`
     ).bind(...b).first();
   } catch (e) {
@@ -2270,7 +2272,7 @@ function signalCards(rows,max){
   return '<div class="signal-grid">'+rows.map(function(x){
     var w=Math.max(4,Math.round((x.n||0)/max*100));
     return '<div class="signal-card '+(x.hot?'hot':'')+'">'+
-      '<div class="top"><span class="name">'+esc(x.name)+'</span><span class="num">'+pretty(x.n)+'</span></div>'+
+      '<div class="top"><span class="name">'+esc(x.name)+'</span><span class="num">'+(x.disp!=null?esc(x.disp):pretty(x.n))+'</span></div>'+
       '<div class="sub">'+x.sub+'</div>'+
       '<div class="meter"><span style="width:'+w+'%"></span></div>'+
     '</div>';
@@ -2296,7 +2298,11 @@ function renderEventSummary(d){
   var t=d.totals||{};
   var signalRows=[
     {name:"Iniciaram",n:t.sim_start||0,sub:pct(t.sim_start||0,t.visitors||0)+"% das visitas começaram a simulação"},
-    {name:"Concluíram",n:t.sim_complete||0,sub:pct(t.sim_complete||0,t.sim_start||0)+"% de quem iniciou chegou ao fim"},
+    // sim_complete vem null quando há filtro de origem (o evento não guarda a campanha).
+    // Antes o "|| 0" transformava null em 0 e parecia que ninguém concluía — mostra "—".
+    (t.sim_complete!=null
+      ? {name:"Concluíram",n:t.sim_complete,sub:pct(t.sim_complete,t.sim_start||0)+"% de quem iniciou chegou ao fim"}
+      : {name:"Concluíram",n:0,disp:"—",sub:"não dá para medir com filtro de origem (o evento de simulação não guarda a campanha)"}),
     {name:"Lead Meta",n:leadOk,sub:"evento Lead enviado ao Meta quando passa na regra",hot:true},
     {name:"Lead qualificado",n:mqlOk,sub:"MQL enviado para otimização mais forte",hot:true},
     {name:"RD Station",n:rdOk,sub:"cadastros entregues ao CRM / RD"},
@@ -2442,7 +2448,13 @@ function renderHealth(d){
     g.innerHTML=''; sig.innerHTML=''; fbp.innerHTML=br.innerHTML=bots.innerHTML='';
     return;
   }
-  var entrega=pct(t.meta_ok,total);
+  // "Não enviados por regra" (baixo_valor/descarte) e bots NÃO são perda de entrega —
+  // são decisão nossa de não mandar pro Meta. A entrega tem que ser medida só sobre os
+  // leads ELEGÍVEIS (os que a gente de fato tenta enviar), senão o gate de qualificação
+  // aparece como se fosse falha da CAPI (era o "38% / Muita perda" que assustava).
+  var metaSkip=t.meta_skip||0, metaBot=t.meta_bot||0;
+  var elegiveis=Math.max(0, total-metaSkip-metaBot);
+  var entrega=elegiveis?pct(t.meta_ok,elegiveis):100;
   var pii=Math.round((pct(t.com_email,total)+pct(t.com_telefone,total)+pct(t.com_nome,total))/3);
   var atrib=pct(t.com_fbclid,total);
   var limpo=total?100-pct(t.bots,total):100;
@@ -2453,15 +2465,16 @@ function renderHealth(d){
   document.getElementById("healthVerdict").textContent=
     geral==="good"?"Rastreamento saudável":(geral==="warn"?"Rastreamento funcionando, com pontos de atenção":"Rastreamento com problema");
   document.getElementById("healthSummary").textContent=
-    "De "+total+" lead"+(total===1?"":"s")+" no período, "+pretty(t.meta_ok)+" chegaram no Meta e "+
-    pretty(t.itp_recuperado)+" só foram atribuídos porque o nosso cookie de servidor resgatou a origem.";
+    "De "+total+" lead"+(total===1?"":"s")+" no período, "+pretty(elegiveis)+" eram elegíveis para o Meta e "+
+    pretty(t.meta_ok)+" foram entregues pela CAPI. "+pretty(metaSkip)+" não foram enviados por regra de "+
+    "qualificação (baixo valor/descarte) — isso é decisão nossa, não perda.";
   document.getElementById("healthMeta").innerHTML=
     '<span class="chip">'+(d.page==="all"?"Todas as páginas":label(d.page||"all"))+'</span>'+
     '<span class="chip">'+(d.range?d.range.start+" → "+d.range.end:"")+'</span>';
 
   g.innerHTML=
-    gaugeCard("Entrega no Meta",entrega,"dos leads",
-      "Quantos leads a Meta aceitou pela CAPI. O que não chega aqui não vira conversão nem otimiza campanha.",
+    gaugeCard("Entrega no Meta",entrega,"dos elegíveis",
+      "Dos leads que a gente ENVIA pro Meta (tirando os barrados por regra de qualificação e os robôs), quantos a CAPI aceitou. Falha aqui, sim, é perda real de conversão.",
       vEnt==="good"?"Entregando bem":(vEnt==="warn"?"Perdendo alguns":"Muita perda"),vEnt)+
     gaugeCard("Dados para casar a pessoa",pii,"de cobertura",
       "Média de e-mail, telefone e nome enviados. Quanto mais completo, maior a chance da Meta reconhecer quem é e dar o crédito da venda ao anúncio certo.",
@@ -2476,6 +2489,7 @@ function renderHealth(d){
   sig.innerHTML=signalCards([
     {name:"Resgatados pelo cookie",n:t.itp_recuperado||0,sub:"leads que o Safari/ITP teria feito perder a origem e o nosso cookie de servidor salvou",hot:true},
     {name:"Robôs barrados",n:t.bots||0,sub:"crawlers bloqueados antes de virarem conversão falsa no Pixel"},
+    {name:"Não enviados por regra",n:metaSkip,sub:"leads baixo valor/descarte que a nossa qualificação NÃO manda pro Meta (não é perda)"},
     {name:"Sem cookie do Meta",n:t.sem_cookie_meta||0,sub:"navegador chegou sem cookie do Pixel no envio (bloqueador ou navegação privada)"},
     {name:"Entregues no Meta",n:t.meta_ok||0,sub:"eventos aceitos pela CAPI no período",hot:true}
   ],Math.max(total,1));
