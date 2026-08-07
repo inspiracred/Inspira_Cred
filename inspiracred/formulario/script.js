@@ -18,6 +18,10 @@
   var started = false;
   var submitting = false;
   var MIN_CREDIT_VALUE = 200000;
+  // Abaixo disso, o valor do bem (imóvel/veículo) provavelmente é erro de digitação
+  // (ex.: R$ 500 no lugar de R$ 500.000). Mostra um aviso pra pessoa confirmar — NÃO
+  // bloqueia o envio, só conscientiza.
+  var LOW_VALUE_WARN = 1000;
   var MIN_RD_CREDIT_VALUE = 200000;
   var MIN_RD_PROPERTY_VALUE = 400000;
   var MQL_CREDIT_VALUE = 500000;
@@ -387,6 +391,7 @@
   function renderFields(step) {
     return '<div class="fields">' + step.fields.map(function (field) {
       var value = answers[field.id] || "";
+      var warnMsg = isMoneyField(field.id) ? lowValueMessage(value) : "";
       return '<div class="field">' +
         '<label for="field-' + field.id + '">' + escapeHtml(field.label) + (field.required ? "" : " (opcional)") + '</label>' +
         '<input class="input" id="field-' + field.id + '" name="' + field.id + '" type="' + field.type + '" ' +
@@ -394,9 +399,32 @@
         (field.autocomplete ? 'autocomplete="' + field.autocomplete + '" ' : '') +
         'placeholder="' + escapeHtml(field.placeholder) + '" value="' + escapeHtml(value) + '" />' +
         (field.helper ? '<p class="helper">' + escapeHtml(field.helper) + '</p>' : '') +
+        (isMoneyField(field.id) ? '<p class="field-warn' + (warnMsg ? ' is-visible' : '') + '" data-warn-for="' + field.id + '">' + escapeHtml(warnMsg) + '</p>' : '') +
         '<p class="error" data-error-for="' + field.id + '"></p>' +
         '</div>';
     }).join("") + '</div>';
+  }
+
+  function isMoneyField(id) {
+    return id === "valor_imovel" || id === "valor_automovel";
+  }
+
+  // Mensagem de "valor parece baixo demais" — só pra valor de bem abaixo do piso de
+  // erro de digitação. Não bloqueia; serve pra pessoa confirmar. Retorna "" se ok.
+  function lowValueMessage(value) {
+    var n = parseMoney(value);
+    if (n > 0 && n < LOW_VALUE_WARN) {
+      return "⚠️ Você digitou " + value + ". Confirme se esse é mesmo o valor do bem — parece baixo demais e pode ter sido um erro de digitação.";
+    }
+    return "";
+  }
+
+  function updateLowValueWarn(fieldId, value) {
+    var el = form.querySelector('[data-warn-for="' + fieldId + '"]');
+    if (!el) return;
+    var msg = lowValueMessage(value);
+    el.textContent = msg;
+    el.classList.toggle("is-visible", !!msg);
   }
 
   // Liga a caixa condicional de um passo de múltipla escolha (máscara de dinheiro +
@@ -465,6 +493,7 @@
           answers[field.id] = input.value.trim();
           setHiddenInputs();
           clearFieldError(field.id);
+          if (isMoneyField(field.id)) updateLowValueWarn(field.id, input.value);
         });
       });
       var firstInput = shell.querySelector(".input");
