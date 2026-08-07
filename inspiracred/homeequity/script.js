@@ -37,7 +37,13 @@
 
     var celular = document.getElementById("f-celular");
     celular.addEventListener("input", function () {
-      var d = celular.value.replace(/\D/g, "").slice(0, 11);
+      var d = celular.value.replace(/\D/g, "");
+      // Se a pessoa digitou o DDI do Brasil (+55) na frente, remove ANTES de cortar em 11.
+      // Sem isso, o slice(0, 11) mantinha o "55" e empurrava os 2 últimos dígitos do número
+      // pra fora — o lead chegava no RD com o 55 dobrado e faltando os 2 números finais.
+      // Um telefone BR válido (DDD + número) tem no máx. 11 dígitos; só passa disso com DDI.
+      if (d.length > 11 && d.slice(0, 2) === "55") d = d.slice(2);
+      d = d.slice(0, 11);
       if (!d) { celular.value = ""; }
       else if (d.length <= 2) celular.value = "(" + d;
       else if (d.length <= 6) celular.value = "(" + d.slice(0, 2) + ") " + d.slice(2);
