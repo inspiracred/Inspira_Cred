@@ -409,12 +409,37 @@
     return id === "valor_imovel" || id === "valor_automovel";
   }
 
+  // Valor por extenso em reais (1–999, que é a faixa do aviso). Ex.: 500 -> "quinhentos
+  // reais". Serve pra deixar o erro de digitação óbvio ao lado do "R$ 500,00".
+  function extensoReais(n) {
+    n = Math.floor(n);
+    if (n <= 0) return "";
+    var u = ["", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove"];
+    var dez10 = { 10: "dez", 11: "onze", 12: "doze", 13: "treze", 14: "catorze", 15: "quinze", 16: "dezesseis", 17: "dezessete", 18: "dezoito", 19: "dezenove" };
+    var d = ["", "", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta", "oitenta", "noventa"];
+    var c = ["", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos", "seiscentos", "setecentos", "oitocentos", "novecentos"];
+    var partes = [];
+    var cent = Math.floor(n / 100), resto = n % 100;
+    if (n === 100) partes.push("cem");
+    else if (cent > 0) partes.push(c[cent]);
+    if (resto > 0 && n !== 100) {
+      if (resto < 10) partes.push(u[resto]);
+      else if (resto < 20) partes.push(dez10[resto]);
+      else {
+        var un = resto % 10;
+        partes.push(un > 0 ? d[Math.floor(resto / 10)] + " e " + u[un] : d[Math.floor(resto / 10)]);
+      }
+    }
+    return partes.join(" e ") + " " + (n === 1 ? "real" : "reais");
+  }
+
   // Mensagem de "valor parece baixo demais" — só pra valor de bem abaixo do piso de
   // erro de digitação. Não bloqueia; serve pra pessoa confirmar. Retorna "" se ok.
   function lowValueMessage(value) {
     var n = parseMoney(value);
     if (n > 0 && n < LOW_VALUE_WARN) {
-      return "⚠️ Você digitou " + value + ". Confirme se esse é mesmo o valor do bem — parece baixo demais e pode ter sido um erro de digitação.";
+      var ext = extensoReais(n);
+      return "⚠️ Você digitou " + value + (ext ? " (" + ext + ")" : "") + ". Confirme se esse é mesmo o valor do bem — parece baixo demais e pode ter sido um erro de digitação.";
     }
     return "";
   }
