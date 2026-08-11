@@ -2705,6 +2705,10 @@ function campCount(level){
     var k=campKeyOf(r,level);
     if(!seen[k]){seen[k]=1;n++;}
   });
+  var meta=campMetaMap(level);
+  Object.keys(meta).forEach(function(k){
+    if(!seen[k]){seen[k]=1;n++;}
+  });
   return n;
 }
 function setCampLevel(level){ campLevel=level; renderCampScope(); }
@@ -2738,15 +2742,15 @@ function renderCampaigns(d){
     if(r.src&&r.src!=="direto")t.com_utm+=Number(r.leads||0);
   });
   var visitsTotal=(campData.visits||[]).filter(campSrcOk).reduce(function(a,x){return a+Number(x.n||0)},0);
-  var mt=campMetaTotals(true), mtAll=campMetaTotals(false);
+  var mt=campMetaTotals(false);
   var metaOk=!!campData.meta_insights_ok;
-  var metaSub=metaOk?(pretty(mt.impressions)+" impressões casadas"):(campData.ads_api?("erro: "+(campData.meta_error||"Meta")):"secret pendente");
+  var metaSub=metaOk?(pretty(mt.impressions)+" impressoes Meta"):(campData.ads_api?("erro: "+(campData.meta_error||"Meta")):"secret pendente");
   var kpis=[
     ["Leads do site",pretty(t.total),pretty(t.com_utm)+" vieram de campanha"],
     ["Resultados Meta",pretty(mt.meta_leads),"coluna Resultados da Meta"],
     ["CPL Meta",(mt.spend&&mt.meta_leads)?brlMetric(mt.spend/mt.meta_leads):"—","gasto / resultados Meta"],
-    ["Gasto Meta site",metaMoney(mt.spend),metaSub],
-    ["Meta total conta",metaMoney(mtAll.spend),pretty(mtAll.campaigns)+" campanhas com entrega"],
+    ["Gasto Meta",metaMoney(mt.spend),metaSub],
+    ["Campanhas Meta",pretty(mt.campaigns),"com entrega no periodo"],
     ["Qualificados",pretty(t.mql),pct(t.mql,t.total)+"% dos leads do site"]
   ];
   document.getElementById("campKpis").innerHTML=kpis.map(function(k){
@@ -2794,7 +2798,11 @@ function renderCampRows(){
       rows.push(byKey[k]);
     }
   });
-  rows.sort(function(a,b){return (b.leads-a.leads)||((meta[b.k]&&meta[b.k].spend||0)-(meta[a.k]&&meta[a.k].spend||0));});
+  rows.sort(function(a,b){
+    var am=(meta[a.k]&&meta[a.k].meta_leads)||0, bm=(meta[b.k]&&meta[b.k].meta_leads)||0;
+    var as=am||Number(a.leads||0), bs=bm||Number(b.leads||0);
+    return (bs-as)||((meta[b.k]&&meta[b.k].spend||0)-(meta[a.k]&&meta[a.k].spend||0));
+  });
   var totalLeads=rows.reduce(function(a,x){return a+x.leads},0);
   var scopeTxt=campSel.med?("conjunto "+campSel.med):(campSel.camp?("campanha "+campSel.camp):"todo o período");
   var metaTxt=campData.meta_insights_ok?"Meta Ads conectado":(campData.ads_api?("Meta: "+(campData.meta_error||"erro")):"Meta Ads pendente");
