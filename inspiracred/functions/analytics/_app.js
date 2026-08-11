@@ -899,6 +899,22 @@ function actionCount(actions, matcher) {
     return matcher(type) ? sum + nnum(a.value) : sum;
   }, 0);
 }
+function actionFirst(actions, types) {
+  if (!Array.isArray(actions)) return 0;
+  const byType = {};
+  actions.forEach((a) => { byType[String(a.action_type || "")] = nnum(a.value); });
+  for (const type of types) if (byType[type]) return byType[type];
+  return 0;
+}
+function metaResultLeads(actions) {
+  return actionFirst(actions, [
+    "offsite_conversion.fb_pixel_lead",
+    "lead",
+    "onsite_conversion.lead_grouped",
+    "onsite_conversion.lead",
+    "omni_lead",
+  ]);
+}
 async function fetchMetaAdInsights(env, start, end) {
   const token = metaAdsToken(env);
   const account = metaAdAccount(env);
@@ -963,7 +979,7 @@ async function fetchMetaAdInsights(env, start, end) {
           ctr: nnum(r.ctr),
           cpc: nnum(r.cpc),
           cpm: nnum(r.cpm),
-          meta_leads: actionCount(r.actions, (t) => /(^|_)lead($|_|\.|:)|lead_grouped|pixel_lead/i.test(t)),
+          meta_leads: metaResultLeads(r.actions),
         });
       });
       url = body.paging && body.paging.next ? body.paging.next : "";
@@ -2732,12 +2748,12 @@ function renderCampaigns(d){
   var metaOk=!!campData.meta_insights_ok;
   var metaSub=metaOk?(pretty(mt.impressions)+" impressões casadas"):(campData.ads_api?("erro: "+(campData.meta_error||"Meta")):"secret pendente");
   var kpis=[
-    ["Leads no período",pretty(t.total),pretty(t.com_utm)+" vieram de campanha"],
+    ["Leads do site",pretty(t.total),pretty(t.com_utm)+" vieram de campanha"],
+    ["Resultados Meta",pretty(mt.meta_leads),"coluna Resultados da Meta"],
+    ["CPL Meta",(mt.spend&&mt.meta_leads)?brlMetric(mt.spend/mt.meta_leads):"—","gasto / resultados Meta"],
     ["Gasto Meta site",metaMoney(mt.spend),metaSub],
-    ["CPL site",(mt.spend&&t.total)?brlMetric(mt.spend/t.total):"—","gasto casado / leads do site"],
     ["Meta total conta",metaMoney(mtAll.spend),pretty(mtAll.campaigns)+" campanhas com entrega"],
-    ["Cliques Meta",pretty(mt.clicks),mtAll.spend!==mt.spend?(pretty(mtAll.clicks)+" total conta"):"campanhas casadas"],
-    ["Qualificados",pretty(t.mql),pct(t.mql,t.total)+"% dos leads"]
+    ["Qualificados",pretty(t.mql),pct(t.mql,t.total)+"% dos leads do site"]
   ];
   document.getElementById("campKpis").innerHTML=kpis.map(function(k){
     return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>';
@@ -2794,18 +2810,22 @@ function renderCampRows(){
       (level==="ad"?' Os anúncios só aparecem quando o link do Meta manda <b>utm_content</b> com o nome do criativo.':'')+'</div>';
     return;
   }
-  var max=Math.max.apply(null,rows.map(function(x){return x.leads}).concat([1]));
+  var max=Math.max.apply(null,rows.map(function(x){return Math.max(Number(x.leads||0),Number((meta[x.k]&&meta[x.k].meta_leads)||0));}).concat([1]));
   var drillable=level!=="ad";
   box.innerHTML=rows.map(function(r,i){
     var v=visits[r.k]||0, mt=meta[r.k]||{};
+    var metaResults=Number(mt.meta_leads||0);
+    var shownLeads=metaResults||Number(r.leads||0);
+    var leadLabel=metaResults?"result.":"leads";
     var conv=v?pct(r.leads,v)+"%":"—";
     var spend=Number(mt.spend||0);
-    var cpl=(spend&&r.leads)?brlMetric(spend/r.leads):"—";
+    var cpl=(spend&&shownLeads)?brlMetric(spend/shownLeads):"—";
     var kidsTxt=level==="campaign"?(r.kidsN+" conjunto"+(r.kidsN===1?"":"s")):(level==="adset"?(r.kidsN+" anúncio"+(r.kidsN===1?"":"s")):"");
     var tags='<span class="am-tag">'+esc((r.srcList||[]).slice(0,2).join(" · "))+'</span>'+
              (kidsTxt?'<span class="am-tag">'+kidsTxt+'</span>':'')+
              (v?'<span class="am-tag">'+v+' visitas</span>':'')+
              (mt.clicks?'<span class="am-tag">'+pretty(mt.clicks)+' cliques Meta</span>':'')+
+             (metaResults&&r.leads&&metaResults!==r.leads?'<span class="am-tag">'+pretty(r.leads)+' leads site</span>':'')+
              (r.metaOnly?'<span class="am-tag">sem lead no site</span>':'');
     return '<button class="am-row'+(drillable?'':' is-flat')+'"'+(drillable?' onclick="campDrill(\\''+level+'\\',this.dataset.k)"':'')+
       ' data-k="'+esc(r.k)+'">'+
@@ -2813,9 +2833,9 @@ function renderCampRows(){
       '<span class="am-main">'+
         '<span class="am-name" title="'+esc(r.k)+'">'+esc(r.k)+'</span>'+
         '<span class="am-tags">'+tags+'</span>'+
-        '<span class="am-track"><span style="width:'+Math.max(4,Math.round(r.leads/max*100))+'%"></span></span>'+
+        '<span class="am-track"><span style="width:'+Math.max(4,Math.round(shownLeads/max*100))+'%"></span></span>'+
       '</span>'+
-      '<span class="am-metric"><b>'+r.leads+'</b><small>leads</small></span>'+
+      '<span class="am-metric"><b>'+shownLeads+'</b><small>'+leadLabel+'</small></span>'+
       '<span class="am-metric'+(v?' hot':'')+'"><b>'+conv+'</b><small>conversão</small></span>'+
       '<span class="am-metric"><b>'+metaMoney(spend)+'</b><small>gasto</small></span>'+
       '<span class="am-metric"><b>'+cpl+'</b><small>CPL</small></span>'+
