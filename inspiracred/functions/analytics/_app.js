@@ -879,6 +879,114 @@ function inCond(expr, list) {
   return list.length === 1 ? `${expr} = ?` : `${expr} IN (${list.map(() => "?").join(",")})`;
 }
 
+const META_GRAPH_VERSION = "v21.0";
+function metaAdsToken(env) {
+  return env.META_SYSTEM_USER_TOKEN || env.META_ADS_ACCESS_TOKEN || env.META_ACCESS_TOKEN || "";
+}
+function metaAdAccount(env) {
+  const raw = env.META_AD_ACCOUNT_ID || env.META_ADS_ACCOUNT_ID || "";
+  const id = String(raw).replace(/^act_/i, "").replace(/\D/g, "");
+  return id ? `act_${id}` : "";
+}
+function nnum(v) {
+  const n = Number(v || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+function actionCount(actions, matcher) {
+  if (!Array.isArray(actions)) return 0;
+  return actions.reduce((sum, a) => {
+    const type = String(a.action_type || "");
+    return matcher(type) ? sum + nnum(a.value) : sum;
+  }, 0);
+}
+async function fetchMetaAdInsights(env, start, end) {
+  const token = metaAdsToken(env);
+  const account = metaAdAccount(env);
+  if (!token || !account) {
+    return {
+      enabled: false,
+      ok: false,
+      account: account || null,
+      rows: [],
+      error: !token ? "META_SYSTEM_USER_TOKEN nao configurado" : "META_AD_ACCOUNT_ID nao configurado",
+    };
+  }
+
+  const fields = [
+    "campaign_id", "campaign_name",
+    "adset_id", "adset_name",
+    "ad_id", "ad_name",
+    "spend", "impressions", "reach", "clicks", "inline_link_clicks",
+    "ctr", "cpc", "cpm", "actions",
+  ].join(",");
+  const params = new URLSearchParams({
+    access_token: token,
+    level: "ad",
+    fields,
+    limit: "5000",
+    time_range: JSON.stringify({ since: start, until: end }),
+  });
+
+  const rows = [];
+  let url = `https://graph.facebook.com/${env.META_GRAPH_VERSION || META_GRAPH_VERSION}/${account}/insights?${params.toString()}`;
+  let pages = 0;
+  try {
+    while (url && pages < 6) {
+      pages++;
+      const res = await fetch(url);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return {
+          enabled: true,
+          ok: false,
+          account,
+          rows,
+          status: res.status,
+          error: (body.error && (body.error.message || body.error.code)) || `Meta HTTP ${res.status}`,
+        };
+      }
+      (body.data || []).forEach((r) => {
+        const spend = nnum(r.spend), impressions = nnum(r.impressions);
+        const clicks = nnum(r.clicks), linkClicks = nnum(r.inline_link_clicks);
+        rows.push({
+          campaign_id: r.campaign_id || "",
+          campaign_name: r.campaign_name || "(sem campanha)",
+          adset_id: r.adset_id || "",
+          adset_name: r.adset_name || "(sem conjunto)",
+          ad_id: r.ad_id || "",
+          ad_name: r.ad_name || "(sem criativo)",
+          spend,
+          impressions,
+          reach: nnum(r.reach),
+          clicks,
+          link_clicks: linkClicks,
+          ctr: nnum(r.ctr),
+          cpc: nnum(r.cpc),
+          cpm: nnum(r.cpm),
+          meta_leads: actionCount(r.actions, (t) => /(^|_)lead($|_|\.|:)|lead_grouped|pixel_lead/i.test(t)),
+        });
+      });
+      url = body.paging && body.paging.next ? body.paging.next : "";
+    }
+  } catch (e) {
+    return { enabled: true, ok: false, account, rows, error: String(e && e.message ? e.message : e) };
+  }
+
+  const totals = rows.reduce((a, r) => {
+    a.spend += r.spend;
+    a.impressions += r.impressions;
+    a.reach += r.reach;
+    a.clicks += r.clicks;
+    a.link_clicks += r.link_clicks;
+    a.meta_leads += r.meta_leads;
+    return a;
+  }, { spend: 0, impressions: 0, reach: 0, clicks: 0, link_clicks: 0, meta_leads: 0 });
+  totals.ctr = totals.impressions ? +((totals.clicks / totals.impressions) * 100).toFixed(2) : 0;
+  totals.cpc = totals.clicks ? +(totals.spend / totals.clicks).toFixed(2) : 0;
+  totals.cpl_meta = totals.meta_leads ? +(totals.spend / totals.meta_leads).toFixed(2) : 0;
+
+  return { enabled: true, ok: true, account, rows, totals, pages };
+}
 async function handleOverview(request, env) {
   const { start, end, page, src } = params(request.url);
   const pv = page ? ` AND ${inCond("page_name", page)}` : "";   // filtro por página (page_views/clicks/forms/events)
@@ -1113,6 +1221,7 @@ async function handleCampaigns(request, env) {
     audience = parts.flat();
   } catch (e) { /* colunas das migrations 0003/0008 ausentes */ }
 
+  const meta = await fetchMetaAdInsights(env, start, end);
   const t = totals || {};
   const total = t.total || 0, com_utm = t.com_utm || 0;
   return json({
@@ -1121,10 +1230,15 @@ async function handleCampaigns(request, env) {
     rows, daily, visits, daily_visits, visits_since,
     visits_page_scoped: false,
     audience,
-    ads_api: false, // sem ads_read: nada de gasto/CPA/idade/gênero vindo do Meta
+    ads_api: meta.enabled,
+    meta_insights_ok: meta.ok,
+    meta_account: meta.account,
+    meta_error: meta.ok ? null : meta.error,
+    meta_status: meta.status || null,
+    meta_totals: meta.totals || { spend: 0, impressions: 0, reach: 0, clicks: 0, link_clicks: 0, meta_leads: 0, ctr: 0, cpc: 0, cpl_meta: 0 },
+    meta_insights: meta.rows || [],
   });
 }
-
 /* ---- MAPA DA PÁGINA (o que alimenta as visões novas do mapa de calor) ----
  * Quatro leituras da MESMA página, todas já existentes no D1:
  *   - profundidade: evento `scroll_depth` (marcos 25/50/75/100, 1x por sessão)
@@ -1335,10 +1449,12 @@ async function handleSales(request, env) {
  * erro de permissão, geramos um token dedicado com ads_read. REMOVER depois do teste.
  */
 async function handleMetaTest(request, env) {
-  const token = env.META_ACCESS_TOKEN;
-  if (!token) return json({ error: "META_ACCESS_TOKEN não configurado" }, 500);
-  const act = (new URL(request.url).searchParams.get("act") || "527600591049188").replace(/\D/g, "");
-  const ver = "v21.0";
+  const token = metaAdsToken(env);
+  if (!token) return json({ error: "META_SYSTEM_USER_TOKEN não configurado" }, 500);
+  const qsAct = new URL(request.url).searchParams.get("act") || "";
+  const envAct = metaAdAccount(env);
+  const act = (qsAct || envAct || "act_527600591049188").replace(/^act_/i, "").replace(/\D/g, "");
+  const ver = env.META_GRAPH_VERSION || META_GRAPH_VERSION;
   const call = async (path) => {
     try {
       const r = await fetch(`https://graph.facebook.com/${ver}/${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(token)}`);
@@ -1597,7 +1713,7 @@ const DASHBOARD_HTML = `<!doctype html>
   .am-level.active{background:var(--blue);color:#fff;box-shadow:0 6px 16px rgba(11,45,114,.22)}
   .am-level.active b{background:rgba(255,255,255,.16);border-color:transparent;color:#fff}
   .camp-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(300px,.85fr);gap:18px;align-items:start;margin-bottom:18px}
-  .am-row{display:grid;grid-template-columns:34px minmax(0,1fr) repeat(4,minmax(64px,86px)) 26px;align-items:center;gap:12px;width:100%;padding:13px 14px;border:1px solid var(--border);border-radius:15px;background:#fff;text-align:left;margin-bottom:9px;transition:border-color .15s,box-shadow .15s,transform .15s}
+  .am-row{display:grid;grid-template-columns:34px minmax(0,1fr) repeat(6,minmax(62px,86px)) 26px;align-items:center;gap:12px;width:100%;padding:13px 14px;border:1px solid var(--border);border-radius:15px;background:#fff;text-align:left;margin-bottom:9px;transition:border-color .15s,box-shadow .15s,transform .15s}
   .am-row:hover{border-color:rgba(249,115,22,.45);box-shadow:0 10px 24px rgba(6,26,66,.09);transform:translateY(-1px)}
   .am-row.is-flat{cursor:default}
   .am-row.is-flat:hover{transform:none;border-color:var(--border);box-shadow:none}
@@ -1618,7 +1734,7 @@ const DASHBOARD_HTML = `<!doctype html>
   .am-metric.hot b{color:var(--orange)}
   .am-go{font-size:19px;color:var(--muted);text-align:center}
   .am-row:hover .am-go{color:var(--orange)}
-  .am-head{display:grid;grid-template-columns:34px minmax(0,1fr) repeat(4,minmax(64px,86px)) 26px;gap:12px;padding:0 14px 9px;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .am-head{display:grid;grid-template-columns:34px minmax(0,1fr) repeat(6,minmax(62px,86px)) 26px;gap:12px;padding:0 14px 9px;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
   .am-head span:nth-child(n+3){text-align:right}
   .aud-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px}
   .aud-card{border:1px solid var(--border);border-radius:15px;padding:13px;background:var(--surface)}
@@ -1907,17 +2023,13 @@ const DASHBOARD_HTML = `<!doctype html>
     </div>
     <div class="card">
       <div class="h2row"><h2 id="campRowsTitle">Campanhas</h2><span class="hint" id="campRowsHint"></span></div>
-      <div class="am-head"><span></span><span>Nome</span><span>Leads</span><span>Conversão</span><span>Crédito</span><span>Qualif.</span><span></span></div>
+      <div class="am-head"><span></span><span>Nome</span><span>Leads</span><span>Conversão</span><span>Gasto</span><span>CPL</span><span>Crédito</span><span>Qualif.</span><span></span></div>
       <div id="campRows"></div>
     </div>
     <div class="card" style="margin-top:18px">
       <div class="h2row"><h2>Público dos leads</h2><span class="hint" id="campAudienceHint"></span></div>
       <div class="aud-grid" id="campAudience"></div>
-      <p class="hint" style="display:block;margin:14px 0 0;line-height:1.5">
-        Idade, gênero e localização do Meta exigem a permissão <b>ads_read</b> na conta de
-        anúncios do cliente, que ainda não temos — quando liberar, entra aqui. O que está
-        acima é o público real dos <b>nossos</b> leads, medido no nosso banco.
-      </p>
+      <p class="hint" style="display:block;margin:14px 0 0;line-height:1.5">Gasto, cliques e impressões vêm da Meta quando os secrets estão configurados. O público acima segue sendo o público real dos <b>nossos</b> leads, medido no nosso banco.</p>
     </div>
     <div class="traffic-top" style="margin-top:18px">
       <div class="card">
@@ -2559,6 +2671,41 @@ function campVisitsMap(level){
   });
   return map;
 }
+function campMetaApplies(){
+  if(!campSrc.length)return true;
+  return campSrc.some(function(s){return /meta|facebook|instagram|\bfb\b|\big\b/i.test(String(s||""));});
+}
+function metaKeyOf(r,level){return level==="campaign"?(r.campaign_name||"(sem campanha)"):(level==="adset"?(r.adset_name||"(sem conjunto)"):(r.ad_name||"(sem criativo)"));}
+function metaInScope(r,level){
+  if(!campMetaApplies())return false;
+  if(campSel.camp&&(r.campaign_name||"(sem campanha)")!==campSel.camp)return false;
+  if(level==="ad"&&campSel.med&&(r.adset_name||"(sem conjunto)")!==campSel.med)return false;
+  return true;
+}
+function campMetaMap(level){
+  var map={};
+  ((campData&&campData.meta_insights)||[]).forEach(function(r){
+    if(!metaInScope(r,level))return;
+    var k=metaKeyOf(r,level);
+    if(!map[k])map[k]={spend:0,impressions:0,reach:0,clicks:0,link_clicks:0,meta_leads:0,kids:{}};
+    var m=map[k];
+    m.spend+=Number(r.spend||0); m.impressions+=Number(r.impressions||0); m.reach+=Number(r.reach||0);
+    m.clicks+=Number(r.clicks||0); m.link_clicks+=Number(r.link_clicks||0); m.meta_leads+=Number(r.meta_leads||0);
+    m.kids[level==="campaign"?(r.adset_name||"(sem conjunto)"):(r.ad_name||"(sem criativo)")]=1;
+  });
+  Object.keys(map).forEach(function(k){map[k].kidsN=Object.keys(map[k].kids).length;});
+  return map;
+}
+function campMetaTotals(){
+  var t={spend:0,impressions:0,reach:0,clicks:0,link_clicks:0,meta_leads:0};
+  if(!campMetaApplies())return t;
+  ((campData&&campData.meta_insights)||[]).forEach(function(r){
+    t.spend+=Number(r.spend||0); t.impressions+=Number(r.impressions||0); t.reach+=Number(r.reach||0);
+    t.clicks+=Number(r.clicks||0); t.link_clicks+=Number(r.link_clicks||0); t.meta_leads+=Number(r.meta_leads||0);
+  });
+  return t;
+}
+function metaMoney(v){v=Number(v||0);return v?brlShort(v):"—";}
 function campCount(level){
   var seen={},n=0;
   ((campData&&campData.rows)||[]).forEach(function(r){
@@ -2599,11 +2746,15 @@ function renderCampaigns(d){
     if(r.src&&r.src!=="direto")t.com_utm+=Number(r.leads||0);
   });
   var visitsTotal=(campData.visits||[]).filter(campSrcOk).reduce(function(a,x){return a+Number(x.n||0)},0);
+  var mt=campMetaTotals();
+  var metaOk=!!campData.meta_insights_ok;
+  var metaSub=metaOk?(pretty(mt.impressions)+" impressões"):(campData.ads_api?("erro: "+(campData.meta_error||"Meta")):"secret pendente");
   var kpis=[
     ["Leads no período",pretty(t.total),pretty(t.com_utm)+" vieram de campanha"],
-    ["Visitas rastreadas",pretty(visitsTotal),visitsTotal?"sessões no site":"sem sessões no período"],
+    ["Gasto Meta",metaMoney(mt.spend),metaSub],
+    ["CPL real",(mt.spend&&t.total)?brlShort(mt.spend/t.total):"—","gasto Meta / leads do site"],
+    ["Cliques Meta",pretty(mt.clicks),mt.impressions?pct(mt.clicks,mt.impressions)+"% CTR":"sem impressão"],
     ["Conversão do site",visitsTotal?pct(t.total,visitsTotal)+"%":"—","visita → lead"],
-    ["Crédito solicitado",brlShort(t.valor),"soma dos leads"],
     ["Qualificados",pretty(t.mql),pct(t.mql,t.total)+"% dos leads"]
   ];
   document.getElementById("campKpis").innerHTML=kpis.map(function(k){
@@ -2641,26 +2792,39 @@ function renderCampScope(){
 
 function renderCampRows(){
   var level=campLevel;
-  var rows=campAggregate(level), visits=campVisitsMap(level);
+  var rows=campAggregate(level), visits=campVisitsMap(level), meta=campMetaMap(level);
   var box=document.getElementById("campRows");
   document.getElementById("campRowsTitle").textContent=LEVEL_NAME[level];
+  var byKey={}; rows.forEach(function(r){byKey[r.k]=r;});
+  Object.keys(meta).forEach(function(k){
+    if(!byKey[k]){
+      byKey[k]={k:k,leads:0,mql:0,desq:0,valor:0,srcList:["Meta API"],kidsN:meta[k].kidsN||0,metaOnly:true};
+      rows.push(byKey[k]);
+    }
+  });
+  rows.sort(function(a,b){return (b.leads-a.leads)||((meta[b.k]&&meta[b.k].spend||0)-(meta[a.k]&&meta[a.k].spend||0));});
   var totalLeads=rows.reduce(function(a,x){return a+x.leads},0);
   var scopeTxt=campSel.med?("conjunto "+campSel.med):(campSel.camp?("campanha "+campSel.camp):"todo o período");
-  document.getElementById("campRowsHint").textContent=rows.length+" "+(rows.length===1?LEVEL_ONE[level]:LEVEL_ONE[level]+"s")+" · "+scopeTxt;
+  var metaTxt=campData.meta_insights_ok?"Meta Ads conectado":(campData.ads_api?("Meta: "+(campData.meta_error||"erro")):"Meta Ads pendente");
+  document.getElementById("campRowsHint").textContent=rows.length+" "+(rows.length===1?LEVEL_ONE[level]:LEVEL_ONE[level]+"s")+" · "+scopeTxt+" · "+metaTxt;
   if(!rows.length){
-    box.innerHTML='<div class="empty">Nenhum '+LEVEL_ONE[level]+' com lead neste recorte.'+
+    box.innerHTML='<div class="empty">Nenhum '+LEVEL_ONE[level]+' com dado neste recorte.'+
       (level==="ad"?' Os anúncios só aparecem quando o link do Meta manda <b>utm_content</b> com o nome do criativo.':'')+'</div>';
     return;
   }
   var max=Math.max.apply(null,rows.map(function(x){return x.leads}).concat([1]));
   var drillable=level!=="ad";
   box.innerHTML=rows.map(function(r,i){
-    var v=visits[r.k]||0;
+    var v=visits[r.k]||0, mt=meta[r.k]||{};
     var conv=v?pct(r.leads,v)+"%":"—";
+    var spend=Number(mt.spend||0);
+    var cpl=(spend&&r.leads)?brlShort(spend/r.leads):"—";
     var kidsTxt=level==="campaign"?(r.kidsN+" conjunto"+(r.kidsN===1?"":"s")):(level==="adset"?(r.kidsN+" anúncio"+(r.kidsN===1?"":"s")):"");
-    var tags='<span class="am-tag">'+esc(r.srcList.slice(0,2).join(" · "))+'</span>'+
+    var tags='<span class="am-tag">'+esc((r.srcList||[]).slice(0,2).join(" · "))+'</span>'+
              (kidsTxt?'<span class="am-tag">'+kidsTxt+'</span>':'')+
-             (v?'<span class="am-tag">'+v+' visitas</span>':'');
+             (v?'<span class="am-tag">'+v+' visitas</span>':'')+
+             (mt.clicks?'<span class="am-tag">'+pretty(mt.clicks)+' cliques Meta</span>':'')+
+             (r.metaOnly?'<span class="am-tag">sem lead no site</span>':'');
     return '<button class="am-row'+(drillable?'':' is-flat')+'"'+(drillable?' onclick="campDrill(\\''+level+'\\',this.dataset.k)"':'')+
       ' data-k="'+esc(r.k)+'">'+
       '<span class="am-rank">'+(i+1)+'</span>'+
@@ -2671,6 +2835,8 @@ function renderCampRows(){
       '</span>'+
       '<span class="am-metric"><b>'+r.leads+'</b><small>leads</small></span>'+
       '<span class="am-metric'+(v?' hot':'')+'"><b>'+conv+'</b><small>conversão</small></span>'+
+      '<span class="am-metric"><b>'+metaMoney(spend)+'</b><small>gasto</small></span>'+
+      '<span class="am-metric"><b>'+cpl+'</b><small>CPL</small></span>'+
       '<span class="am-metric"><b>'+brlShort(r.valor)+'</b><small>crédito</small></span>'+
       '<span class="am-metric"><b>'+pct(r.mql,r.leads)+'%</b><small>qualif.</small></span>'+
       '<span class="am-go">'+(drillable?'›':'')+'</span>'+
