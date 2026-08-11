@@ -1617,7 +1617,7 @@ const DASHBOARD_HTML = `<!doctype html>
   .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:20px}
   .kpi{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:15px 18px;box-shadow:var(--shadow)}
   .kpi .label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
-  .kpi .val{font-size:29px;font-weight:800;color:var(--blue);margin-top:7px;line-height:1}
+  .kpi .val{font-size:29px;font-weight:800;color:var(--blue);margin-top:7px;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
   .kpi .sub{font-size:12px;color:var(--muted);margin-top:8px}
   .kpi .sub b{color:var(--green-ink);font-weight:700}
   .metric-strip{grid-template-columns:repeat(6,minmax(150px,1fr));gap:10px}
@@ -2171,6 +2171,16 @@ function pretty(n){return (n==null||n===""?"-":String(n))}
 function label(p){return PAGE_LABELS[p]||p}
 function daysAgo(n){return new Date(Date.now()-n*864e5).toISOString().slice(0,10)}
 function brl(v){if(v==null)return"-";return "R$ "+Number(v).toLocaleString("pt-BR")}
+function brlKpi(v){
+  if(v==null||v==="")return {short:"-",full:"-"};
+  v=Number(v||0);
+  var full=brl(v);
+  var abs=Math.abs(v), short=full;
+  if(abs>=1e9)short="R$ "+(v/1e9).toLocaleString("pt-BR",{maximumFractionDigits:2})+" bi";
+  else if(abs>=1e6)short="R$ "+(v/1e6).toLocaleString("pt-BR",{maximumFractionDigits:2})+" mi";
+  else if(abs>=1e3)short="R$ "+(v/1e3).toLocaleString("pt-BR",{maximumFractionDigits:1})+" mil";
+  return {short:short,full:full};
+}
 function pct(a,b){return b?Math.round((a/b)*100):0}
 /* ---- Filtro multi-seleção (genérico) ----
    Um só componente serve origem, página e classificação. O estado de cada filtro é
@@ -3096,8 +3106,18 @@ function renderLeads(d){
   document.getElementById("leadsTitle").textContent="Leads ("+n+(filter==="all"?"":" de "+totalAll)+")";
   var totalCredit=0, rdOk=0, metaOk=0;
   lastLeads.forEach(function(l){totalCredit+=Number(l.credit_value||0);if(l.rd_status==="ok")rdOk++;if(l.meta_status==="ok")metaOk++;});
-  var lk=[["Filtro ativo",filterLabel,pretty(n)+" registro(s)"],["Valor total solicitado",brl(totalCredit),"em crédito"],["Ticket médio",n?brl(Math.round(totalCredit/n)):"-","por lead"],["Entrega RD Station",rdOk+"/"+n,pct(rdOk,n)+"% no CRM"],["Entrega Meta CAPI",metaOk+"/"+n,pct(metaOk,n)+"% no Pixel"]];
-  document.getElementById("leadKpis").innerHTML=lk.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub">'+k[2]+'</div></div>'}).join("");
+  var totalCreditKpi=brlKpi(totalCredit), ticketKpi=n?brlKpi(Math.round(totalCredit/n)):{short:"-",full:"-"};
+  var lk=[
+    ["Filtro ativo",filterLabel,pretty(n)+" registro(s)"],
+    ["Valor total solicitado",totalCreditKpi.short,"em cr&eacute;dito",totalCreditKpi.full],
+    ["Ticket m&eacute;dio",ticketKpi.short,"por lead",ticketKpi.full],
+    ["Entrega RD Station",rdOk+"/"+n,pct(rdOk,n)+"% no CRM"],
+    ["Entrega Meta CAPI",metaOk+"/"+n,pct(metaOk,n)+"% no Pixel"]
+  ];
+  document.getElementById("leadKpis").innerHTML=lk.map(function(k){
+    var title=k[3]?(' title="'+esc(k[3])+'"'):"";
+    return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val"'+title+'>'+k[1]+'</div><div class="sub">'+k[2]+'</div></div>';
+  }).join("");
   renderLeadVisuals(lastLeads);
   if(!n){document.getElementById("leads").innerHTML='<div class="empty">Nenhum lead para este filtro.</div>';return}
   var html=eventLegend();
