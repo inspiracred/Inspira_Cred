@@ -1728,8 +1728,8 @@ const DASHBOARD_HTML = `<!doctype html>
   .am-tag{font-size:10.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:99px;padding:2px 8px}
   .am-track{display:block;height:7px;border-radius:999px;background:#eef0f3;overflow:hidden}
   .am-track span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--blue),var(--orange))}
-  .am-metric{text-align:right}
-  .am-metric b{display:block;font-family:"Instrument Sans","Inter",sans-serif;font-size:17px;font-weight:850;color:var(--blue);letter-spacing:-.02em;line-height:1.1}
+  .am-metric{text-align:right;min-width:0}
+  .am-metric b{display:block;font-family:"Instrument Sans","Inter",sans-serif;font-size:16px;font-weight:850;color:var(--blue);letter-spacing:0;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .am-metric small{display:block;margin-top:2px;font-size:10.5px;font-weight:750;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
   .am-metric.hot b{color:var(--orange)}
   .am-go{font-size:19px;color:var(--muted);text-align:center}
@@ -2317,7 +2317,7 @@ function render(d){
   ];
   document.getElementById("kpis").innerHTML=kpis.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>'}).join("");
   renderOverviewModules(d);
-  renderFunnel([[filtrado?"Visitas da origem":"Visitas",t.visitors],["Simulacao iniciada",t.sim_start||0],["Leads",t.leads],["Qualificados",mql]]);
+  renderFunnel([[filtrado?"Visitas da origem":"Visitas",t.visitors],["Simulacao iniciada",t.sim_start||0],["Leads",t.leads,pretty(mql)+" qualificados"]]);
   var fn=document.getElementById("funnelNote");
   if(fn){
     fn.innerHTML=filtrado
@@ -2491,7 +2491,7 @@ function renderFunnel(steps){
     var clip='polygon('+((100-wTop)/2).toFixed(2)+'% 0%,'+((100+wTop)/2).toFixed(2)+'% 0%,'+
              ((100+wBot)/2).toFixed(2)+'% 100%,'+((100-wBot)/2).toFixed(2)+'% 100%)';
     var prev=i>0?steps[i-1][1]:0;
-    var conv=i>0?(prev?Math.round(((s[1]||0)/prev)*100)+"% do passo anterior":"—"):"base do funil";
+    var conv=s[2]||(i>0?(prev?Math.round(((s[1]||0)/prev)*100)+"% do passo anterior":"—"):"base do funil");
     return '<div class="fn-row'+(last?' last':'')+'">'+
       '<div class="fn-name">'+s[0]+'</div>'+
       '<div class="fn-shape"><span class="tz" style="clip-path:'+clip+'"></span></div>'+
@@ -2603,7 +2603,17 @@ function brlShort(v){
   v=Number(v||0);
   if(v>=1e6)return "R$ "+(v/1e6).toFixed(v>=1e7?0:1).replace(".",",")+" mi";
   if(v>=1e3)return "R$ "+Math.round(v/1e3)+" mil";
-  return "R$ "+v;
+  return "R$ "+Math.trunc(v);
+}
+function brlExact(v){
+  v=Number(v||0);
+  if(!isFinite(v))v=0;
+  return "R$ "+v.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function brlMetric(v){
+  v=Number(v||0);
+  if(v>=1000)return brlShort(v);
+  return brlExact(v);
 }
 function campKeyOf(r,level){return level==="campaign"?r.camp:(level==="adset"?r.med:r.cont);}
 function campSrcOk(r){ return !campSrc.length||campSrc.indexOf(r.src)>-1; }
@@ -2677,7 +2687,7 @@ function campMetaTotals(matchedOnly){
   });
   return t;
 }
-function metaMoney(v){v=Number(v||0);return v?brlShort(v):"—";}
+function metaMoney(v){v=Number(v||0);return v?brlMetric(v):"—";}
 function campCount(level){
   var seen={},n=0;
   ((campData&&campData.rows)||[]).forEach(function(r){
@@ -2724,7 +2734,7 @@ function renderCampaigns(d){
   var kpis=[
     ["Leads no período",pretty(t.total),pretty(t.com_utm)+" vieram de campanha"],
     ["Gasto Meta site",metaMoney(mt.spend),metaSub],
-    ["CPL site",(mt.spend&&t.total)?brlShort(mt.spend/t.total):"—","gasto casado / leads do site"],
+    ["CPL site",(mt.spend&&t.total)?brlMetric(mt.spend/t.total):"—","gasto casado / leads do site"],
     ["Meta total conta",metaMoney(mtAll.spend),pretty(mtAll.campaigns)+" campanhas com entrega"],
     ["Cliques Meta",pretty(mt.clicks),mtAll.spend!==mt.spend?(pretty(mtAll.clicks)+" total conta"):"campanhas casadas"],
     ["Qualificados",pretty(t.mql),pct(t.mql,t.total)+"% dos leads"]
@@ -2790,7 +2800,7 @@ function renderCampRows(){
     var v=visits[r.k]||0, mt=meta[r.k]||{};
     var conv=v?pct(r.leads,v)+"%":"—";
     var spend=Number(mt.spend||0);
-    var cpl=(spend&&r.leads)?brlShort(spend/r.leads):"—";
+    var cpl=(spend&&r.leads)?brlMetric(spend/r.leads):"—";
     var kidsTxt=level==="campaign"?(r.kidsN+" conjunto"+(r.kidsN===1?"":"s")):(level==="adset"?(r.kidsN+" anúncio"+(r.kidsN===1?"":"s")):"");
     var tags='<span class="am-tag">'+esc((r.srcList||[]).slice(0,2).join(" · "))+'</span>'+
              (kidsTxt?'<span class="am-tag">'+kidsTxt+'</span>':'')+
