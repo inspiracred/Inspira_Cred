@@ -2696,12 +2696,18 @@ function campMetaMap(level){
   Object.keys(map).forEach(function(k){map[k].kidsN=Object.keys(map[k].kids).length;});
   return map;
 }
-function campMetaTotals(){
-  var t={spend:0,impressions:0,reach:0,clicks:0,link_clicks:0,meta_leads:0};
+function campMetaTotals(matchedOnly){
+  var t={spend:0,impressions:0,reach:0,clicks:0,link_clicks:0,meta_leads:0,campaigns:0};
   if(!campMetaApplies())return t;
+  var siteCamps={};
+  ((campData&&campData.rows)||[]).forEach(function(r){ if(campSrcOk(r))siteCamps[r.camp]=1; });
+  var seen={};
   ((campData&&campData.meta_insights)||[]).forEach(function(r){
+    var camp=r.campaign_name||"(sem campanha)";
+    if(matchedOnly&&!siteCamps[camp])return;
     t.spend+=Number(r.spend||0); t.impressions+=Number(r.impressions||0); t.reach+=Number(r.reach||0);
     t.clicks+=Number(r.clicks||0); t.link_clicks+=Number(r.link_clicks||0); t.meta_leads+=Number(r.meta_leads||0);
+    if(!seen[camp]){seen[camp]=1;t.campaigns++;}
   });
   return t;
 }
@@ -2746,15 +2752,15 @@ function renderCampaigns(d){
     if(r.src&&r.src!=="direto")t.com_utm+=Number(r.leads||0);
   });
   var visitsTotal=(campData.visits||[]).filter(campSrcOk).reduce(function(a,x){return a+Number(x.n||0)},0);
-  var mt=campMetaTotals();
+  var mt=campMetaTotals(true), mtAll=campMetaTotals(false);
   var metaOk=!!campData.meta_insights_ok;
-  var metaSub=metaOk?(pretty(mt.impressions)+" impressões"):(campData.ads_api?("erro: "+(campData.meta_error||"Meta")):"secret pendente");
+  var metaSub=metaOk?(pretty(mt.impressions)+" impressões casadas"):(campData.ads_api?("erro: "+(campData.meta_error||"Meta")):"secret pendente");
   var kpis=[
     ["Leads no período",pretty(t.total),pretty(t.com_utm)+" vieram de campanha"],
-    ["Gasto Meta",metaMoney(mt.spend),metaSub],
-    ["CPL real",(mt.spend&&t.total)?brlShort(mt.spend/t.total):"—","gasto Meta / leads do site"],
-    ["Cliques Meta",pretty(mt.clicks),mt.impressions?pct(mt.clicks,mt.impressions)+"% CTR":"sem impressão"],
-    ["Conversão do site",visitsTotal?pct(t.total,visitsTotal)+"%":"—","visita → lead"],
+    ["Gasto Meta site",metaMoney(mt.spend),metaSub],
+    ["CPL site",(mt.spend&&t.total)?brlShort(mt.spend/t.total):"—","gasto casado / leads do site"],
+    ["Meta total conta",metaMoney(mtAll.spend),pretty(mtAll.campaigns)+" campanhas com entrega"],
+    ["Cliques Meta",pretty(mt.clicks),mtAll.spend!==mt.spend?(pretty(mtAll.clicks)+" total conta"):"campanhas casadas"],
     ["Qualificados",pretty(t.mql),pct(t.mql,t.total)+"% dos leads"]
   ];
   document.getElementById("campKpis").innerHTML=kpis.map(function(k){
