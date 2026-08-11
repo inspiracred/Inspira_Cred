@@ -1894,7 +1894,7 @@ const DASHBOARD_HTML = `<!doctype html>
       <div class="msel-panel" id="srcPanel" style="display:none">
         <div class="msel-actions">
           <button type="button" id="srcAll" title="Sem filtro de origem">Todas</button>
-          <button type="button" id="srcOnlyMeta" title="Volta ao padrão do painel">Só Meta Ads</button>
+          <button type="button" id="srcOnlyMeta" title="Seleciona as origens Meta do periodo">So Meta</button>
         </div>
         <div id="srcList"></div>
       </div>
@@ -2151,6 +2151,12 @@ var PAGE_LABELS={landing_page:"Simulação",home_equity_lp:"Home Equity",home_eq
 var LEAD_KIND_LABELS={home_equity:"Lead",home_equity_mql:"Lead qualificado",baixo_valor:"Lead desqualificado",auto:"Lead automotivo",descarte:"Banco de dados (sem imóvel/veículo)"};
 var PAGE_URLS={landing_page:"https://nova.inspiracred.com.br/",home_equity_lp:"https://nova.inspiracred.com.br/homeequity/",home_equity_form:"https://nova.inspiracred.com.br/formulario/",link_bio:"https://links.inspiracred.com.br/",obrigado_simulacao:"https://nova.inspiracred.com.br/obrigado/simulacao/",obrigado_home_equity:"https://nova.inspiracred.com.br/obrigado/home-equity/",obrigado_formulario:"https://nova.inspiracred.com.br/obrigado/formulario/",obrigado_auto:"https://nova.inspiracred.com.br/obrigado/auto/",obrigado_nao_elegivel:"https://nova.inspiracred.com.br/obrigado/nao-elegivel/"};
 var CHART_PALETTE=["#f97316","#0b2d72","#10b981","#f59e0b","#3b82f6","#8b5cf6","#ec4899"];
+var META_SOURCES=["meta_ads","fb","ig","facebook","instagram"];
+function isMetaSourceValue(v){return META_SOURCES.indexOf(String(v||"").toLowerCase())>-1||/meta|facebook|instagram/i.test(String(v||""));}
+function sourceLabel(v){var s=String(v||"");var m={meta_ads:"Meta Ads",fb:"Facebook",ig:"Instagram",facebook:"Facebook",instagram:"Instagram",direto:"Direto"};return m[s]||s;}
+function selectedLooksMeta(list){return list&&list.length&&list.every(isMetaSourceValue);}
+function metaSourceValues(){var opts=(MSEL.src&&MSEL.src.opts)||[];var vals=opts.map(function(o){return o.value}).filter(isMetaSourceValue);return vals.length?vals:META_SOURCES.slice();}
+function sourceSelectionLabel(list){if(!list||!list.length)return "todas as origens";if(selectedLooksMeta(list))return "Meta";return list.map(function(v){return sourceLabel(v)}).join(", ");}
 function pretty(n){return (n==null||n===""?"-":String(n))}
 function label(p){return PAGE_LABELS[p]||p}
 function daysAgo(n){return new Date(Date.now()-n*864e5).toISOString().slice(0,10)}
@@ -2194,6 +2200,7 @@ function mselLabel(id){
   var n=m.sel.length, txt;
   if(n===0)txt=m.vazio;
   else if(n===1){var o=m.opts.filter(function(x){return x.value===m.sel[0]})[0];txt=o?o.label:m.sel[0];}
+  else if(id==="src"&&selectedLooksMeta(m.sel))txt="Meta";
   else txt=n+" selecionadas";
   b.textContent=m.rotulo+": "+txt+" ▾";
   b.title=n?(m.rotulo+": "+m.sel.join(", ")):("Sem filtro de "+m.rotulo.toLowerCase());
@@ -2276,10 +2283,10 @@ function loadAll(){
   var qs="?start="+r.start+"&end="+r.end;
   updateOpenBtn();
   setLoading(true);
-  var pgTxt=pages.length===0?"Todas as páginas":pages.length===1?label(pages[0]):pages.length+" páginas";
-  var scopeTxt="Exibindo: <b>"+pgTxt+"</b> · "+r.rotulo+
-    (src!=="all"?' · origem <b>'+esc(src)+'</b>':' · <b>todas as origens</b>');
-  document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--muted)">carregando…</span>';
+  var pgTxt=pages.length===0?"Todas as paginas":pages.length===1?label(pages[0]):pages.length+" paginas";
+  var srcTxt=src==="all"?"todas as origens":sourceSelectionLabel(currentSrcList());
+  var scopeTxt="Exibindo: <b>"+pgTxt+"</b> - "+r.rotulo+" - <b>"+esc(srcTxt)+"</b>";
+  document.getElementById("scope").innerHTML=scopeTxt+' - <span style="color:var(--muted)">carregando...</span>';
   var p1=fetch("${API}/overview"+qs+pageQ+srcQ+"&_="+Date.now()).then(function(r){return r.json()}).then(function(d){render(d);renderTraffic(d);});
   var p2=fetch("${API}/leads"+qs+"&limit=500"+pageQ+srcQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderLeads);
   var p3=fetch("${API}/campaigns"+qs+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderCampaigns);
@@ -2292,40 +2299,31 @@ function loadAll(){
 }
 
 function render(d){
-  var t=d.totals, r=d.rates;
+  var t=d.totals||{}, r=d.rates||{};
   var kinds=d.lead_kind_summary||[], byKind={};
   kinds.forEach(function(k){byKind[k.kind]=k;});
   var mql=(byKind.home_equity_mql&&byKind.home_equity_mql.n)||0;
-  var qualifRate=pct(mql,t.leads||0);
-  document.getElementById("overviewMeta").innerHTML='<span class="chip">'+(d.page==="all"?"Todas as páginas":label(d.page||"all"))+'</span><span class="chip">'+(d.range?d.range.start+" → "+d.range.end:"período atual")+'</span>';
-  // Com filtro de origem ligado, "simulação iniciada/concluída" não existe filtrado
-  // (esses eventos não gravam origem) — some do KPI e do funil em vez de aparecer um
-  // número de OUTRO recorte do lado de um número filtrado.
-  // Sem filtro: funil completo (4 etapas). Com filtro de origem: 3 etapas —
-  // visitas da origem → simulação iniciada → lead. A "simulação concluída" fica de
-  // fora filtrada porque o histórico anterior ao carimbo de origem nos eventos
-  // apareceria menor do que foi de verdade.
+  var desq=((byKind.baixo_valor&&byKind.baixo_valor.n)||0)+((byKind.descarte&&byKind.descarte.n)||0);
+  var qualifRate=pct(mql,t.leads||0), desqRate=pct(desq,t.leads||0);
+  document.getElementById("overviewMeta").innerHTML='<span class="chip">'+(d.page==="all"?"Todas as paginas":label(d.page||"all"))+'</span><span class="chip">'+(d.range?d.range.start+" -> "+d.range.end:"periodo atual")+'</span>';
   var filtrado=d.src&&d.src!=="all";
-  var temSimCompleta=t.sim_complete!=null;
   var kpis=[
-    [d.visits_from_sessions?"Visitas (sessões)":"Visitas",pretty(t.visitors),r.visitor_to_lead+"% viram lead"],
-    ["Engajados",t.sim_start!=null?pretty(t.sim_start):"—",t.sim_start!=null?r.visitor_to_start+"% iniciaram":"sem origem gravada"],
-    ["Simulações",temSimCompleta?pretty(t.sim_complete):"—",temSimCompleta?r.start_to_complete+"% conclusão":"não filtrável por origem"],
-    ["Tx. conv.",r.visitor_to_lead+"%",pretty(t.leads)+" leads"],
-    ["Leads",pretty(t.leads),temSimCompleta?r.complete_to_lead+"% pós-simulação":"no recorte atual"],
-    ["% qualif.",qualifRate+"%",pretty(mql)+" MQLs"]
+    [d.visits_from_sessions?"Visitas (sessoes)":"Visitas",pretty(t.visitors),t.sim_start!=null?pct(t.sim_start,t.visitors)+"% iniciaram simulacao":"no recorte atual"],
+    ["Simulacoes iniciadas",t.sim_start!=null?pretty(t.sim_start):"-",t.sim_start!=null?"evento real do formulario":"origem ainda nao gravada"],
+    ["Taxa de conversao",(r.visitor_to_lead||0)+"%",pretty(t.leads)+" leads / "+pretty(t.visitors)+" visitas"],
+    ["Leads",pretty(t.leads),"captados no periodo"],
+    ["Leads qualificados",pretty(mql),qualifRate+"% dos leads"],
+    ["Desqualificacao",desqRate+"%",pretty(desq)+" leads desqualificados"]
   ];
   document.getElementById("kpis").innerHTML=kpis.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>'}).join("");
   renderOverviewModules(d);
-  renderFunnel(filtrado
-    ? [["Visitas da origem",t.visitors],["Simulação iniciada",t.sim_start||0],["Lead",t.leads]]
-    : [["Visitantes",t.visitors],["Simulação iniciada",t.sim_start],["Simulação concluída",t.sim_complete],["Lead",t.leads]]);
+  renderFunnel([[filtrado?"Visitas da origem":"Visitas",t.visitors],["Simulacao iniciada",t.sim_start||0],["Leads",t.leads],["Qualificados",mql]]);
   var fn=document.getElementById("funnelNote");
   if(fn){
     fn.innerHTML=filtrado
-      ? 'Filtrado por <b>'+esc(d.src)+'</b>. Visitas vêm da sessão do servidor; a simulação iniciada passou a guardar a origem'+
-        (d.events_src_since?' em <b>'+d.events_src_since.split("-").reverse().join("/")+'</b>':' a partir do último deploy')+
-        ' — antes disso ela não aparece neste recorte.'
+      ? 'Filtrado por <b>'+esc(sourceSelectionLabel(d.src||[]))+'</b>. Visitas vem da sessao do servidor; simulacao iniciada e medida no evento do formulario'+
+        (d.events_src_since?' desde <b>'+d.events_src_since.split("-").reverse().join("/")+'</b>':' a partir do ultimo deploy')+
+        ' - antes disso ela nao aparece neste recorte.'
       : '';
     fn.style.display=filtrado?"block":"none";
   }
@@ -2335,35 +2333,8 @@ function render(d){
 }
 
 function renderOverviewModules(d){
-  d=d||{};
-  var t=d.totals||{}, kinds=d.lead_kind_summary||[], byKind={};
-  kinds.forEach(function(k){byKind[k.kind]=k;});
-  var mql=(byKind.home_equity_mql&&byKind.home_equity_mql.n)||0;
-  var rdOk=kinds.reduce(function(a,k){return a+Number(k.rd_ok||0)},0);
-  var metaOk=kinds.reduce(function(a,k){return a+Number(k.meta_ok||0)},0);
-  var metaSkip=kinds.reduce(function(a,k){return a+Number(k.meta_skip||0)},0);
-  var sources=d.sources||[];
-  var sourceTotal=sources.reduce(function(a,x){return a+Number(x.n||0)},0);
-  var direct=sources.reduce(function(a,x){return a+((!x.source||x.source==="direto")?Number(x.n||0):0)},0);
-  var withUtm=Math.max(0,sourceTotal-direct);
-  var pages=d.pages||[];
-  var views=pages.reduce(function(a,p){return a+Number(p.views||0)},0);
-  var topPage=pages[0]?label(pages[0].page_name):"sem página";
-  var clicks=(d.clicks||[]).reduce(function(a,c){return a+Number(c.clicks||0)},0);
-  var cards=[
-    {tab:"leads",ico:"◉",tag:"Leads",val:pretty(t.leads||0),sub:pretty(mql)+" qualificados · "+pretty(rdOk)+" entregues ao RD"},
-    {tab:"campaigns",ico:"↗",tag:"Campanhas",val:pretty(withUtm),sub:pct(withUtm,sourceTotal)+"% com UTM · "+pretty(direct)+" sem UTM"},
-    {tab:"campaigns",ico:"≋",tag:"Tráfego",val:pretty(t.visitors||0),sub:pretty(views)+" views · topo: "+topPage},
-    {tab:"heatmap",ico:"⌖",tag:"Mapa de calor",val:pretty(clicks),sub:"cliques/taps mapeados nas páginas"},
-    {tab:"health",ico:"✓",tag:"Saúde",val:pretty(metaOk),sub:"Meta ok · "+pretty(metaSkip)+" sem Lead por regra"}
-  ];
-  document.getElementById("overviewModules").innerHTML=cards.map(function(c){
-    return '<button class="module-card" onclick="showTab(&quot;'+c.tab+'&quot;)">'+
-      '<span class="tag"><span>'+c.ico+'</span>'+esc(c.tag)+'</span>'+
-      '<span><span class="value">'+esc(c.val)+'</span><span class="sub">'+esc(c.sub)+'</span></span>'+
-      '<span class="go">Abrir aba →</span>'+
-    '</button>';
-  }).join("");
+  var box=document.getElementById("overviewModules");
+  if(box){box.style.display="none";box.innerHTML="";}
 }
 
 function eventLabel(name){
@@ -2408,17 +2379,12 @@ function renderEventSummary(d){
   ];
   document.getElementById("eventKpis").innerHTML=kpis.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>'}).join("");
   var t=d.totals||{};
+  var desq=((byKind.baixo_valor&&byKind.baixo_valor.n)||0)+((byKind.descarte&&byKind.descarte.n)||0);
   var signalRows=[
-    {name:"Iniciaram",n:t.sim_start||0,sub:pct(t.sim_start||0,t.visitors||0)+"% das visitas começaram a simulação"},
-    // sim_complete vem null quando há filtro de origem (o evento não guarda a campanha).
-    // Antes o "|| 0" transformava null em 0 e parecia que ninguém concluía — mostra "—".
-    (t.sim_complete!=null
-      ? {name:"Concluíram",n:t.sim_complete,sub:pct(t.sim_complete,t.sim_start||0)+"% de quem iniciou chegou ao fim"}
-      : {name:"Concluíram",n:0,disp:"—",sub:"não dá para medir com filtro de origem (o evento de simulação não guarda a campanha)"}),
-    {name:"Lead Meta",n:leadOk,sub:"evento Lead enviado ao Meta quando passa na regra",hot:true},
-    {name:"Lead qualificado",n:mqlOk,sub:"MQL enviado para otimização mais forte",hot:true},
-    {name:"RD Station",n:rdOk,sub:"cadastros entregues ao CRM / RD"},
-    {name:"Sem Lead no Meta",n:metaSkip,sub:"capturados no banco, mas sem evento Lead por regra"}
+    {name:"Simulacoes iniciadas",n:t.sim_start||0,sub:pct(t.sim_start||0,t.visitors||0)+"% das visitas comecaram a simulacao",hot:true},
+    {name:"Leads captados",n:t.leads||0,sub:pct(t.leads||0,t.visitors||0)+"% das visitas viraram lead",hot:true},
+    {name:"Leads qualificados",n:mqlOk,sub:pct(mqlOk,t.leads||0)+"% dos leads viraram MQL"},
+    {name:"Desqualificados",n:desq,sub:pct(desq,t.leads||0)+"% dos leads fora do perfil"}
   ];
   document.getElementById("overviewEvents").innerHTML=signalCards(signalRows);
   var leadRows=kinds.map(function(k){
@@ -2629,7 +2595,7 @@ var campLevel="campaign", campSel={camp:null,med:null};
 // Filtro de ORIGEM (utm_source) — GLOBAL: sai do seletor do cabeçalho e vale pro
 // dashboard inteiro. Já abre em "meta_ads" (é onde o cliente investe); trocar pra
 // "todas" mostra tudo, inclusive o lixo de teste (teste-claude, codex-teste…).
-var campSrc=["meta_ads"];   // lista vazia = todas as origens (espelha o srcSelected)
+var campSrc=META_SOURCES.slice();   // lista vazia = todas as origens (espelha o filtro global)
 var LEVEL_NAME={campaign:"Campanhas",adset:"Conjuntos de anúncios",ad:"Anúncios"};
 var LEVEL_ONE={campaign:"campanha",adset:"conjunto",ad:"anúncio"};
 
@@ -2858,9 +2824,9 @@ function campFillSrcOptions(){
   var by={};
   (campData.rows||[]).forEach(function(r){ by[r.src]=(by[r.src]||0)+Number(r.leads||0); });
   (campData.visits||[]).forEach(function(r){ if(by[r.src]===undefined)by[r.src]=0; });
-  if(by.meta_ads===undefined)by.meta_ads=0; // sempre ofertar o padrão do painel
+  META_SOURCES.forEach(function(s){if(by[s]===undefined)by[s]=0;}); // sempre ofertar o padrao Meta do painel
   var opts=Object.keys(by).sort(function(a,b){return by[b]-by[a]})
-    .map(function(k){return {value:k,label:k,n:by[k]}});
+    .map(function(k){return {value:k,label:sourceLabel(k),n:by[k]}});
   mselSetOptions("src",opts);
   campSrc=currentSrcList();
 }
@@ -3779,7 +3745,7 @@ function stepsPanelHTML(d){
 /* ---- Monta os três filtros multi-seleção ----
    Origem: as opções vêm de /api/campaigns (campFillSrcOptions). Página e classificação
    têm lista fixa, então já nascem prontas. */
-mselInit("src",{rotulo:"Origem",inicial:["meta_ads"],vazio:"todas",onApply:function(){
+mselInit("src",{rotulo:"Origem",inicial:META_SOURCES.slice(),vazio:"todas",onApply:function(){
   campSel={camp:null,med:null}; campLevel="campaign"; // troca de origem reinicia a navegação
   syncSaveBtn(); loadAll();
 }});
@@ -3826,7 +3792,7 @@ document.getElementById("openPage").addEventListener("click",function(){
 });
 document.getElementById("csvBtn").addEventListener("click",exportCSV);
 document.getElementById("srcAll").addEventListener("click",function(){mselAtalho("src",[]);});
-document.getElementById("srcOnlyMeta").addEventListener("click",function(){mselAtalho("src",["meta_ads"]);});
+document.getElementById("srcOnlyMeta").addEventListener("click",function(){mselAtalho("src",metaSourceValues());});
 document.getElementById("pageAll").addEventListener("click",function(){mselAtalho("page",[]);});
 document.getElementById("pageCapt").addEventListener("click",function(){mselAtalho("page",["landing_page","home_equity_lp","home_equity_form"]);});
 document.getElementById("kindAll").addEventListener("click",function(){mselAtalho("kind",[]);});
@@ -3886,7 +3852,7 @@ function applySavedFilter(){
   var s=readSavedFilter(); if(!s)return;
   var rangeSel=document.getElementById("rangeSel");
   if(s.page!=null) mselSet("page",txtParaLista(s.page));
-  if(s.src!=null){ mselSet("src",txtParaLista(s.src)); campSrc=currentSrcList(); }
+  if(s.src!=null){ var srcs=txtParaLista(s.src); if(srcs.length===1&&srcs[0]==="meta_ads")srcs=META_SOURCES.slice(); mselSet("src",srcs); campSrc=currentSrcList(); }
   if(s.days){
     rangeSel.value=String(s.days);
     if(s.days==="custom"){
