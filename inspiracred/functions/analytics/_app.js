@@ -899,21 +899,15 @@ function actionCount(actions, matcher) {
     return matcher(type) ? sum + nnum(a.value) : sum;
   }, 0);
 }
-function actionFirst(actions, types) {
+function actionMax(actions, matcher) {
   if (!Array.isArray(actions)) return 0;
-  const byType = {};
-  actions.forEach((a) => { byType[String(a.action_type || "")] = nnum(a.value); });
-  for (const type of types) if (byType[type]) return byType[type];
-  return 0;
+  return actions.reduce((max, a) => {
+    const type = String(a.action_type || "");
+    return matcher(type) ? Math.max(max, nnum(a.value)) : max;
+  }, 0);
 }
 function metaResultLeads(actions) {
-  return actionFirst(actions, [
-    "offsite_conversion.fb_pixel_lead",
-    "lead",
-    "onsite_conversion.lead_grouped",
-    "onsite_conversion.lead",
-    "omni_lead",
-  ]);
+  return actionMax(actions, (t) => /(^|[._])lead($|[._:])|lead_grouped|pixel_lead|complete_registration/i.test(t));
 }
 async function fetchMetaAdInsights(env, start, end) {
   const token = metaAdsToken(env);
