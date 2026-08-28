@@ -64,7 +64,7 @@
               </div>
 
               <div class="form-rows">
-                <div class="form-row form-row-2">
+                <div class="form-row form-row-3">
                   <div class="field">
                     <label for="contact-name">Nome completo <span class="req">*</span></label>
                     <input class="input" id="contact-name" name="name" type="text" placeholder="Digite seu nome completo" autocomplete="name" />
@@ -80,9 +80,7 @@
                     <p class="field-hint">Utilizamos o WhatsApp como uma das nossas formas de contato.</p>
                     <p class="field-error" data-error="phone"></p>
                   </div>
-                </div>
 
-                <div class="form-row form-row-4">
                   <div class="field">
                     <label for="property-type">Tipo de imóvel <span class="req">*</span></label>
                     <select class="select" id="property-type" name="property_type">
@@ -95,7 +93,9 @@
                     </select>
                     <p class="field-error" data-error="property_type"></p>
                   </div>
+                </div>
 
+                <div class="form-row form-row-4">
                   <div class="field">
                     <label for="property-value">Valor do imóvel <span class="req">*</span></label>
                     <input class="input money" id="property-value" name="property_value" type="text" inputmode="numeric" placeholder="Valor mínimo R$ 400.000" />
@@ -111,12 +111,6 @@
                     <p class="field-error" data-error="imovel_quitado"></p>
                   </div>
 
-                  <div class="field is-hidden" id="debt-field" aria-hidden="true">
-                    <label for="debt-balance">Quanto ainda falta pagar? <span class="req">*</span></label>
-                    <input class="input money" id="debt-balance" name="saldo_devedor" type="text" inputmode="numeric" placeholder="Saldo devedor aproximado" />
-                    <p class="field-error" data-error="saldo_devedor"></p>
-                  </div>
-
                   <div class="field">
                     <label for="docs-ok">Documentação regularizada? <span class="req">*</span></label>
                     <select class="select filled" id="docs-ok" name="documentacao_ok">
@@ -130,6 +124,12 @@
                     <label for="credit-value">Valor desejado <span class="req">*</span></label>
                     <input class="input money" id="credit-value" name="credit_value" type="text" inputmode="numeric" placeholder="Mínimo R$ 200.000" />
                     <p class="field-error" data-error="credit_value"></p>
+                  </div>
+
+                  <div class="field is-hidden debt-field" id="debt-field" aria-hidden="true">
+                    <label for="debt-balance">Quanto ainda falta pagar? <span class="req">*</span></label>
+                    <input class="input money" id="debt-balance" name="saldo_devedor" type="text" inputmode="numeric" placeholder="Saldo devedor aproximado" />
+                    <p class="field-error" data-error="saldo_devedor"></p>
                   </div>
                 </div>
               </div>
@@ -296,42 +296,53 @@
           <span class="eyebrow">Quem já fez, aprova</span>
           <h2 class="section-title">Clientes que transformaram seu imóvel em oportunidade com a Inspiracred.</h2>
         </div>
-        <div class="shell dep-grid" data-stagger>
-          <article class="dep-card">
-            <div class="dep-person"><div><strong>Raquel Silva</strong><span>Porto Alegre/RS</span></div></div>
-            <div class="dep-stars" aria-label="5 estrelas"><span aria-hidden="true">★★★★★</span></div>
-            <p class="dep-quote">"Olá, a minha experiência com a InspiraCred está sendo satisfatória. A gente fica um pouco apreensivo, pois as tratativas são todas online. Confesso que foi minha primeira negociação de tamanha importância desta forma. E fico feliz de ter feito, precisava e hoje respiro mais aliviada!"</p>
-          </article>
-          <article class="dep-card">
-            <div class="dep-person"><div><strong>Regina Couto</strong><span>Niterói/RJ</span></div></div>
-            <div class="dep-stars" aria-label="5 estrelas"><span aria-hidden="true">★★★★★</span></div>
-            <p class="dep-quote">"A InspiraCred é uma empresa com atendimento bem humanizado. A Kesliany que me atendeu foi muito prestativa e sempre pronta a responder minhas perguntas."</p>
-          </article>
-          <article class="dep-card">
-            <div class="dep-person"><div><strong>Eliana Paula</strong><span>Belo Horizonte/MG</span></div></div>
-            <div class="dep-stars" aria-label="5 estrelas"><span aria-hidden="true">★★★★★</span></div>
-            <p class="dep-quote">"Excelente atendimento com agilidade e assessoria especializada. Empresa séria e com muito cuidado com o cliente."</p>
-          </article>
-          <article class="dep-card">
-            <div class="dep-person"><div><strong>Eliana Caires</strong><span>Goiânia/GO</span></div></div>
-            <div class="dep-stars" aria-label="5 estrelas"><span aria-hidden="true">★★★★★</span></div>
-            <p class="dep-quote">"Empresa idônea, confiável em todos os sentidos. Meu empréstimo saiu como prometido."</p>
-          </article>
-          <article class="dep-card">
-            <div class="dep-person"><div><strong>Victor Aló</strong><span>Brasília/DF</span></div></div>
-            <div class="dep-stars" aria-label="5 estrelas"><span aria-hidden="true">★★★★★</span></div>
-            <p class="dep-quote">"Atendimento sempre atencioso, explicaram tudo e apresentaram as melhores oportunidades."</p>
-          </article>
-          <article class="dep-card">
-            <div class="dep-person"><div><strong>Patricia Revuelta</strong><span>Minas Gerais</span></div></div>
-            <div class="dep-stars" aria-label="5 estrelas"><span aria-hidden="true">★★★★★</span></div>
-            <p class="dep-quote">"Super indico! Sou de MG, fui super bem atendida e consegui um crédito com excelentes taxas e rapidez no atendimento. Obrigado!"</p>
-          </article>
-          <article class="dep-card">
-            <div class="dep-person"><div><strong>Renata Semfrini</strong><span>Cliente InspiraCred</span></div></div>
-            <div class="dep-stars" aria-label="5 estrelas"><span aria-hidden="true">★★★★★</span></div>
-            <p class="dep-quote">"Quero agradecer à equipe da Inspiracred pelo atendimento impecável. Conseguiram me ajudar a encontrar a melhor solução, sempre com muita atenção, paciência e transparência. Todo o processo foi mais tranquilo do que eu imaginava. Recomendo com certeza."</p>
-          </article>
+        <div class="shell dep-carousel" data-dep-carousel data-reveal>
+          <button class="dep-nav dep-prev" type="button" aria-label="Depoimento anterior">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <div class="dep-viewport" tabindex="0" aria-label="Carrossel de depoimentos">
+            <div class="dep-track">
+              <article class="dep-card">
+                <div class="dep-person"><div><strong>Raquel Silva</strong><span>Porto Alegre/RS</span></div></div>
+                <div class="dep-stars" aria-label="5 estrelas"><span aria-hidden="true">★★★★★</span></div>
+                <p class="dep-quote">"Olá, a minha experiência com a InspiraCred está sendo satisfatória. A gente fica um pouco apreensivo, pois as tratativas são todas online. Confesso que foi minha primeira negociação de tamanha importância desta forma. E fico feliz de ter feito, precisava e hoje respiro mais aliviada!"</p>
+              </article>
+              <article class="dep-card">
+                <div class="dep-person"><div><strong>Regina Couto</strong><span>Niterói/RJ</span></div></div>
+                <div class="dep-stars" aria-label="5 estrelas"><span aria-hidden="true">★★★★★</span></div>
+                <p class="dep-quote">"A InspiraCred é uma empresa com atendimento bem humanizado. A Kesliany que me atendeu foi muito prestativa e sempre pronta a responder minhas perguntas."</p>
+              </article>
+              <article class="dep-card">
+                <div class="dep-person"><div><strong>Eliana Paula</strong><span>Belo Horizonte/MG</span></div></div>
+                <div class="dep-stars" aria-label="5 estrelas"><span aria-hidden="true">★★★★★</span></div>
+                <p class="dep-quote">"Excelente atendimento com agilidade e assessoria especializada. Empresa séria e com muito cuidado com o cliente."</p>
+              </article>
+              <article class="dep-card">
+                <div class="dep-person"><div><strong>Eliana Caires</strong><span>Goiânia/GO</span></div></div>
+                <div class="dep-stars" aria-label="5 estrelas"><span aria-hidden="true">★★★★★</span></div>
+                <p class="dep-quote">"Empresa idônea, confiável em todos os sentidos. Meu empréstimo saiu como prometido."</p>
+              </article>
+              <article class="dep-card">
+                <div class="dep-person"><div><strong>Victor Aló</strong><span>Brasília/DF</span></div></div>
+                <div class="dep-stars" aria-label="5 estrelas"><span aria-hidden="true">★★★★★</span></div>
+                <p class="dep-quote">"Atendimento sempre atencioso, explicaram tudo e apresentaram as melhores oportunidades."</p>
+              </article>
+              <article class="dep-card">
+                <div class="dep-person"><div><strong>Patricia Revuelta</strong><span>Minas Gerais</span></div></div>
+                <div class="dep-stars" aria-label="5 estrelas"><span aria-hidden="true">★★★★★</span></div>
+                <p class="dep-quote">"Super indico! Sou de MG, fui super bem atendida e consegui um crédito com excelentes taxas e rapidez no atendimento. Obrigado!"</p>
+              </article>
+              <article class="dep-card">
+                <div class="dep-person"><div><strong>Renata Semfrini</strong><span>Cliente InspiraCred</span></div></div>
+                <div class="dep-stars" aria-label="5 estrelas"><span aria-hidden="true">★★★★★</span></div>
+                <p class="dep-quote">"Quero agradecer à equipe da Inspiracred pelo atendimento impecável. Conseguiram me ajudar a encontrar a melhor solução, sempre com muita atenção, paciência e transparência. Todo o processo foi mais tranquilo do que eu imaginava. Recomendo com certeza."</p>
+              </article>
+            </div>
+          </div>
+          <button class="dep-nav dep-next" type="button" aria-label="Próximo depoimento">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+          <div class="dep-dots" aria-label="Selecionar depoimento"></div>
         </div>
       </section>
 
@@ -779,6 +790,126 @@
               cards.forEach(function (card) { card.classList.add("is-in"); });
             }
           }
+        }
+
+        var depCarousel = document.querySelector("[data-dep-carousel]");
+        if (depCarousel) {
+          var depViewport = depCarousel.querySelector(".dep-viewport");
+          var depTrack = depCarousel.querySelector(".dep-track");
+          var depSlides = Array.prototype.slice.call(depCarousel.querySelectorAll(".dep-card"));
+          var depPrev = depCarousel.querySelector(".dep-prev");
+          var depNext = depCarousel.querySelector(".dep-next");
+          var depDots = depCarousel.querySelector(".dep-dots");
+          var depIndex = 0;
+          var depTicking = false;
+
+          depSlides.forEach(function (slide, index) {
+            slide.setAttribute("aria-label", "Depoimento " + (index + 1) + " de " + depSlides.length);
+          });
+
+          function depGap() {
+            var styles = window.getComputedStyle(depTrack);
+            return parseFloat(styles.columnGap || styles.gap) || 0;
+          }
+
+          function depStep() {
+            if (!depSlides.length) return 0;
+            return depSlides[0].getBoundingClientRect().width + depGap();
+          }
+
+          function depVisibleCount() {
+            var step = depStep();
+            if (!step) return 1;
+            return Math.max(1, Math.round((depViewport.clientWidth + depGap()) / step));
+          }
+
+          function depMaxIndex() {
+            return Math.max(0, depSlides.length - depVisibleCount());
+          }
+
+          function depSetActive(index) {
+            var max = depMaxIndex();
+            depIndex = Math.max(0, Math.min(index, max));
+            if (depPrev) depPrev.disabled = depIndex <= 0;
+            if (depNext) depNext.disabled = depIndex >= max;
+            if (depDots) {
+              Array.prototype.forEach.call(depDots.children, function (dot, dotIndex) {
+                var active = dotIndex === depIndex;
+                dot.classList.toggle("is-active", active);
+                dot.setAttribute("aria-current", active ? "true" : "false");
+              });
+            }
+          }
+
+          function depGo(index) {
+            depSetActive(index);
+            depViewport.scrollTo({
+              left: depIndex * depStep(),
+              behavior: reduceMotion ? "auto" : "smooth"
+            });
+          }
+
+          function depBuildDots() {
+            var max = depMaxIndex();
+            if (!depDots) return;
+            depDots.innerHTML = "";
+            for (var index = 0; index <= max; index += 1) {
+              var dot = document.createElement("button");
+              dot.className = "dep-dot";
+              dot.type = "button";
+              dot.setAttribute("aria-label", "Ver depoimento " + (index + 1));
+              dot.addEventListener("click", function (event) {
+                depGo(Array.prototype.indexOf.call(depDots.children, event.currentTarget));
+              });
+              depDots.appendChild(dot);
+            }
+            depSetActive(depIndex);
+          }
+
+          function depSyncFromScroll() {
+            var step = depStep();
+            if (!step) return;
+            depSetActive(Math.round(depViewport.scrollLeft / step));
+          }
+
+          if (depPrev) {
+            depPrev.addEventListener("click", function () {
+              depGo(depIndex - 1);
+            });
+          }
+
+          if (depNext) {
+            depNext.addEventListener("click", function () {
+              depGo(depIndex + 1);
+            });
+          }
+
+          depViewport.addEventListener("keydown", function (event) {
+            if (event.key === "ArrowLeft") {
+              event.preventDefault();
+              depGo(depIndex - 1);
+            }
+            if (event.key === "ArrowRight") {
+              event.preventDefault();
+              depGo(depIndex + 1);
+            }
+          });
+
+          depViewport.addEventListener("scroll", function () {
+            if (depTicking) return;
+            depTicking = true;
+            window.requestAnimationFrame(function () {
+              depSyncFromScroll();
+              depTicking = false;
+            });
+          }, { passive: true });
+
+          window.addEventListener("resize", function () {
+            depBuildDots();
+            depGo(depIndex);
+          });
+
+          depBuildDots();
         }
 
         document.querySelectorAll(".faq-q").forEach(function (button) {
