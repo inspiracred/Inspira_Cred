@@ -1338,27 +1338,13 @@ img {
     width: 100% !important;
     margin: 0 0 14px;
     opacity: 0;
-    transform: translateX(var(--mx, 0)) rotate(var(--mr, 0deg));
-    transition: opacity 650ms var(--ease), transform 800ms var(--ease);
+    transform: translate3d(0, 22px, 0);
+    transition: opacity 560ms var(--ease), transform 680ms var(--ease);
   }
 
   .floating-stage .float-card.is-in {
     opacity: 1;
     transform: none;
-  }
-
-  .fc-1,
-  .fc-3,
-  .fc-5 {
-    --mx: -46px;
-    --mr: -6deg;
-  }
-
-  .fc-2,
-  .fc-4,
-  .fc-6 {
-    --mx: 46px;
-    --mr: 6deg;
   }
 
   .porque-grid {

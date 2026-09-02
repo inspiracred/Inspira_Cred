@@ -777,11 +777,11 @@
           } else {
             stage.classList.add("no-float");
             if (!reduceMotion && window.matchMedia("(max-width: 1023px)").matches && "IntersectionObserver" in window) {
-              var mobileObserver = new IntersectionObserver(function (entries) {
+              var mobileObserver = new IntersectionObserver(function (entries, observer) {
                 entries.forEach(function (entry) {
-                  if (entry.isIntersecting) {
+                  if (entry.isIntersecting && !entry.target.classList.contains("is-in")) {
                     entry.target.classList.add("is-in");
-                    mobileObserver.unobserve(entry.target);
+                    observer.unobserve(entry.target);
                   }
                 });
               }, { threshold: 0.25, rootMargin: "0px 0px -12% 0px" });
