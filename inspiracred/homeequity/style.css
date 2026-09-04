@@ -529,13 +529,25 @@ img { max-width: 100%; }
 
 /* ---------- Depoimentos ---------- */
 .depoimentos { background: #fff; }
-.dep-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin-top: 52px; }
+.dep-carousel { position: relative; margin-top: 52px; }
+.dep-viewport {
+  margin: 0 62px; padding: 4px;
+  overflow-x: auto; overflow-y: hidden;
+  scroll-behavior: smooth; scroll-snap-type: x mandatory;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.dep-viewport::-webkit-scrollbar { display: none; }
+.dep-track { display: flex; gap: 20px; }
 .dep-card {
-  display: grid; grid-template-rows: auto 1fr auto; gap: 22px;
-  padding: 30px;
+  flex: 0 0 calc((100% - 40px) / 3);
+  min-height: 322px;
+  display: grid; grid-template-rows: auto 1fr auto; gap: 18px;
+  padding: 28px;
   border-radius: 24px;
   background: var(--surface);
   border: 1px solid var(--border);
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
 }
 .dep-stars { display: flex; gap: 3px; color: var(--orange); }
 .dep-stars svg { width: 18px; height: 18px; }
@@ -549,6 +561,28 @@ img { max-width: 100%; }
 /* Escopado no bloco do autor: solto, `.dep-person span` tambem pegava o
    .dep-avatar (seletor mais especifico), virava display:block e a inicial
    caia no canto do circulo, cinza e em 14px. */
+.dep-nav {
+  position: absolute; top: 50%; z-index: 2;
+  width: 46px; height: 46px; display: grid; place-items: center;
+  border: 1px solid rgba(11, 45, 114, 0.12); border-radius: 50%;
+  background: #fff; color: var(--blue); box-shadow: var(--shadow-card);
+  cursor: pointer; transform: translateY(-50%);
+  transition: opacity 180ms var(--ease), transform 220ms var(--ease), color 180ms var(--ease), background 180ms var(--ease);
+}
+.dep-nav:hover, .dep-nav:focus-visible { background: var(--blue); color: #fff; transform: translateY(-50%) scale(1.04); }
+.dep-nav:disabled { cursor: default; opacity: 0.34; transform: translateY(-50%); }
+.dep-nav svg { width: 22px; height: 22px; stroke: currentColor; }
+.dep-prev { left: 0; }
+.dep-next { right: 0; }
+.dep-dots { display: flex; justify-content: center; gap: 8px; margin-top: 26px; }
+.dep-dot {
+  width: 9px; height: 9px; padding: 0; border: 0; border-radius: 999px;
+  background: #cbd5e1; cursor: pointer;
+  transition: width 220ms var(--ease), background 220ms var(--ease), transform 220ms var(--ease);
+}
+.dep-dot:hover, .dep-dot:focus-visible { background: var(--blue); transform: scale(1.12); }
+.dep-dot.is-active { width: 28px; background: var(--orange); }
+
 .dep-person > div strong { display: block; font-size: 16px; }
 .dep-person > div span { display: block; margin-top: 2px; color: var(--muted); font-size: 14px; }
 
@@ -602,7 +636,8 @@ img { max-width: 100%; }
 
 /* ---------- Responsivo ---------- */
 @media (max-width: 1023px) {
-  .dep-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dep-viewport { margin: 0 54px; }
+  .dep-card { flex-basis: calc((100% - 20px) / 2); }
   .section { padding: 80px 0; }
   .nav { padding: 24px 40px; }
   .nav-links a:not(.button) { display: none; }
@@ -670,7 +705,16 @@ img { max-width: 100%; }
 
   .bar-row { grid-template-columns: 1fr auto; gap: 10px 14px; padding: 16px; }
   .bar-track { grid-column: 1 / -1; order: 3; }
-  .dep-grid { grid-template-columns: 1fr; }
+  /* mobile: 1 depoimento por vez e os controles descem pra baixo do card */
+  .dep-carousel { display: grid; grid-template-columns: 46px 1fr 46px; gap: 12px; align-items: center; margin-top: 38px; }
+  .dep-viewport { margin: 0; padding: 2px; }
+  .dep-viewport, .dep-dots { grid-column: 1 / -1; }
+  .dep-card { flex-basis: 100%; min-height: 0; padding: 24px; }
+  .dep-nav { position: static; transform: none; }
+  .dep-nav:hover, .dep-nav:focus-visible, .dep-nav:disabled { transform: none; }
+  .dep-prev { grid-column: 1; grid-row: 2; justify-self: end; }
+  .dep-next { grid-column: 3; grid-row: 2; justify-self: start; }
+  .dep-dots { grid-row: 2; grid-column: 2; align-items: center; margin-top: 0; }
   .garantia-inner { grid-template-columns: 1fr; gap: 24px; padding: 32px; text-align: center; }
   .garantia-selo { max-width: 160px; margin: 0 auto; }
   .oferta-card { padding: 30px 24px; }

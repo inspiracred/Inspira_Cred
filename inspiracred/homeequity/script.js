@@ -175,7 +175,10 @@
       var celDigits = data.celular.replace(/\D/g, "");
       if (!celDigits) { setError("celular", "Informe seu celular."); ok = false; }
       else if (celDigits.length < 10) { setError("celular", "Número inválido."); ok = false; }
-      if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { setError("email", "E-mail inválido."); ok = false; }
+      // E-mail obrigatório: `em` é o campo de maior peso na qualidade da correspondência
+      // de eventos do Meta (EMQ). Sem ele o lead chega ao Meta sem o melhor identificador.
+      if (!data.email) { setError("email", "Informe seu e-mail."); ok = false; }
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { setError("email", "E-mail inválido."); ok = false; }
       var creditValue = parseMoney(data.valor_emprestimo);
       var propertyValue = parseMoney(data.valor_imovel);
       var isAuto = data.tipo_bem === "Automóvel";
@@ -418,6 +421,103 @@
         cards.forEach(function (c) { c.classList.add("is-in"); });
       }
     }
+  }
+
+  /* ============================================================
+     DEPOIMENTOS — carrossel
+     Mesmo componente da página de simulação: scroll-snap horizontal
+     com setas, bolinhas e teclado. O passo é medido do card renderizado,
+     então 3/2/1 por vez sai direto dos breakpoints do CSS.
+     ============================================================ */
+  var depCarousel = document.querySelector("[data-dep-carousel]");
+  if (depCarousel) {
+    var depViewport = depCarousel.querySelector(".dep-viewport");
+    var depTrack = depCarousel.querySelector(".dep-track");
+    var depSlides = Array.prototype.slice.call(depCarousel.querySelectorAll(".dep-card"));
+    var depPrev = depCarousel.querySelector(".dep-prev");
+    var depNext = depCarousel.querySelector(".dep-next");
+    var depDots = depCarousel.querySelector(".dep-dots");
+    var depIndex = 0;
+    var depTicking = false;
+
+    depSlides.forEach(function (slide, index) {
+      slide.setAttribute("aria-label", "Depoimento " + (index + 1) + " de " + depSlides.length);
+    });
+
+    var depGap = function () {
+      var styles = window.getComputedStyle(depTrack);
+      return parseFloat(styles.columnGap || styles.gap) || 0;
+    };
+    var depStep = function () {
+      if (!depSlides.length) return 0;
+      return depSlides[0].getBoundingClientRect().width + depGap();
+    };
+    var depVisibleCount = function () {
+      var step = depStep();
+      if (!step) return 1;
+      return Math.max(1, Math.round((depViewport.clientWidth + depGap()) / step));
+    };
+    var depMaxIndex = function () {
+      return Math.max(0, depSlides.length - depVisibleCount());
+    };
+    var depSetActive = function (index) {
+      var max = depMaxIndex();
+      depIndex = Math.max(0, Math.min(index, max));
+      if (depPrev) depPrev.disabled = depIndex <= 0;
+      if (depNext) depNext.disabled = depIndex >= max;
+      if (depDots) {
+        Array.prototype.forEach.call(depDots.children, function (dot, dotIndex) {
+          var active = dotIndex === depIndex;
+          dot.classList.toggle("is-active", active);
+          dot.setAttribute("aria-current", active ? "true" : "false");
+        });
+      }
+    };
+    var depGo = function (index) {
+      depSetActive(index);
+      depViewport.scrollTo({ left: depIndex * depStep(), behavior: reduceMotion ? "auto" : "smooth" });
+    };
+    var depBuildDots = function () {
+      if (!depDots) return;
+      var max = depMaxIndex();
+      depDots.innerHTML = "";
+      for (var index = 0; index <= max; index += 1) {
+        var dot = document.createElement("button");
+        dot.className = "dep-dot";
+        dot.type = "button";
+        dot.setAttribute("aria-label", "Ver depoimento " + (index + 1));
+        dot.addEventListener("click", function (event) {
+          depGo(Array.prototype.indexOf.call(depDots.children, event.currentTarget));
+        });
+        depDots.appendChild(dot);
+      }
+      depSetActive(depIndex);
+    };
+
+    if (depPrev) depPrev.addEventListener("click", function () { depGo(depIndex - 1); });
+    if (depNext) depNext.addEventListener("click", function () { depGo(depIndex + 1); });
+
+    depViewport.addEventListener("keydown", function (event) {
+      if (event.key === "ArrowLeft") { event.preventDefault(); depGo(depIndex - 1); }
+      if (event.key === "ArrowRight") { event.preventDefault(); depGo(depIndex + 1); }
+    });
+
+    depViewport.addEventListener("scroll", function () {
+      if (depTicking) return;
+      depTicking = true;
+      window.requestAnimationFrame(function () {
+        var step = depStep();
+        if (step) depSetActive(Math.round(depViewport.scrollLeft / step));
+        depTicking = false;
+      });
+    }, { passive: true });
+
+    window.addEventListener("resize", function () { depBuildDots(); depGo(depIndex); });
+    // fontes/imagens podem mudar a largura do card depois do parse: refaz a conta
+    // no load pra quantidade de bolinhas bater com o que cabe de fato na tela.
+    window.addEventListener("load", depBuildDots);
+
+    depBuildDots();
   }
 
   /* ============================================================
