@@ -1269,7 +1269,7 @@ async function handlePageMap(request, env) {
   const many = async (sql) => (await env.DB.prepare(sql).bind(...b).all()).results || [];
   const RANGE = `page_name=? AND DATE(created_at) BETWEEN ? AND ?`;
 
-  const [sess, scroll, sections, elements, steps, choices] = await Promise.all([
+  const [sess, scroll, sections, elements, steps, choices, leads] = await Promise.all([
     env.DB.prepare(`SELECT COUNT(DISTINCT session_id) n, COUNT(*) views FROM page_views WHERE ${RANGE}`).bind(...b).first(),
     many(`SELECT CAST(json_extract(properties,'$.pct') AS INTEGER) pct, COUNT(DISTINCT session_id) n
           FROM events WHERE event_name='scroll_depth' AND ${RANGE} GROUP BY pct ORDER BY pct`),
@@ -1288,6 +1288,10 @@ async function handlePageMap(request, env) {
                  COALESCE(json_extract(properties,'$.label'), json_extract(properties,'$.value')) k,
                  COUNT(*) n
           FROM events WHERE event_name='form_step_choice' AND ${RANGE} GROUP BY step_id, k ORDER BY n DESC`),
+    // Quem converteu de verdade: lead gravado com origem NESTA página. Fecha o mapa
+    // (rolagem/cliques/etapas) com o resultado, que antes só existia na aba geral.
+    env.DB.prepare(`SELECT COUNT(*) n, COUNT(DISTINCT session_id) s FROM leads
+                    WHERE source=? AND DATE(created_at) BETWEEN ? AND ?`).bind(...b).first(),
   ]);
 
   const s = sess || {};
@@ -1295,6 +1299,7 @@ async function handlePageMap(request, env) {
     page: pageName, range: { start, end },
     sessions: s.n || 0, views: s.views || 0,
     scroll, sections, elements, steps, choices,
+    leads: { total: (leads && leads.n) || 0, sessions: (leads && leads.s) || 0 },
   });
 }
 
@@ -3696,12 +3701,17 @@ function renderPageMapKpis(d){
   var m=scrollReach(d), s=d.sessions||0;
   var clicks=(d.elements||[]).reduce(function(a,x){return a+Number(x.n||0)},0);
   var steps=(d.steps||[]).length;
+  var leadN=(d.leads&&d.leads.sessions)||0, leadTotal=(d.leads&&d.leads.total)||0;
   var kpis=[
     ["Sessões na página",pretty(s),pretty(d.views)+" acessos"],
     ["Rolagem média",s?avgDepth(d)+"%":"—","da altura da página"],
     ["Chegaram ao fim",s?pct(m[100],s)+"%":"—",pretty(m[100])+" pessoas"],
     ["Cliques registrados",pretty(clicks),(d.elements||[]).length+" elementos diferentes"],
-    [steps?"Etapas medidas":"Seções lidas",steps?String(steps):String((d.sections||[]).length),steps?"perguntas do formulário":"blocos com data-section"]
+    [steps?"Etapas medidas":"Seções lidas",steps?String(steps):String((d.sections||[]).length),steps?"perguntas do formulário":"blocos com data-section"],
+    // Leads da página: denominador é a sessão (mesma base dos outros cards), não o envio,
+    // pra ler direto como taxa de conversão. Quando alguém envia mais de uma vez, o total
+    // de envios aparece no rodapé do card.
+    ["Enviaram o formulário",pretty(leadN),s?pct(leadN,s)+"% das sessões na página":pretty(leadTotal)+" envios"]
   ];
   document.getElementById("hmKpis").innerHTML=kpis.map(function(k){
     return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>';
