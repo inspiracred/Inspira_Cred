@@ -231,7 +231,7 @@
   }, true);
 
   /* ---- Mapa de calor: toque/clique com coordenadas percentuais do documento ---- */
-  var HEATMAP_PAGES = { link_bio: 1, landing_page: 1, home_equity_lp: 1, home_equity_form: 1 };
+  var HEATMAP_PAGES = { link_bio: 1, landing_page: 1, home_equity_lp: 1, home_equity_form: 1, home_institucional: 1 };
   if (HEATMAP_PAGES[PAGE]) {
     document.addEventListener("click", function (e) {
       var docH = document.documentElement.scrollHeight || 1;

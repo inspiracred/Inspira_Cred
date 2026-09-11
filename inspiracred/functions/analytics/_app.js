@@ -445,6 +445,9 @@ const RD_PAGE_CONFIG = {
   landing_page: { identificador: "Simulação", label: "Simulação" },
   home_equity_lp: { identificador: "Home Equity", label: "Home Equity" },
   home_equity_form: { identificador: "Typeform", label: "Typeform" },
+  // Home institucional (/home/). ⚠️ Identificador NOVO: pra virar Negociação, o cliente
+  // precisa incluí-lo como gatilho do fluxo "Form nativo > pipe" no RD.
+  home_institucional: { identificador: "Site Institucional", label: "Site Institucional" },
 };
 
 // Rótulo legível da classificação — vai no campo de Lead cf_classificacao_lead.
@@ -455,12 +458,17 @@ const LEAD_KIND_LABEL = {
   auto: "Lead automotivo",
   baixo_valor: "Lead desqualificado",
   descarte: "Banco de dados — não qualificado",
+  institucional: "Lead site institucional",
 };
 
 function normalizeLeadKind(event) {
   const current = event.lead_kind || "";
   if (current === "auto") return "auto";
   if (current === "descarte") return "descarte";
+  // Site institucional (/home/): não pergunta valor de imóvel, então a régua do Home
+  // Equity (imóvel ≥ 400 mil) não se aplica — o mínimo de R$ 100 mil de crédito é
+  // validado no formulário. Veículos já chegam como "auto" (return acima).
+  if (event.source === "home_institucional") return "institucional";
 
   const credit = Number(event.credit_value || 0);
   const property = Number(event.property_value || 0);
@@ -475,7 +483,7 @@ function normalizeLeadKind(event) {
 }
 
 function shouldSendLeadToRD(kind) {
-  return kind === "home_equity" || kind === "home_equity_mql" || kind === "auto" || kind === "baixo_valor";
+  return kind === "home_equity" || kind === "home_equity_mql" || kind === "auto" || kind === "baixo_valor" || kind === "institucional";
 }
 
 async function markLeadStatus(env, leadId, column, status) {
@@ -512,6 +520,20 @@ async function recordMetaEventAudit(env, event, leadId) {
 // cf_classificacao_lead, pra não misturar página de origem com classificação.
 function rdIdentificador(cfg) {
   return cfg.identificador;
+}
+
+// Tags do RD: tipo do lead + (Site Institucional) "site institucional" e a solução
+// escolhida no formulário da Home. Tag não depende de campo criado na conta — o RD cria
+// na hora — por isso é o jeito de a equipe ver a solução sem mexer em campo/combinação.
+function rdTags(event) {
+  const tags = [];
+  if (event.lead_kind === "auto") tags.push("lead automóvel");
+  if (event.lead_kind === "baixo_valor") tags.push("lead não qualificado");
+  if (event.source === "home_institucional") {
+    tags.push("site institucional");
+    if (event.solucao) tags.push(String(event.solucao).toLowerCase().slice(0, 60));
+  }
+  return tags.length ? tags : undefined;
 }
 
 async function sendLeadToRD(event, env, leadId) {
@@ -554,9 +576,7 @@ async function sendLeadToRD(event, env, leadId) {
   const payload = {
     token_rdstation: env.RD_STATION_TOKEN,
     identificador: rdIdentificador(cfg),
-    tags: event.lead_kind === "auto"
-      ? ["lead automóvel"]
-      : (event.lead_kind === "baixo_valor" ? ["lead não qualificado"] : undefined),
+    tags: rdTags(event),
     nome: event.name || undefined,
     email: event.email || (phoneDigits ? `${phoneDigits}@lead.inspiracred.com.br` : undefined),
     telefone: phoneDigits ? `+55${phoneDigits}` : undefined,
@@ -588,6 +608,10 @@ async function sendLeadToRD(event, env, leadId) {
     cf_imovel_quitado: imovelQuitado,
     // "cidade" — campo PADRÃO do RD (nome de API "city", não é cf_*). Vem do multi-step.
     city: str(event.city),
+    // "Estado" — campo PADRÃO do RD (nome de API "state"). Só a Home institucional manda
+    // (UF, ex. "RJ"). ⚠️ Não conferido na conta ainda: se o nome não bater, o RD ignora
+    // em silêncio (não quebra o envio).
+    state: str(event.state),
     // "Saldo Devedor" (cf_saldo_devedor, TEXTO) — campo de Lead CRIADO em 2026-07-28.
     // ⚠️ Identificador LIDO na tela depois de criar (o RD gera o slug a partir do nome);
     // conferido: `cf_saldo_devedor`. Só vem preenchido quando o bem está financiado —
@@ -2178,6 +2202,7 @@ const DASHBOARD_HTML = `<!doctype html>
           <option value="landing_page">Simulação</option>
           <option value="home_equity_lp">Home Equity</option>
           <option value="home_equity_form">Typeform</option>
+          <option value="home_institucional">Site institucional</option>
         </select>
         <select id="hmDevice"><option value="mobile" selected>Mobile</option><option value="tablet">Tablet</option><option value="desktop">Desktop</option></select>
         <button id="hmLoad" class="primary">Carregar</button>
@@ -2264,9 +2289,9 @@ const DASHBOARD_HTML = `<!doctype html>
 
 <script>
 var dailyChart=null, sourceChart=null, leadTypeChart=null, lastLeads=[], lastAllLeads=[], activeTab="overview";
-var PAGE_LABELS={landing_page:"Simulação",home_equity_lp:"Home Equity",home_equity_form:"Typeform",link_bio:"Link na bio",obrigado_simulacao:"Obrigado · Simulação",obrigado_home_equity:"Obrigado · Home Equity",obrigado_formulario:"Obrigado · Typeform",obrigado_auto:"Obrigado · Auto",obrigado_nao_elegivel:"Obrigado · Não elegível",other:"Outras"};
-var LEAD_KIND_LABELS={home_equity:"Lead",home_equity_mql:"Lead qualificado",baixo_valor:"Lead desqualificado",auto:"Lead automotivo",descarte:"Banco de dados (sem imóvel/veículo)"};
-var PAGE_URLS={landing_page:"https://nova.inspiracred.com.br/",home_equity_lp:"https://nova.inspiracred.com.br/homeequity/",home_equity_form:"https://nova.inspiracred.com.br/formulario/",link_bio:"https://links.inspiracred.com.br/",obrigado_simulacao:"https://nova.inspiracred.com.br/obrigado/simulacao/",obrigado_home_equity:"https://nova.inspiracred.com.br/obrigado/home-equity/",obrigado_formulario:"https://nova.inspiracred.com.br/obrigado/formulario/",obrigado_auto:"https://nova.inspiracred.com.br/obrigado/auto/",obrigado_nao_elegivel:"https://nova.inspiracred.com.br/obrigado/nao-elegivel/"};
+var PAGE_LABELS={landing_page:"Simulação",home_institucional:"Site institucional",home_equity_lp:"Home Equity",home_equity_form:"Typeform",link_bio:"Link na bio",obrigado_simulacao:"Obrigado · Simulação",obrigado_home_equity:"Obrigado · Home Equity",obrigado_formulario:"Obrigado · Typeform",obrigado_auto:"Obrigado · Auto",obrigado_nao_elegivel:"Obrigado · Não elegível",other:"Outras"};
+var LEAD_KIND_LABELS={home_equity:"Lead",institucional:"Lead site institucional",home_equity_mql:"Lead qualificado",baixo_valor:"Lead desqualificado",auto:"Lead automotivo",descarte:"Banco de dados (sem imóvel/veículo)"};
+var PAGE_URLS={landing_page:"https://nova.inspiracred.com.br/",home_institucional:"https://nova.inspiracred.com.br/home/",home_equity_lp:"https://nova.inspiracred.com.br/homeequity/",home_equity_form:"https://nova.inspiracred.com.br/formulario/",link_bio:"https://links.inspiracred.com.br/",obrigado_simulacao:"https://nova.inspiracred.com.br/obrigado/simulacao/",obrigado_home_equity:"https://nova.inspiracred.com.br/obrigado/home-equity/",obrigado_formulario:"https://nova.inspiracred.com.br/obrigado/formulario/",obrigado_auto:"https://nova.inspiracred.com.br/obrigado/auto/",obrigado_nao_elegivel:"https://nova.inspiracred.com.br/obrigado/nao-elegivel/"};
 var CHART_PALETTE=["#f97316","#0b2d72","#10b981","#f59e0b","#3b82f6","#8b5cf6","#ec4899"];
 var META_SOURCES=["meta_ads","fb","ig","facebook","instagram"];
 function isMetaSourceValue(v){return META_SOURCES.indexOf(String(v||"").toLowerCase())>-1||/meta|facebook|instagram/i.test(String(v||""));}
@@ -3120,11 +3145,11 @@ function leadMatchesFilter(l){
      vermelho = Lead desqualificado · cinza = banco de dados (sem imóvel nem veículo) */
 function leadKindPill(k){
   var lb=LEAD_KIND_LABELS[k]||pretty(k);
-  var cls=k==="home_equity_mql"?"green":(k==="home_equity"||k==="auto"?"blue":(k==="baixo_valor"?"err":"wait"));
+  var cls=k==="home_equity_mql"?"green":(k==="home_equity"||k==="auto"||k==="institucional"?"blue":(k==="baixo_valor"?"err":"wait"));
   return '<span class="pill '+cls+'">'+esc(lb)+'</span>';
 }
 function leadHasMetaLead(l){
-  return (l.lead_kind==="home_equity"||l.lead_kind==="home_equity_mql"||l.lead_kind==="auto")&&l.meta_status==="ok";
+  return (l.lead_kind==="home_equity"||l.lead_kind==="home_equity_mql"||l.lead_kind==="auto"||l.lead_kind==="institucional")&&l.meta_status==="ok";
 }
 function leadHasMql(l){return l.lead_kind==="home_equity_mql"&&l.meta_status==="ok";}
 function eventDot(label,state,title){
@@ -3153,7 +3178,7 @@ function leadEventDot(l,type){
     return statusDot("RD",l.rd_status,true);
   }
   if(type==="lead"){
-    var appliesLead=kind==="home_equity"||kind==="home_equity_mql"||kind==="auto";
+    var appliesLead=kind==="home_equity"||kind==="home_equity_mql"||kind==="auto"||kind==="institucional";
     return statusDot("Lead",l.meta_status,appliesLead||!!l.meta_status,
       appliesLead?null:"Lead desqualificado não dispara evento de conversão no Meta");
   }
@@ -3178,8 +3203,8 @@ function eventLegend(){
 var MIN_IMOVEL=400000, MIN_CREDITO=200000, MQL_IMOVEL=1000000, MQL_CREDITO=500000;
 function valorCell(v,minimo,kind){
   if(v==null||v==="")return '<span class="val-na">—</span>';
-  // automóvel e descarte não são avaliados pela régua do imóvel: mostra neutro
-  if(kind==="auto"||kind==="descarte")return '<span class="val-na">'+brl(v)+'</span>';
+  // automóvel, descarte e site institucional não são avaliados pela régua do imóvel: mostra neutro
+  if(kind==="auto"||kind==="descarte"||kind==="institucional")return '<span class="val-na">'+brl(v)+'</span>';
   var ok=Number(v)>=minimo;
   return '<span class="val-'+(ok?'ok':'no')+'" title="'+(ok?'atende ao mínimo de ':'abaixo do mínimo de ')+brl(minimo)+'">'+brl(v)+'</span>';
 }
@@ -3395,7 +3420,7 @@ function drawDonut(id,labels,data){
 /* ---- Mapa de calor ---- */
 // Paths same-origin (as 3 páginas existem no projeto Pages inspira-cred) → dá pra
 // medir a altura real do iframe sem esbarrar em CORS.
-var HM_PATHS={link_bio:"/links/",landing_page:"/",home_equity_lp:"/homeequity/",home_equity_form:"/formulario/"};
+var HM_PATHS={link_bio:"/links/",landing_page:"/",home_institucional:"/home/",home_equity_lp:"/homeequity/",home_equity_form:"/formulario/"};
 var hmRamp=null;
 function heatRamp(){
   if(hmRamp)return hmRamp;
@@ -3917,6 +3942,7 @@ var PAGE_OPTS=[
   {value:"landing_page",label:"Simulação"},
   {value:"home_equity_lp",label:"Home Equity"},
   {value:"home_equity_form",label:"Typeform"},
+  {value:"home_institucional",label:"Site institucional"},
   {value:"link_bio",label:"Link na bio"},
   {value:"obrigado_simulacao",label:"Obrigado · Simulação"},
   {value:"obrigado_home_equity",label:"Obrigado · Home Equity"},
@@ -3930,6 +3956,7 @@ var KIND_OPTS=[
   {value:"home_equity_mql",label:"Lead qualificado"},
   {value:"home_equity",label:"Lead"},
   {value:"auto",label:"Lead automotivo"},
+  {value:"institucional",label:"Lead site institucional"},
   {value:"baixo_valor",label:"Lead desqualificado"},
   {value:"descarte",label:"Sem imóvel/veículo"}
 ];
@@ -3958,9 +3985,9 @@ document.getElementById("csvBtn").addEventListener("click",exportCSV);
 document.getElementById("srcAll").addEventListener("click",function(){mselAtalho("src",[]);});
 document.getElementById("srcOnlyMeta").addEventListener("click",function(){mselAtalho("src",metaSourceValues());});
 document.getElementById("pageAll").addEventListener("click",function(){mselAtalho("page",[]);});
-document.getElementById("pageCapt").addEventListener("click",function(){mselAtalho("page",["landing_page","home_equity_lp","home_equity_form"]);});
+document.getElementById("pageCapt").addEventListener("click",function(){mselAtalho("page",["landing_page","home_equity_lp","home_equity_form","home_institucional"]);});
 document.getElementById("kindAll").addEventListener("click",function(){mselAtalho("kind",[]);});
-document.getElementById("kindConv").addEventListener("click",function(){mselAtalho("kind",["home_equity","home_equity_mql","auto"]);});
+document.getElementById("kindConv").addEventListener("click",function(){mselAtalho("kind",["home_equity","home_equity_mql","auto","institucional"]);});
 // clicar fora (ou Esc) fecha os painéis — é ao fechar que o filtro é aplicado
 document.addEventListener("click",mselCloseAll);
 document.addEventListener("keydown",function(e){if(e.key==="Escape")mselCloseAll();});

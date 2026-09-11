@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>InspiraCred | Soluções de crédito para pessoas e empresas</title>
+    <meta name="description" content="A InspiraCred ajuda pessoas e empresas a encontrar soluções de crédito, analisando diferentes instituições financeiras e acompanhando a operação do início ao fim." />
+    <!-- Em aprovação em /home/: fora do Google até virar a página principal (aí sai o noindex). -->
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#061a42" />
+    <link rel="icon" type="image/svg+xml" href="/assets/icons/favicon.svg" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="InspiraCred | Soluções de crédito para pessoas e empresas" />
+    <meta property="og:description" content="Crédito para realizar projetos maiores, investir na empresa ou organizar sua vida financeira." />
+    <meta property="og:image" content="img/equipe.webp" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+
+  <body class="loading">
+    <!-- Ícones (sprite): <svg class="ic"><use href="#i-..."/></svg> -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+      <symbol id="i-arrow" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></g></symbol>
+      <symbol id="i-wa" viewBox="0 0 24 24"><path fill="currentColor" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/></symbol>
+      <symbol id="i-home" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></g></symbol>
+      <symbol id="i-briefcase" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></g></symbol>
+      <symbol id="i-car" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></g></symbol>
+      <symbol id="i-key" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></g></symbol>
+      <symbol id="i-landmark" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></g></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></g></symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></g></symbol>
+      <symbol id="i-route" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></g></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></g></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></g></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></g></symbol>
+      <symbol id="i-mail" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></g></symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></g></symbol>
+      <symbol id="i-instagram" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></g></symbol>
+      <symbol id="i-facebook" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></g></symbol>
+      <symbol id="i-linkedin" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></g></symbol>
+      <symbol id="i-chev" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></g></symbol>
+    </svg>
+
+    <!-- ============ 1. HEADER ============ -->
+    <header class="site-header" id="site-header">
+      <div class="header-inner">
+        <a class="brand" href="#inicio" aria-label="InspiraCred — voltar ao início">
+          <img src="../assets/img/landing-logo-ref.png" alt="InspiraCred" />
+        </a>
+        <nav class="main-nav" id="main-nav" aria-label="Navegação principal">
+          <a href="#solucoes" data-nav="solucoes">Soluções</a>
+          <a href="#diferenciais" data-nav="diferenciais">Diferenciais</a>
+          <a href="#parceiro" data-nav="parceiro">Seja parceiro</a>
+          <a href="#equipe" data-nav="equipe">Nossa equipe</a>
+          <a href="#faq" data-nav="faq">Perguntas frequentes</a>
+          <a class="button button-sm nav-cta" id="home-header-cta" href="#simular">Simular meu crédito</a>
+        </nav>
+        <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="main-nav" aria-label="Abrir menu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </header>
+
+    <main class="page">
+      <!-- ============ 2. PRIMEIRA DOBRA ============ -->
+      <!-- Foto: pessoas reais em planejamento financeiro (nada de imóvel, dinheiro voando ou
+           mão segurando casa — a Home representa TODAS as soluções). -->
+      <section class="hero" id="inicio" data-section="hero">
+        <div class="shell hero-grid">
+          <div class="hero-copy" data-reveal>
+            <span class="eyebrow on-dark">Soluções de crédito</span>
+            <h1 class="hero-title">Crédito para realizar projetos maiores, investir na empresa ou organizar sua vida financeira.</h1>
+            <p class="hero-subtitle">A InspiraCred ajuda pessoas e empresas a encontrar soluções de crédito, analisando diferentes instituições financeiras e acompanhando a operação do início ao fim.</p>
+            <div class="hero-actions">
+              <a class="button button-lg" id="home-hero-cta" href="#simular">Simular meu crédito<svg class="ic" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+            </div>
+            <div class="hero-solutions">
+              <span class="hs-label">Soluções para</span>
+              <ul>
+                <li><a href="#sol-home-equity">Garantia de imóvel</a></li>
+                <li><a href="#sol-capital-giro">Capital de giro</a></li>
+                <li><a href="#sol-veiculos">Veículos</a></li>
+                <li><a href="#sol-financiamento-imoveis">Financiamento de imóveis</a></li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="hero-media" data-reveal>
+            <figure class="hero-photo">
+              <img src="img/consultoria.webp" alt="Consultor em reunião de planejamento financeiro com uma cliente" width="900" height="900" fetchpriority="high" />
+            </figure>
+            <div class="hero-card hc-bottom" aria-hidden="true">
+              <span class="hc-ic"><svg class="ic"><use href="#i-landmark"/></svg></span>
+              <div><strong>Diferentes instituições</strong><span>analisadas para o seu perfil</span></div>
+            </div>
+            <div class="hero-card hc-top" aria-hidden="true"><span class="hc-dot"></span>Acompanhamento do início ao fim</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 3. FORMULÁRIO (transborda a primeira dobra) ============ -->
+      <section class="section simular" data-section="form">
+        <div class="shell">
+          <div class="form-shell" id="simular" data-reveal>
+            <form class="form-card is-dark" id="home-lead-form" novalidate>
+              <div class="form-head">
+                <h2 class="form-title">Solicite uma simulação do seu crédito.</h2>
+                <p class="sub">Preencha seus dados e nossa equipe entra em contato com você.</p>
+              </div>
+              <div class="form-rows">
+                <div class="form-row form-row-3">
+                  <div class="field">
+                    <label for="f-nome">Nome completo <span class="req">*</span></label>
+                    <input class="input" id="f-nome" name="nome" type="text" placeholder="Digite seu nome completo" autocomplete="name" />
+                    <p class="field-error" data-error="nome"></p>
+                  </div>
+                  <div class="field">
+                    <label for="f-email">E-mail <span class="req">*</span></label>
+                    <input class="input" id="f-email" name="email" type="email" placeholder="Digite seu e-mail" autocomplete="email" />
+                    <p class="field-error" data-error="email"></p>
+                  </div>
+                  <div class="field">
+                    <label for="f-celular">Celular <span class="req">*</span></label>
+                    <div class="phone-field">
+                      <span class="phone-prefix"><span class="flag" aria-hidden="true">🇧🇷</span> +55</span>
+                      <input class="input" id="f-celular" name="celular" type="tel" inputmode="tel" placeholder="(DDD) + celular" autocomplete="tel-national" />
+                    </div>
+                    <p class="field-error" data-error="celular"></p>
+                  </div>
+                </div>
+                <div class="form-row form-row-4">
+                  <div class="field">
+                    <label for="f-estado">Estado <span class="req">*</span></label>
+                    <select class="select" id="f-estado" name="estado" autocomplete="address-level1">
+                      <option value="" disabled selected>Selecione</option>
+                      <option value="AC">Acre</option>
+                      <option value="AL">Alagoas</option>
+                      <option value="AP">Amapá</option>
+                      <option value="AM">Amazonas</option>
+                      <option value="BA">Bahia</option>
+                      <option value="CE">Ceará</option>
+                      <option value="DF">Distrito Federal</option>
+                      <option value="ES">Espírito Santo</option>
+                      <option value="GO">Goiás</option>
+                      <option value="MA">Maranhão</option>
+                      <option value="MT">Mato Grosso</option>
+                      <option value="MS">Mato Grosso do Sul</option>
+                      <option value="MG">Minas Gerais</option>
+                      <option value="PA">Pará</option>
+                      <option value="PB">Paraíba</option>
+                      <option value="PR">Paraná</option>
+                      <option value="PE">Pernambuco</option>
+                      <option value="PI">Piauí</option>
+                      <option value="RJ">Rio de Janeiro</option>
+                      <option value="RN">Rio Grande do Norte</option>
+                      <option value="RS">Rio Grande do Sul</option>
+                      <option value="RO">Rondônia</option>
+                      <option value="RR">Roraima</option>
+                      <option value="SC">Santa Catarina</option>
+                      <option value="SP">São Paulo</option>
+                      <option value="SE">Sergipe</option>
+                      <option value="TO">Tocantins</option>
+                    </select>
+                    <p class="field-error" data-error="estado"></p>
+                  </div>
+                  <div class="field">
+                    <label for="f-cidade">Cidade <span class="req">*</span></label>
+                    <!-- datalist preenchida com as cidades do IBGE do estado escolhido: é só
+                         sugestão — se a API não responder, a pessoa digita normalmente. -->
+                    <input class="input" id="f-cidade" name="cidade" type="text" list="cidades-list" placeholder="Digite sua cidade" autocomplete="address-level2" />
+                    <datalist id="cidades-list"></datalist>
+                    <p class="field-error" data-error="cidade"></p>
+                  </div>
+                  <div class="field">
+                    <label for="f-valor">Valor do crédito desejado <span class="req">*</span></label>
+                    <input class="input money" id="f-valor" name="valor_credito" type="text" inputmode="numeric" placeholder="Mínimo R$ 100.000" />
+                    <p class="field-error" data-error="valor_credito"></p>
+                  </div>
+                  <div class="field">
+                    <label for="f-solucao">Tipo de solução desejada <span class="req">*</span></label>
+                    <select class="select" id="f-solucao" name="solucao">
+                      <option value="" disabled selected>Selecione</option>
+                      <option value="home_equity">Empréstimo com garantia de imóvel</option>
+                      <option value="capital_giro">Capital de giro</option>
+                      <option value="financiamento_imoveis">Financiamento de imóveis</option>
+                      <option value="veiculos">Financiamento e refinanciamento de veículos</option>
+                    </select>
+                    <p class="field-error" data-error="solucao"></p>
+                  </div>
+                </div>
+              </div>
+              <p class="form-message" id="form-message" role="alert"></p>
+              <div class="form-foot">
+                <div class="form-foot-left">
+                  <button class="button button-lg form-submit-btn" id="home-form-submit" type="submit">Enviar</button>
+                  <p class="form-note">Ao enviar, você concorda com nossa <a href="/politica-de-privacidade.html" target="_blank" rel="noopener noreferrer">Política de Privacidade</a>.</p>
+                </div>
+                <div class="form-trust">
+                  <span><svg class="ic tr-lock" aria-hidden="true"><use href="#i-lock"/></svg>Dados criptografados</span>
+                  <span><svg class="ic tr-shield" aria-hidden="true"><use href="#i-shield"/></svg>Sem compromisso</span>
+                </div>
+              </div>
+            </form>
+
+            <div class="form-card is-dark form-success is-hidden" id="form-success" role="status" tabindex="-1">
+              <span class="ok"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg></span>
+              <h3>Recebemos suas informações!</h3>
+              <p>Logo nossa equipe entrará em contato.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 4. SOLUÇÕES ============ -->
+      <section class="section solucoes" id="solucoes" data-section="solucoes">
+        <div class="shell">
+          <div class="section-head" data-reveal>
+            <span class="eyebrow">Soluções</span>
+            <h2 class="section-title">Soluções de crédito para diferentes necessidades.</h2>
+          </div>
+
+          <div class="sol-grid" data-stagger>
+            <article class="sol-card" id="sol-home-equity">
+              <div class="sol-top">
+                <span class="sol-ic"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg></span>
+                <span class="sol-num" aria-hidden="true">01</span>
+              </div>
+              <h3>Crédito com Garantia de Imóvel <span class="sol-alias">(Home Equity)</span></h3>
+              <p>Use seu imóvel como garantia para buscar um crédito de maior valor, sem precisar vender o patrimônio e com acesso a taxas mais competitivas do mercado.</p>
+              <p class="sol-highlight"><strong>Libere até 60% do valor do seu imóvel</strong> e utilize como quiser: quitar dívidas, investir ou realizar grandes projetos.</p>
+              <div class="sol-cta">
+                <a class="button-wa" id="home-wa-home-equity" href="https://wa.me/5521977340731?text=Ol%C3%A1%2C%20vim%20pelo%20site%20da%20InspiraCred%20e%20tenho%20interesse%20em%20cr%C3%A9dito%20com%20garantia%20de%20im%C3%B3vel." target="_blank" rel="noopener noreferrer"><svg class="ic" aria-hidden="true"><use href="#i-wa"/></svg>Fale com um especialista</a>
+              </div>
+            </article>
+
+            <article class="sol-card" id="sol-capital-giro">
+              <div class="sol-top">
+                <span class="sol-ic"><svg class="ic" aria-hidden="true"><use href="#i-briefcase"/></svg></span>
+                <span class="sol-num" aria-hidden="true">02</span>
+              </div>
+              <h3>Capital de Giro</h3>
+              <p>Obtenha recursos de forma simplificada para reforçar o caixa, expandir seu negócio ou aproveitar oportunidades que exigem capital disponível.</p>
+              <p>A InspiraCred avalia o cenário da empresa e busca as melhores opções para a sua necessidade.</p>
+              <div class="sol-cta">
+                <a class="button-wa" id="home-wa-capital-giro" href="https://wa.me/5521977340731?text=Ol%C3%A1%2C%20vim%20pelo%20site%20da%20InspiraCred%20e%20tenho%20interesse%20em%20capital%20de%20giro." target="_blank" rel="noopener noreferrer"><svg class="ic" aria-hidden="true"><use href="#i-wa"/></svg>Fale com um especialista</a>
+              </div>
+            </article>
+
+            <article class="sol-card" id="sol-veiculos">
+              <div class="sol-top">
+                <span class="sol-ic"><svg class="ic" aria-hidden="true"><use href="#i-car"/></svg></span>
+                <span class="sol-num" aria-hidden="true">03</span>
+              </div>
+              <h3>Financiamento e Refinanciamento de Veículos</h3>
+              <p>Adquira ou refinancie seu veículo com taxas competitivas e prazos acessíveis.</p>
+              <div class="sol-cta">
+                <a class="button-wa" id="home-wa-veiculos" href="https://wa.me/5521977340731?text=Ol%C3%A1%2C%20vim%20pelo%20site%20da%20InspiraCred%20e%20tenho%20interesse%20em%20financiamento%20de%20ve%C3%ADculos." target="_blank" rel="noopener noreferrer"><svg class="ic" aria-hidden="true"><use href="#i-wa"/></svg>Fale com um especialista</a>
+              </div>
+            </article>
+
+            <article class="sol-card" id="sol-financiamento-imoveis">
+              <div class="sol-top">
+                <span class="sol-ic"><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg></span>
+                <span class="sol-num" aria-hidden="true">04</span>
+              </div>
+              <h3>Financiamento de Imóveis</h3>
+              <p class="sol-highlight"><strong>Financiamento para sua nova casa</strong>, a partir de R$ 300 mil de crédito.</p>
+              <p>Encontre flexibilidade para comprar ou construir a casa dos seus sonhos.</p>
+              <div class="sol-cta">
+                <a class="button-wa" id="home-wa-financiamento-imoveis" href="https://wa.me/5521977340731?text=Ol%C3%A1%2C%20vim%20pelo%20site%20da%20InspiraCred%20e%20tenho%20interesse%20em%20financiamento%20de%20im%C3%B3veis." target="_blank" rel="noopener noreferrer"><svg class="ic" aria-hidden="true"><use href="#i-wa"/></svg>Fale com um especialista</a>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 5. DIFERENCIAL INSPIRACRED ============ -->
+      <section class="section diferenciais" id="diferenciais" data-section="diferenciais">
+        <div class="shell dif-grid">
+          <div class="dif-aside" data-reveal>
+            <span class="eyebrow">Diferenciais</span>
+            <h2 class="section-title">Por que contar com a InspiraCred</h2>
+            <a class="button button-lg dif-cta-desk" id="home-diferenciais-cta" href="#simular">Quero analisar minhas possibilidades</a>
+          </div>
+
+          <ol class="dif-list">
+            <li class="dif-item" data-reveal>
+              <span class="dif-n" aria-hidden="true">01</span>
+              <div>
+                <h3>Você encontra onde seu crédito pode ter melhor encaixe, sem precisar pesquisar de banco em banco.</h3>
+                <p>A InspiraCred trabalha com diferentes instituições e ajuda a estruturar a busca pelo crédito de acordo com o seu perfil, o valor necessário, o patrimônio disponível e o objetivo da operação.</p>
+                <p>Na prática, você deixa de gastar tempo preenchendo formulários e tentando descobrir sozinho onde sua solicitação pode ser aceita.</p>
+              </div>
+            </li>
+            <li class="dif-item" data-reveal>
+              <span class="dif-n" aria-hidden="true">02</span>
+              <div>
+                <h3>Você amplia as possibilidades para operações de maior valor</h3>
+                <p>Algumas necessidades exigem um volume de crédito que linhas mais simples nem sempre conseguem oferecer, seja para reorganizar compromissos financeiros, investir em um negócio ou realizar um projeto de maior porte.</p>
+                <p>A InspiraCred avalia alternativas que podem atender operações de valores mais elevados.</p>
+              </div>
+            </li>
+            <li class="dif-item" data-reveal>
+              <span class="dif-n" aria-hidden="true">03</span>
+              <div>
+                <h3>Você acessa alternativas além do crédito tradicional</h3>
+                <p>Em vez de depender apenas de financiamentos, empréstimos pessoais, cartão de crédito ou cheque especial, que podem ter juros elevados e parcelas pesadas, a InspiraCred avalia outras possibilidades de crédito de acordo com o seu perfil, patrimônio e objetivo.</p>
+              </div>
+            </li>
+            <li class="dif-item" data-reveal>
+              <span class="dif-n" aria-hidden="true">04</span>
+              <div>
+                <h3>Você encontra alternativas para investir sem comprometer todo o caixa da empresa</h3>
+                <p>Reforçar capital de giro, expandir a operação ou aproveitar uma oportunidade pode exigir recursos que não podem ser retirados integralmente do caixa.</p>
+                <p>A InspiraCred analisa alternativas de crédito que permitam financiar esses movimentos preservando maior liquidez para a operação da empresa.</p>
+              </div>
+            </li>
+            <li class="dif-item" data-reveal>
+              <span class="dif-n" aria-hidden="true">05</span>
+              <div>
+                <h3>Você pode transformar seu patrimônio em acesso a capital</h3>
+                <p>Seu imóvel pode ser utilizado como garantia para buscar crédito de maior valor sem precisar ser vendido.</p>
+                <p>Essa possibilidade pode atender tanto quem deseja reorganizar a vida financeira quanto empresários que querem transformar parte do patrimônio em capital para investir.</p>
+              </div>
+            </li>
+          </ol>
+
+          <!-- No mobile o botão vem DEPOIS da lista (no desktop ele fica fixo na coluna da esquerda). -->
+          <a class="button button-lg dif-cta-mobile" id="home-diferenciais-cta-mobile" href="#simular">Quero analisar minhas possibilidades</a>
+        </div>
+      </section>
+
+      <!-- ============ 6. SEJA PARCEIRO ============ -->
+      <section class="section parceiro" id="parceiro" data-section="parceiro">
+        <div class="shell parceiro-grid">
+          <div class="parceiro-copy" data-reveal>
+            <span class="eyebrow on-dark">Seja parceiro</span>
+            <h2 class="section-title on-dark">Seja parceiro por indicação da InspiraCred</h2>
+            <p class="section-copy on-dark">Indique clientes e seja remunerado pelas operações concluídas.</p>
+            <a class="button button-lg" id="home-wa-parceiro" href="https://wa.me/5521977340731?text=Ol%C3%A1!%20Tenho%20interesse%20em%20ser%20parceiro%20da%20InspiraCred." target="_blank" rel="noopener noreferrer"><svg class="ic" aria-hidden="true"><use href="#i-wa"/></svg>Quero ser parceiro da InspiraCred</a>
+          </div>
+
+          <div class="parceiro-steps" data-reveal>
+            <p class="steps-label">Como funciona</p>
+            <ol class="steps" data-stagger>
+              <li class="step">
+                <span class="step-n" aria-hidden="true">1</span>
+                <div><h3>Você identifica a oportunidade</h3><p>Um cliente, contato ou empresa da sua rede precisa de crédito.</p></div>
+              </li>
+              <li class="step">
+                <span class="step-n" aria-hidden="true">2</span>
+                <div><h3>A InspiraCred assume a operação</h3><p>Nossa equipe faz o atendimento e conduz a análise junto às instituições financeiras.</p></div>
+              </li>
+              <li class="step">
+                <span class="step-n" aria-hidden="true">3</span>
+                <div><h3>Você participa do resultado</h3><p>Operações elegíveis concluídas podem gerar remuneração conforme o acordo da parceria.</p></div>
+              </li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 7. CONHEÇA NOSSA EQUIPE ============ -->
+      <section class="section equipe" id="equipe" data-section="equipe">
+        <div class="shell equipe-grid">
+          <figure class="equipe-photo" data-reveal>
+            <img src="img/equipe.webp" alt="Equipe da InspiraCred reunida no escritório, em frente ao logo da empresa" width="1086" height="1448" loading="lazy" />
+          </figure>
+
+          <div class="equipe-body" data-reveal>
+            <span class="eyebrow">Nossa equipe</span>
+            <h2 class="section-title">Conheça quem está por trás da InspiraCred</h2>
+            <p class="section-copy">Nossa equipe é formada por especialistas em crédito que conhecem o mercado financeiro, avaliam onde cada operação pode ter melhor encaixe e acompanham de perto todo o processo até a liberação do recurso.</p>
+
+            <ul class="pilares" data-stagger>
+              <li class="pilar">
+                <span class="pilar-ic"><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg></span>
+                <div><strong>Especialistas em crédito</strong><span>Experiência para entender e estruturar diferentes operações.</span></div>
+              </li>
+              <li class="pilar">
+                <span class="pilar-ic"><svg class="ic" aria-hidden="true"><use href="#i-landmark"/></svg></span>
+                <div><strong>Diferentes instituições financeiras</strong><span>Mais possibilidades de acordo com o seu perfil e necessidade.</span></div>
+              </li>
+              <li class="pilar">
+                <span class="pilar-ic"><svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg></span>
+                <div><strong>Atendimento consultivo</strong><span>Você entende melhor as alternativas disponíveis antes de tomar uma decisão.</span></div>
+              </li>
+              <li class="pilar">
+                <span class="pilar-ic"><svg class="ic" aria-hidden="true"><use href="#i-route"/></svg></span>
+                <div><strong>Acompanhamento de ponta a ponta</strong><span>Nossa equipe permanece próxima ao longo da análise, documentação e demais etapas.</span></div>
+              </li>
+            </ul>
+
+            <p class="equipe-fecho">Seu crédito acompanhado por quem entende do assunto.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 8. PERGUNTAS FREQUENTES ============ -->
+      <section class="section faq" id="faq" data-section="faq">
+        <div class="shell-narrow center" data-reveal>
+          <span class="eyebrow">Dúvidas</span>
+          <h2 class="section-title">Perguntas frequentes</h2>
+        </div>
+        <div class="shell-narrow faq-list" data-reveal>
+          <div class="faq-item">
+            <button class="faq-q" type="button" aria-expanded="false">Quem é a InspiraCred?<svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></button>
+            <div class="faq-a"><p>A InspiraCred é uma empresa de soluções do ramo financeiro. Nós nascemos com a missão de levar as melhores soluções financeiras aos nossos clientes, de maneira personalizada, através do crédito consciente.</p></div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-q" type="button" aria-expanded="false">A InspiraCred atende o Brasil todo?<svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></button>
+            <div class="faq-a"><p>Sim. A InspiraCred atende clientes em todo o Brasil de forma online, acompanhando a operação desde a análise inicial até as etapas de contratação do crédito.</p></div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-q" type="button" aria-expanded="false">O que é Crédito com Garantia de Imóvel?<svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></button>
+            <div class="faq-a"><p>É uma modalidade de crédito em que um imóvel é utilizado como garantia da operação, sem precisar vender. Ela também é conhecida como Home Equity.</p></div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-q" type="button" aria-expanded="false">Quanto consigo de crédito?<svg class="chev" aria-hidden="true"><use href="#i-chev"/></svg></button>
+            <div class="faq-a"><p>O valor depende do perfil do cliente, do imóvel, da análise de crédito e dos critérios da instituição financeira responsável pela operação. Entre em contato conosco para <a href="#simular">fazer sua simulação</a>.</p></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ============ 9. FOOTER ============ -->
+    <footer class="footer" data-section="footer">
+      <div class="shell footer-top">
+        <div class="footer-brand">
+          <img class="logo" src="../assets/img/landing-logo-ref.png" alt="InspiraCred" />
+          <p>Soluções de crédito para pessoas e empresas, com análise em diferentes instituições financeiras e acompanhamento do início ao fim.</p>
+          <div class="footer-seals">
+            <img src="../assets/img/landing-seal-reclame.png" alt="Verificada no Reclame Aqui" />
+            <img src="../assets/img/landing-seal-aneps.png" alt="Certificação ANEPS" />
+          </div>
+        </div>
+
+        <div class="footer-col">
+          <h4>Contatos</h4>
+          <a class="footer-wa" id="home-footer-whatsapp" href="https://wa.me/5521977340731?text=Ol%C3%A1%2C%20vim%20pelo%20site%20da%20InspiraCred." target="_blank" rel="noopener noreferrer">
+            <svg class="ic" aria-hidden="true"><use href="#i-wa"/></svg>
+            <span><small>WhatsApp</small><strong>+55 21 97734-0731</strong></span>
+          </a>
+          <ul class="footer-list">
+            <li><svg class="ic" aria-hidden="true"><use href="#i-mail"/></svg><a href="mailto:contato@inspiracred.com.br">contato@inspiracred.com.br</a></li>
+            <li><svg class="ic" aria-hidden="true"><use href="#i-pin"/></svg><a href="https://www.google.com/maps/search/?api=1&amp;query=R.%20Mem%20de%20S%C3%A1%2C%2019%20-%20Icara%C3%AD%2C%20Niter%C3%B3i%20-%20RJ%2C%2024220-260" target="_blank" rel="noopener noreferrer">R. Mem de Sá, 19 – Icaraí, Niterói – RJ, 24220-260</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4>Redes sociais</h4>
+          <ul class="social">
+            <li><a href="https://www.instagram.com/inspiracred/" target="_blank" rel="noopener noreferrer"><span class="social-ic"><svg class="ic" aria-hidden="true"><use href="#i-instagram"/></svg></span>Instagram</a></li>
+            <li><a href="https://www.facebook.com/inspiracred/" target="_blank" rel="noopener noreferrer"><span class="social-ic"><svg class="ic" aria-hidden="true"><use href="#i-facebook"/></svg></span>Facebook</a></li>
+            <li><a href="https://www.linkedin.com/company/inspiracred/" target="_blank" rel="noopener noreferrer"><span class="social-ic"><svg class="ic" aria-hidden="true"><use href="#i-linkedin"/></svg></span>LinkedIn</a></li>
+            <!-- YouTube: entra depois da revisão do canal. -->
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4>Navegação</h4>
+          <ul class="footer-nav">
+            <li><a href="#solucoes">Soluções</a></li>
+            <li><a href="#diferenciais">Diferenciais</a></li>
+            <li><a href="#parceiro">Seja parceiro</a></li>
+            <li><a href="#equipe">Nossa equipe</a></li>
+            <li><a href="#faq">Perguntas frequentes</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="shell footer-bottom">
+        <p>Correspondente Bancário autorizado. Intermediadora de crédito com instituições parceiras reguladas pelo Banco Central. Parceiros: Banco Inter S.A., Banco Paulista S.A., Trinus S.A., entre outros. Operações sujeitas à aprovação de crédito.<br />© 2026 INSPIRA SOLUÇÕES E NEGÓCIOS LTDA — CNPJ 49.247.378/0001-83. Sede: Niterói/RJ.</p>
+        <div class="footer-legal-links">
+          <a href="/politica-de-privacidade.html" target="_blank" rel="noopener noreferrer">Política de Privacidade</a>
+          <a href="/termos-de-uso.html" target="_blank" rel="noopener noreferrer">Termos de Uso</a>
+        </div>
+      </div>
+    </footer>
+
+    <script src="script.js"></script>
+
+    <script>window.IC_PAGE = "home_institucional";</script>
+    <script src="../assets/js/track.js" defer></script>
+  </body>
+</html>
