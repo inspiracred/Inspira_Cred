@@ -649,10 +649,18 @@
               }
             } catch (e) {}
 
-            form.classList.add("is-hidden");
-            resultPanel.classList.remove("is-hidden");
-            if (submitBtn) submitBtn.disabled = false;
-            resultPanel.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+            // Mesmo fluxo da LP de Home Equity: qualificado vai pra página de obrigado com
+            // o botão do consultor no WhatsApp; baixo valor vai pra de não elegível. O
+            // atraso deixa o beacon do lead e o Pixel saírem antes da navegação (a página
+            // de obrigado não dispara conversão). O lead chega no RD de qualquer jeito,
+            // pelo servidor, então o redirecionamento não depende dele.
+            if (submitBtn) {
+              submitBtn.disabled = true;
+              submitBtn.textContent = "Enviando…";
+            }
+            setTimeout(function () {
+              window.location.href = kind === "baixo_valor" ? "/obrigado/nao-elegivel/" : "/obrigado/simulacao/";
+            }, 900);
           });
         }
 
