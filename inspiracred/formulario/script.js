@@ -218,7 +218,9 @@
       subtitle: "Um especialista da InspiraCred vai retornar com o resultado da sua simulação.",
       fields: [
         { id: "nome", label: "Nome completo", type: "text", autocomplete: "name", placeholder: "Ex.: Maria Oliveira", required: true },
-        { id: "email", label: "E-mail", type: "email", autocomplete: "email", placeholder: "voce@email.com", required: false, helper: "Opcional — se preferir, seguimos só pelo WhatsApp." },
+        // E-mail obrigatório: `em` é o campo de maior peso na qualidade da correspondência
+        // de eventos do Meta (EMQ), e sem ele o lead vai pro Meta sem o melhor identificador.
+        { id: "email", label: "E-mail", type: "email", autocomplete: "email", placeholder: "voce@email.com", required: true, helper: "Usamos para enviar o resultado da simulação." },
         { id: "whatsapp", label: "WhatsApp com DDD", type: "tel", autocomplete: "tel", inputmode: "tel", placeholder: "(21) 99999-9999", required: true, helper: "Digite só o DDD e o número. Não precisa colocar o +55." },
         { id: "cidade", label: "Cidade", type: "text", autocomplete: "address-level2", placeholder: "Ex.: Niterói", required: true }
       ],
@@ -795,7 +797,13 @@
 
     try {
       if (window.inspiraTrack) {
+        // name/email/phone vão SÓ pro Advanced Matching da CAPI: o servidor hasheia
+        // (buildUserData) e o stripPii impede que caiam em events.properties/custom_data.
+        // É o maior ganho de EMQ do funil — aqui a etapa de contato já foi preenchida.
         window.inspiraTrack.event("simulation_complete", {
+          name: answers.nome || null,
+          email: answers.email || null,
+          phone: phoneDigits ? "+55" + phoneDigits : null,
           source: "home_equity_form",
           lead_kind: kind,
           possui_imovel: answers.possui_imovel || null,

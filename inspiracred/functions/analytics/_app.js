@@ -19,6 +19,10 @@ const ALLOWED_ORIGINS = [
   "https://inspira-cred-links.pages.dev",
 ];
 
+// sub_domain_index do formato fb.{index}.{ts}.{payload} do Meta. Todos os nossos
+// dominios sao .com.br -> sempre 2. Espelha functions/_middleware.js (SUB_DOMAIN_INDEX).
+const SUB_DOMAIN_INDEX = 2;
+
 function corsHeaders(origin) {
   const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
@@ -262,35 +266,17 @@ async function handleTrack(request, env, cors, context) {
         const krobEid = leadCookies._krob_eid || null;
         event.external_id = krobEid || event.session_id || null;
 
-        // Fontes CRUAS de fbp/fbc/fbclid, capturadas ANTES de resolver (Fase B: saúde).
-        //   body   = o que o navegador mandou (Pixel/cookie lido no client — track.js A.3)
-        //   cookie = cookie de edge 400d (_middleware.js) — resgate ITP-safe
-        //   session= linha `sessions` (fbp/fbc/fbclid do 1º acesso)
-        const bodyFbp = validateFbCookie(event.fbp);
-        const bodyFbc = validateFbCookie(event.fbc);
-        const bodyFbclid = event.fbclid || "";
-        const cookieFbp = validateFbCookie(leadCookies._fbp);
-        const cookieFbc = validateFbCookie(leadCookies._fbc);
-
-        // Enriquece com a origem CRUA capturada no 1º acesso: a linha `sessions` vence
-        // quando o lead chegou sem o parâmetro (ex.: URL "limpa" antes do submit, ou
-        // navegação interna que perdeu fbclid/UTM). try/catch: se a tabela `sessions`
-        // ainda não existir (migration 0006 pendente), segue sem enriquecer.
-        let s = null;
-        if (krobSid) {
-          try {
-            s = await env.DB.prepare("SELECT * FROM sessions WHERE session_id = ?").bind(krobSid).first();
-          } catch (e) { /* sessions ainda não existe (migration 0006 pendente) — ok */ }
-        }
-        const sessionFbp = s ? validateFbCookie(s.fbp) : "";
-        const sessionFbc = s ? validateFbCookie(s.fbc) : "";
-
-        // Resolve fbp/fbc pela cadeia body -> cookie -> session (melhor id disponível);
-        // fbclid/gclid/UTMs herdam da sessão quando faltaram no lead.
-        event.fbp = bodyFbp || cookieFbp || sessionFbp || "";
-        event.fbc = bodyFbc || cookieFbc || sessionFbc || "";
+        // Resolve fbp/fbc/fbclid pela cadeia body -> cookie de edge -> sessions, com o
+        // fbclid CRU (nunca decodificado). Mesma função usada pelo caso "event".
+        const leadSourceUrl = event.url || request.headers.get("Referer") || "";
+        const fbId = await resolveFbIdentity(env, leadCookies, event, leadSourceUrl);
+        const s = fbId.session;
+        event.fbp = fbId.fbp;
+        event.fbc = fbId.fbc;
+        event.fbclid = fbId.fbclid || event.fbclid || "";
+        event.click_ts = fbId.clickTs;
+        // gclid/UTMs herdam da sessão quando faltaram no lead.
         if (s) {
-          if (!bodyFbclid && s.fbclid) event.fbclid = s.fbclid;
           if (!event.gclid && s.gclid) event.gclid = s.gclid;
           ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"].forEach((k) => {
             if (!event[k] && s[k]) event[k] = s[k];
@@ -298,11 +284,11 @@ async function handleTrack(request, env, cors, context) {
         }
 
         // Sinais de saúde do tracking (Fase B) — gravados no UPDATE 0008 mais abaixo.
-        const fbpSource = bodyFbp ? "body" : (cookieFbp ? "edge_cookie" : (sessionFbp ? "session" : "none"));
-        const fbcSource = bodyFbc ? "body" : (cookieFbc ? "edge_cookie" : (sessionFbc ? "session" : "none"));
-        const fbclidSource = bodyFbclid ? "url" : (s && s.fbclid ? "session" : "none");
-        const pixelWasBlocked = (!bodyFbp && !bodyFbc) ? 1 : 0;
-        const itpExtended = ((!bodyFbp && !!event.fbp) || (!bodyFbc && !!event.fbc)) ? 1 : 0;
+        const fbpSource = fbId.fbpSource;
+        const fbcSource = fbId.fbcSource;
+        const fbclidSource = fbId.fbclidSource;
+        const pixelWasBlocked = fbId.pixelWasBlocked;
+        const itpExtended = ((fbcSource !== "body" && !!event.fbc) || (fbpSource !== "body" && !!event.fbp)) ? 1 : 0;
         const bot = detectBot(leadUA);
         const uaInfo = parseBrowser(leadUA);
         const hasEmail = event.email ? 1 : 0;
@@ -391,27 +377,47 @@ async function handleTrack(request, env, cors, context) {
         }
         break;
       }
-      case "event":
+      case "event": {
+        // A PII (nome/e-mail/telefone) que os formulários mandam junto do
+        // simulation_complete serve SÓ pro Advanced Matching da CAPI (hasheada lá).
+        // NÃO pode ir pra coluna JSON `events.properties` nem pro custom_data do Meta.
+        const eventProps = stripPii(event.properties);
         await env.DB.prepare(
           `INSERT INTO events (session_id, event_type, event_name, properties, page_name) VALUES (?,?,?,?,?)`
         ).bind(event.session_id, event.event_type || "custom", event.event_name || "custom",
-          JSON.stringify(event.properties || {}), event.page_name || null).run();
+          JSON.stringify(eventProps), event.page_name || null).run();
         if (event.meta_event_name && context) {
           const eventCookies = parseCookies(request.headers.get("Cookie") || "");
           const eventUA = request.headers.get("User-Agent") || "";
           const bot = detectBot(eventUA);
           if (!bot.isBot) {
+            const eventSourceUrl = event.url || request.headers.get("Referer") || "";
             event.external_id = eventCookies._krob_eid || event.session_id || null;
-            event.fbp = validateFbCookie(event.fbp) || validateFbCookie(eventCookies._fbp) || "";
-            event.fbc = validateFbCookie(event.fbc) || validateFbCookie(eventCookies._fbc) || "";
+            // O client manda name/email/phone/city DENTRO de properties; buildUserData
+            // lê do topo do evento. Eleva aqui (e o stripPii acima já garantiu que a PII
+            // não foi parar na coluna events.properties).
+            const rawProps = event.properties && typeof event.properties === "object" ? event.properties : {};
+            if (!event.name && rawProps.name) event.name = rawProps.name;
+            if (!event.email && rawProps.email) event.email = rawProps.email;
+            if (!event.phone && rawProps.phone) event.phone = rawProps.phone;
+            if (!event.city && rawProps.city) event.city = rawProps.city;
+            // Mesma cadeia do lead (body -> cookie -> sessions). Antes o caso "event"
+            // parava no cookie e perdia o fbc cru em navegação interna — era o caminho
+            // dos 4 eventos que a Meta acusou com "fbclid modificado".
+            const evId = await resolveFbIdentity(env, eventCookies, event, eventSourceUrl);
+            event.fbp = evId.fbp;
+            event.fbc = evId.fbc;
+            event.fbclid = evId.fbclid;
+            event.click_ts = evId.clickTs;
             context.waitUntil(sendCustomEventToMeta(event, env, {
               clientIp: request.headers.get("CF-Connecting-IP") || "",
               userAgent: eventUA,
-              sourceUrl: event.url || request.headers.get("Referer") || "",
+              sourceUrl: eventSourceUrl,
             }));
           }
         }
         break;
+      }
       case "tap":
         await env.DB.prepare(
           `INSERT INTO heatmap_taps (session_id, page_name, x_pct, y_pct, vw, doc_h, element_id) VALUES (?,?,?,?,?,?,?)`
@@ -653,6 +659,64 @@ async function sha256Hex(value) {
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// Chaves de PII que os formularios mandam junto do evento de funil SO pro Advanced
+// Matching. Nunca podem ser persistidas em events.properties nem ir pro custom_data.
+const PII_KEYS = ["name", "nome", "email", "e_mail", "phone", "telefone", "whatsapp"];
+function stripPii(props) {
+  const out = {};
+  const src = props && typeof props === "object" ? props : {};
+  Object.keys(src).forEach((k) => {
+    if (PII_KEYS.indexOf(k) > -1) return;
+    out[k] = src[k];
+  });
+  return out;
+}
+
+// Cidade no formato do Meta: minusculas, sem acento, sem espaco nem pontuacao.
+function normCity(value) {
+  if (!value) return "";
+  return String(value)
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z]/g, "");
+}
+
+// Monta o user_data do Advanced Matching. Usado pelos DOIS senders (lead e evento de
+// funil) - antes so o lead mandava PII, e os eventos de funil (maior volume do dataset)
+// iam com ip/ua/fbp/fbc/external_id apenas, derrubando a media do EMQ.
+// Normalizacao = toLowerCase+trim (sha256Hex), SEM tirar acento/apostrofo de nome:
+// e o que o Meta espera (ver CLAUDE.md).
+async function buildUserData(event, ctx, fbc) {
+  const phoneDigits = (event.phone || "").replace(/\D/g, "");
+  const nameParts = (event.name || "").trim().split(/\s+/);
+  const fn = nameParts[0] || "";
+  const ln = nameParts.slice(1).join(" ") || "";
+
+  const userData = {
+    client_ip_address: ctx.clientIp || undefined,
+    client_user_agent: ctx.userAgent || undefined,
+    fbp: event.fbp || undefined,
+    fbc: fbc || undefined,
+  };
+  const em = await sha256Hex(event.email);
+  const ph = await sha256Hex(phoneDigits);
+  const hfn = await sha256Hex(fn);
+  const hln = await sha256Hex(ln);
+  const hct = await sha256Hex(normCity(event.city));
+  // Somos 100% Brasil - country e ganho de correspondencia de graca.
+  const hcountry = await sha256Hex("br");
+  // external_id estavel: _krob_eid (cookie de edge 400d) resolvido no handleTrack;
+  // fallback pro session_id do client pra eventos em voo antes de o cookie existir.
+  const ext = await sha256Hex(event.external_id || event.session_id);
+  if (em) userData.em = [em];
+  if (ph) userData.ph = [ph];
+  if (hfn) userData.fn = [hfn];
+  if (hln) userData.ln = [hln];
+  if (hct) userData.ct = [hct];
+  if (hcountry) userData.country = [hcountry];
+  if (ext) userData.external_id = [ext];
+  return userData;
+}
+
 function parseCookies(header) {
   const out = {};
   (header || "").split(";").forEach((c) => {
@@ -660,6 +724,72 @@ function parseCookies(header) {
     if (i > -1) out[c.slice(0, i).trim()] = c.slice(i + 1).trim();
   });
   return out;
+}
+
+// Valor CRU de um parametro da query — MESMA regex do _middleware.js/track.js.
+// A Meta exige o fbclid EXATAMENTE como veio na URL do anuncio; qualquer decode
+// (percent-encoding, "+" -> espaco) faz ela acusar "valor fbclid modificado no
+// parametro fbc" e derrubar a qualidade da correspondencia.
+function rawParamFromUrl(url, name) {
+  try {
+    const q = String(url || "");
+    const i = q.indexOf("?");
+    if (i === -1) return "";
+    const m = q.slice(i).match(new RegExp("[?&]" + name + "=([^&#]*)"));
+    return m ? m[1] : "";
+  } catch (e) { return ""; }
+}
+
+// Monta o fbc no formato do Meta. Prefere o cookie ja existente (validado); so
+// sintetiza a partir do fbclid quando nao ha cookie. `clickTs` e o timestamp do
+// CLIQUE (sessions.created_at) — usar Date.now() aqui datava o fbc no momento do
+// evento, o que fica errado quando o fbclid veio herdado da sessao (clique de dias antes).
+function buildFbc({ fbc, fbclid, clickTs }) {
+  const valid = validateFbCookie(fbc);
+  if (valid) return valid;
+  if (!fbclid) return "";
+  const ts = Number(clickTs) > 0 ? Number(clickTs) : Date.now();
+  return `fb.${SUB_DOMAIN_INDEX}.${ts}.${fbclid}`;
+}
+
+// Resolve fbp/fbc/fbclid pela cadeia body -> cookie de edge (400d) -> linha `sessions`.
+// Usada pelos casos "lead" E "event": antes so o "lead" tinha o fallback de sessao,
+// e por isso os eventos de funil perdiam o fbc cru em navegacao interna.
+async function resolveFbIdentity(env, cookies, event, sourceUrl) {
+  const bodyFbp = validateFbCookie(event.fbp);
+  const bodyFbc = validateFbCookie(event.fbc);
+  const bodyFbclid = event.fbclid || "";
+  const cookieFbp = validateFbCookie(cookies._fbp);
+  const cookieFbc = validateFbCookie(cookies._fbc);
+  // Fonte CRUA independente do navegador: o fbclid da propria URL do evento.
+  const urlFbclid = rawParamFromUrl(sourceUrl, "fbclid");
+
+  let s = null;
+  const krobSid = cookies._krob_sid || null;
+  if (krobSid) {
+    try {
+      s = await env.DB.prepare("SELECT * FROM sessions WHERE session_id = ?").bind(krobSid).first();
+    } catch (e) { /* sessions ainda nao existe (migration 0006 pendente) — ok */ }
+  }
+  const sessionFbp = s ? validateFbCookie(s.fbp) : "";
+  const sessionFbc = s ? validateFbCookie(s.fbc) : "";
+
+  const fbclid = bodyFbclid || urlFbclid || (s && s.fbclid) || "";
+  // clickTs: created_at da sessao e o 1o acesso = o clique no anuncio (segundos -> ms).
+  const clickTs = s && s.created_at ? Number(s.created_at) * 1000 : 0;
+
+  return {
+    session: s,
+    krobSid,
+    fbp: bodyFbp || cookieFbp || sessionFbp || "",
+    fbc: bodyFbc || cookieFbc || sessionFbc || "",
+    fbclid,
+    clickTs,
+    fbpSource: bodyFbp ? "body" : (cookieFbp ? "edge_cookie" : (sessionFbp ? "session" : "none")),
+    fbcSource: bodyFbc ? "body" : (cookieFbc ? "edge_cookie" : (sessionFbc ? "session" : "none")),
+    fbclidSource: bodyFbclid ? "url" : (urlFbclid ? "event_url" : (s && s.fbclid ? "session" : "none")),
+    pixelWasBlocked: (!bodyFbp && !bodyFbc) ? 1 : 0,
+  };
 }
 
 // Valida o formato do cookie _fbp/_fbc do Meta (fb.{index}.{ts}.{payload}); retorna ""
@@ -716,34 +846,10 @@ function parseBrowser(ua) {
 async function sendLeadToMeta(event, env, leadId, ctx) {
   if (!env.META_PIXEL_ID || !env.META_ACCESS_TOKEN) return; // dormindo até ter os secrets
 
-  const phoneDigits = (event.phone || "").replace(/\D/g, "");
-  const nameParts = (event.name || "").trim().split(/\s+/);
-  const fn = nameParts[0] || "";
-  const ln = nameParts.slice(1).join(" ") || "";
-
-  // fbc: usa o cookie do Pixel; se só tiver fbclid, monta no formato do Meta
-  // (nova.inspiracred.com.br é .com.br → subdomain index 2).
-  let fbc = event.fbc || "";
-  if (!fbc && event.fbclid) fbc = `fb.2.${Date.now()}.${event.fbclid}`;
-
-  const userData = {
-    client_ip_address: ctx.clientIp || undefined,
-    client_user_agent: ctx.userAgent || undefined,
-    fbp: event.fbp || undefined,
-    fbc: fbc || undefined,
-  };
-  const em = await sha256Hex(event.email);
-  const ph = await sha256Hex(phoneDigits);
-  const hfn = await sha256Hex(fn);
-  const hln = await sha256Hex(ln);
-  // external_id estável: _krob_eid (cookie de edge) resolvido no case "lead"; fallback
-  // pro session_id do client pra leads em voo durante o rollout (antes do cookie existir).
-  const ext = await sha256Hex(event.external_id || event.session_id);
-  if (em) userData.em = [em];
-  if (ph) userData.ph = [ph];
-  if (hfn) userData.fn = [hfn];
-  if (hln) userData.ln = [hln];
-  if (ext) userData.external_id = [ext];
+  // fbc: cookie do Pixel/edge quando existir; senao sintetiza a partir do fbclid CRU,
+  // datado pelo CLIQUE (sessions.created_at), nao pelo momento do lead.
+  const fbc = buildFbc({ fbc: event.fbc, fbclid: event.fbclid, clickTs: event.click_ts });
+  const userData = await buildUserData(event, ctx, fbc);
 
   // Um lead pode disparar 1+ eventos (ex.: MQL = "Lead" + "LeadQualificado").
   // O client manda meta_events = [{name, event_id}] — reenviamos CADA um pela CAPI
@@ -794,20 +900,16 @@ async function sendLeadToMeta(event, env, leadId, ctx) {
 async function sendCustomEventToMeta(event, env, ctx) {
   if (!env.META_PIXEL_ID || !env.META_ACCESS_TOKEN || !event.meta_event_name) return;
 
-  let fbc = event.fbc || "";
-  if (!fbc && event.fbclid) fbc = `fb.2.${Date.now()}.${event.fbclid}`;
+  const fbc = buildFbc({ fbc: event.fbc, fbclid: event.fbclid, clickTs: event.click_ts });
+  // Advanced Matching completo tambem nos eventos de funil. No /formulario/ o
+  // simulation_complete dispara DEPOIS da etapa de contato, entao nome/telefone/e-mail
+  // ja existem - e dai que vem o maior salto de EMQ. Nos eventos de load (ViewContent,
+  // simulation_start) nao ha PII e o user_data fica so com fbc/fbp/external_id/country.
+  const userData = await buildUserData(event, ctx, fbc);
 
-  const userData = {
-    client_ip_address: ctx.clientIp || undefined,
-    client_user_agent: ctx.userAgent || undefined,
-    fbp: event.fbp || undefined,
-    fbc: fbc || undefined,
-  };
-  const ext = await sha256Hex(event.external_id || event.session_id);
-  if (ext) userData.external_id = [ext];
-
+  // custom_data NUNCA leva PII - so as props de negocio.
   const customData = {};
-  const props = event.properties && typeof event.properties === "object" ? event.properties : {};
+  const props = stripPii(event.properties);
   Object.keys(props).forEach((key) => {
     const value = props[key];
     if (value == null) return;

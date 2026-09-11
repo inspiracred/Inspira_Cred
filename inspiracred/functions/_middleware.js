@@ -136,6 +136,10 @@ function parseCookies(header) {
 }
 
 // Valor CRU de um parâmetro da query (sem decodificar — Meta quer o fbclid como veio).
+// ⚠️ NÃO trocar por url.searchParams.get(): ele decodifica percent-encoding e converte
+// "+" em espaço. O assets/js/track.js lê este mesmo cookie/parâmetro de forma CRUA e o
+// _app.js remonta o fbc a partir dele — qualquer decode aqui reintroduz o aviso da Meta
+// "o servidor está enviando um valor fbclid modificado no parâmetro fbc".
 function rawParam(search, name) {
   const m = (search || "").match(new RegExp("[?&]" + name + "=([^&]*)"));
   return m ? m[1] : "";

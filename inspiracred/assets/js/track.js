@@ -31,17 +31,28 @@
     return "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12);
   }
 
-  function urlParam(name) {
-    try { return new URLSearchParams(window.location.search).get(name); } catch (e) { return null; }
+
+  // Valor CRU de um parâmetro da query — MESMA regex do functions/_middleware.js.
+  // Obrigatório pra fbclid/gclid: URLSearchParams decodifica percent-encoding E
+  // converte "+" em espaço, e a Meta rejeita o fbc quando o fbclid chega alterado
+  // ("valor fbclid modificado no parâmetro fbc"). Só usar pra identificador de
+  // clique — pra UTM o decode é o comportamento certo.
+  function rawParam(name) {
+    try {
+      var m = (window.location.search || "").match(new RegExp("[?&]" + name + "=([^&]*)"));
+      return m ? m[1] : null;
+    } catch (e) { return null; }
   }
 
-  // Lê um cookie por nome (usado pra mandar o _fbp/_fbc que o Pixel/edge setaram
-  // junto no payload do lead — dá ao servidor a fonte "pixel_js" no fallback e
-  // permite calcular pixel_was_blocked na Fase B).
+  // Lê um cookie por nome, CRU (sem decodeURIComponent) — usado pra mandar o
+  // _fbp/_fbc que o Pixel/edge setaram junto no payload do lead. Dá ao servidor a
+  // fonte "pixel_js" no fallback e permite calcular pixel_was_blocked na Fase B.
+  // ⚠️ NÃO decodificar: o _middleware.js grava fb.2.{ts}.{fbclid CRU}; decodificar
+  // aqui altera o fbclid e a Meta acusa "valor fbclid modificado no parâmetro fbc".
   function cookieVal(name) {
     try {
       var m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
-      return m ? decodeURIComponent(m[1]) : null;
+      return m ? m[1] : null;
     } catch (e) { return null; }
   }
 
@@ -156,10 +167,18 @@
       }
     } catch (e) {}
   }
-  // nomes de evento internos -> evento do Pixel (custom p/ as etapas da simulação)
+  // Nomes de evento internos -> evento PADRÃO do Meta.
+  // ⚠️ Precisa ser padrão: a conta está sob "Restrições de compartilhamento de dados —
+  // configuração básica" (categoria serviço financeiro), e nessa configuração evento
+  // PERSONALIZADO não é registrado nem utilizável — a Meta responde 200 e descarta.
+  // Antes eram SimulacaoIniciada/SimulacaoCompleta (custom) e não otimizavam nada.
+  // Pra a gestora ver nome em português, criar Conversão Personalizada por cima.
+  //   simulation_start    -> InitiateCheckout  ("entrou no fluxo de conversão")
+  //   simulation_complete -> SubmitApplication (solicitação de crédito enviada — é o
+  //                          evento que a própria Meta exemplifica com "cartão de crédito")
   var PIXEL_EVENT = {
-    simulation_start: "SimulacaoIniciada",
-    simulation_complete: "SimulacaoCompleta",
+    simulation_start: "InitiateCheckout",
+    simulation_complete: "SubmitApplication",
   };
 
   function send(payload) {
@@ -307,8 +326,8 @@
         meta_event_name: name,
         event_id: eventId,
         url: location.href,
-        fbclid: urlParam("fbclid") || null,
-        gclid: urlParam("gclid") || null,
+        fbclid: rawParam("fbclid") || null,
+        gclid: rawParam("gclid") || null,
         fbp: cookieVal("_fbp") || null,
         fbc: cookieVal("_fbc") || null,
       }));
@@ -325,8 +344,8 @@
         p.meta_event_name = pixelName;
         p.event_id = eventId;
         p.url = location.href;
-        p.fbclid = urlParam("fbclid") || null;
-        p.gclid = urlParam("gclid") || null;
+        p.fbclid = rawParam("fbclid") || null;
+        p.gclid = rawParam("gclid") || null;
         p.fbp = cookieVal("_fbp") || null;
         p.fbc = cookieVal("_fbc") || null;
       }
@@ -352,8 +371,8 @@
       // Mantém event_id "solto" (1º evento) pra compatibilidade com a coluna leads.event_id —
       // null quando não há nenhum evento de Meta (metaEvents vazio não quebra mais aqui).
       var p = { type: "lead", meta_events: metaEvents, event_id: metaEvents.length ? metaEvents[0].event_id : null, url: location.href };
-      p.fbclid = urlParam("fbclid") || null;
-      p.gclid = urlParam("gclid") || null;
+      p.fbclid = rawParam("fbclid") || null;
+      p.gclid = rawParam("gclid") || null;
       // _fbp/_fbc lidos pelo navegador (Pixel ou cookie de edge). O servidor usa como
       // 1ª opção da cadeia de fallback e pra saber se o Pixel foi bloqueado (Fase B).
       p.fbp = cookieVal("_fbp") || null;
