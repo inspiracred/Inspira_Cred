@@ -296,6 +296,10 @@ async function handleTrack(request, env, cors, context) {
         const hasName = event.name ? 1 : 0;
 
         event.lead_kind = normalizeLeadKind(event);
+        if (event.source === "home_institucional" && event.lead_kind === "baixo_valor") {
+          event.meta_events = [];
+          event.event_id = null;
+        }
 
         const leadInsert = await env.DB.prepare(
           `INSERT INTO leads (session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbp, fbc, fbclid, gclid, event_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
@@ -463,12 +467,15 @@ const LEAD_KIND_LABEL = {
 
 function normalizeLeadKind(event) {
   const current = event.lead_kind || "";
+  // A Home não coleta valor de imóvel. Aplica seu mínimo de crédito também
+  // no servidor, inclusive para veículos, sem perder a classificação de baixo valor.
+  if (event.source === "home_institucional") {
+    const credit = Number(event.credit_value || 0);
+    if (!Number.isFinite(credit) || credit < 100000) return "baixo_valor";
+    return current === "auto" ? "auto" : "institucional";
+  }
   if (current === "auto") return "auto";
   if (current === "descarte") return "descarte";
-  // Site institucional (/home/): não pergunta valor de imóvel, então a régua do Home
-  // Equity (imóvel ≥ 400 mil) não se aplica — o mínimo de R$ 100 mil de crédito é
-  // validado no formulário. Veículos já chegam como "auto" (return acima).
-  if (event.source === "home_institucional") return "institucional";
 
   const credit = Number(event.credit_value || 0);
   const property = Number(event.property_value || 0);
@@ -2289,9 +2296,9 @@ const DASHBOARD_HTML = `<!doctype html>
 
 <script>
 var dailyChart=null, sourceChart=null, leadTypeChart=null, lastLeads=[], lastAllLeads=[], activeTab="overview";
-var PAGE_LABELS={landing_page:"Simulação",home_institucional:"Site institucional",home_equity_lp:"Home Equity",home_equity_form:"Typeform",link_bio:"Link na bio",obrigado_simulacao:"Obrigado · Simulação",obrigado_home_equity:"Obrigado · Home Equity",obrigado_formulario:"Obrigado · Typeform",obrigado_auto:"Obrigado · Auto",obrigado_nao_elegivel:"Obrigado · Não elegível",other:"Outras"};
+var PAGE_LABELS={landing_page:"Simulação",home_institucional:"Site institucional",home_equity_lp:"Home Equity",home_equity_form:"Typeform",link_bio:"Link na bio",obrigado_simulacao:"Obrigado · Simulação",obrigado_home_equity:"Obrigado · Home Equity",obrigado_formulario:"Obrigado · Typeform",obrigado_auto:"Obrigado · Auto",obrigado_nao_elegivel:"Obrigado · Não elegível",obrigado_home:"Obrigado · Site institucional",obrigado_home_nao_elegivel:"Obrigado · Site institucional não elegível",other:"Outras"};
 var LEAD_KIND_LABELS={home_equity:"Lead",institucional:"Lead site institucional",home_equity_mql:"Lead qualificado",baixo_valor:"Lead desqualificado",auto:"Lead automotivo",descarte:"Banco de dados (sem imóvel/veículo)"};
-var PAGE_URLS={landing_page:"https://nova.inspiracred.com.br/",home_institucional:"https://nova.inspiracred.com.br/home/",home_equity_lp:"https://nova.inspiracred.com.br/homeequity/",home_equity_form:"https://nova.inspiracred.com.br/formulario/",link_bio:"https://links.inspiracred.com.br/",obrigado_simulacao:"https://nova.inspiracred.com.br/obrigado/simulacao/",obrigado_home_equity:"https://nova.inspiracred.com.br/obrigado/home-equity/",obrigado_formulario:"https://nova.inspiracred.com.br/obrigado/formulario/",obrigado_auto:"https://nova.inspiracred.com.br/obrigado/auto/",obrigado_nao_elegivel:"https://nova.inspiracred.com.br/obrigado/nao-elegivel/"};
+var PAGE_URLS={obrigado_home:"https://nova.inspiracred.com.br/obrigado/home/",obrigado_home_nao_elegivel:"https://nova.inspiracred.com.br/obrigado/home-nao-elegivel/",landing_page:"https://nova.inspiracred.com.br/",home_institucional:"https://nova.inspiracred.com.br/home/",home_equity_lp:"https://nova.inspiracred.com.br/homeequity/",home_equity_form:"https://nova.inspiracred.com.br/formulario/",link_bio:"https://links.inspiracred.com.br/",obrigado_simulacao:"https://nova.inspiracred.com.br/obrigado/simulacao/",obrigado_home_equity:"https://nova.inspiracred.com.br/obrigado/home-equity/",obrigado_formulario:"https://nova.inspiracred.com.br/obrigado/formulario/",obrigado_auto:"https://nova.inspiracred.com.br/obrigado/auto/",obrigado_nao_elegivel:"https://nova.inspiracred.com.br/obrigado/nao-elegivel/"};
 var CHART_PALETTE=["#f97316","#0b2d72","#10b981","#f59e0b","#3b82f6","#8b5cf6","#ec4899"];
 var META_SOURCES=["meta_ads","fb","ig","facebook","instagram"];
 function isMetaSourceValue(v){return META_SOURCES.indexOf(String(v||"").toLowerCase())>-1||/meta|facebook|instagram/i.test(String(v||""));}
@@ -3948,7 +3955,9 @@ var PAGE_OPTS=[
   {value:"obrigado_home_equity",label:"Obrigado · Home Equity"},
   {value:"obrigado_formulario",label:"Obrigado · Formulário"},
   {value:"obrigado_auto",label:"Obrigado · Auto"},
-  {value:"obrigado_nao_elegivel",label:"Obrigado · Não elegível"}
+  {value:"obrigado_nao_elegivel",label:"Obrigado · Não elegível"},
+  {value:"obrigado_home",label:"Obrigado · Site institucional"},
+  {value:"obrigado_home_nao_elegivel",label:"Obrigado · Site institucional não elegível"}
 ];
 mselInit("page",{rotulo:"Página",inicial:[],vazio:"todas",fixo:true,onApply:function(){syncSaveBtn();loadAll();}});
 mselSetOptions("page",PAGE_OPTS);

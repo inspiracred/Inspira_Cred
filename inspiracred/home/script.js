@@ -61,7 +61,7 @@
      ============================================================ */
   var form = document.getElementById("home-lead-form");
   if (form) {
-    var formSuccess = document.getElementById("form-success");
+    var formMessage = document.getElementById("form-message");
     var submitBtn = form.querySelector("button[type='submit']");
     var MIN_CREDITO = 100000;
     // value do <select> -> rótulo legível (vai pro RD como tag e pro D1 como evento)
@@ -185,13 +185,15 @@
       if (!data.cidade) { setError("cidade", "Informe sua cidade."); ok = false; }
       var credito = parseMoney(data.valor_credito);
       if (!credito) { setError("valor_credito", "Informe o valor do crédito."); ok = false; }
-      else if (credito < MIN_CREDITO) { setError("valor_credito", "O valor mínimo é R$ 100.000."); ok = false; }
-      if (!data.solucao) { setError("solucao", "Selecione o tipo de solução."); ok = false; }
+      if (!Object.prototype.hasOwnProperty.call(SOLUCOES, data.solucao)) { setError("solucao", "Selecione o tipo de solução."); ok = false; }
       return ok;
     }
 
     form.addEventListener("submit", function (e) {
       e.preventDefault();
+      if (submitBtn.disabled) return;
+      formMessage.textContent = "";
+      formMessage.classList.remove("is-visible", "is-error");
       var data = {
         nome: document.getElementById("f-nome").value.trim(),
         email: document.getElementById("f-email").value.trim(),
@@ -209,39 +211,40 @@
 
       submitBtn.disabled = true;
       submitBtn.textContent = "Enviando...";
+      var credito = parseMoney(data.valor_credito);
+      var baixoValor = credito < MIN_CREDITO;
+      var leadKind = baixoValor ? "baixo_valor" : (data.solucao === "veiculos" ? "auto" : "institucional");
 
       try {
-        if (window.inspiraTrack) {
+        if (!window.inspiraTrack || typeof window.inspiraTrack.lead !== "function") {
+          throw new Error("Captura indisponível");
+        }
           var solucaoLabel = SOLUCOES[data.solucao] || data.solucao;
-          // Veículos entra como "auto" (mesma classificação/tag das outras páginas);
-          // o resto é "institucional" — o servidor não aplica a régua do Home Equity
-          // (imóvel ≥ 400 mil), porque aqui não se pergunta valor de imóvel.
-          // Todo lead daqui já passou pelo mínimo de R$ 100 mil -> conta como Lead no Meta.
+          // Mantém a régua própria da Home: abaixo de R$ 100 mil fica salvo no RD,
+          // mas não conta conversão no Meta. Aqui não se coleta valor de imóvel.
           window.inspiraTrack.lead(Object.assign({
             name: data.nome,
             email: data.email,
             phone: "+55" + data.celular.replace(/\D/g, ""),
             city: data.cidade,
             state: data.estado,
-            credit_value: parseMoney(data.valor_credito),
+            credit_value: credito,
             solucao: solucaoLabel,
             source: PAGE_SOURCE,
-            lead_kind: data.solucao === "veiculos" ? "auto" : "institucional",
-            meta_events: ["Lead"]
+            lead_kind: leadKind,
+            meta_events: baixoValor ? [] : ["Lead"]
           }, getUtmParams()));
           // A tabela `leads` não tem coluna de solução/UF: registra num evento (coluna
           // JSON `properties`, sem migration) pra dar pra analisar por solução depois.
-          window.inspiraTrack.event("lead_solucao", { solucao: solucaoLabel, uf: data.estado, source: PAGE_SOURCE });
-        }
-      } catch (err) {}
-
-      form.classList.add("is-hidden");
-      formSuccess.classList.remove("is-hidden");
-      try { formSuccess.focus({ preventScroll: true }); } catch (err) { formSuccess.focus(); }
-      var top = formSuccess.getBoundingClientRect().top;
-      if (top < 0 || top > window.innerHeight * 0.6) {
-        formSuccess.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+          try { window.inspiraTrack.event("lead_solucao", { solucao: solucaoLabel, uf: data.estado, source: PAGE_SOURCE }); } catch (err) {}
+      } catch (err) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Enviar";
+        formMessage.textContent = "Não foi possível enviar agora. Tente novamente em instantes.";
+        formMessage.classList.add("is-visible", "is-error");
+        return;
       }
+      window.location.href = baixoValor ? "/obrigado/home-nao-elegivel/" : "/obrigado/home/";
     });
   }
 
