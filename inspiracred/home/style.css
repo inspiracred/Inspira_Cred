@@ -148,6 +148,7 @@ section[id], .sol-card, #simular { scroll-margin-top: calc(var(--header-h) + 16p
   text-wrap: pretty;
 }
 .section-copy.on-dark { color: rgba(255, 255, 255, 0.76); }
+.section-copy .hl { color: var(--orange); font-weight: 700; }
 .center { text-align: center; }
 
 /* ---------- 1. Header ---------- */
@@ -410,7 +411,7 @@ section[id], .sol-card, #simular { scroll-margin-top: calc(var(--header-h) + 16p
 .form-success p { margin: 0; color: rgba(255, 255, 255, 0.75); font-size: 16px; line-height: 1.55; }
 
 /* ---------- 4. Soluções ---------- */
-.solucoes { background: var(--surface); padding-top: 96px; }
+.solucoes { background: var(--surface); padding-top: 72px; }
 .section-head { max-width: 640px; margin-bottom: 52px; }
 .sol-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
 .sol-card {
@@ -481,6 +482,14 @@ section[id], .sol-card, #simular { scroll-margin-top: calc(var(--header-h) + 16p
 }
 .dif-item p { margin: 0 0 10px; color: var(--muted); font-size: 16px; line-height: 1.65; text-wrap: pretty; }
 .dif-item p:last-child { margin-bottom: 0; }
+/* 2º parágrafo de cada diferencial em destaque (revisão 16/09): mesmo card laranja-claro das soluções */
+.dif-item .dif-highlight {
+  margin-top: 14px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: var(--orange-soft);
+  color: var(--text);
+}
 .dif-cta-mobile { display: none; }
 
 /* ---------- 6. Seja parceiro ---------- */
@@ -651,6 +660,9 @@ section[id], .sol-card, #simular { scroll-margin-top: calc(var(--header-h) + 16p
 @media (max-width: 1023px) {
   :root { --header-h: 68px; }
   .section { padding: 80px 0; }
+  /* o .section acima sobrescreve o respiro do form/soluções: devolve o espaço curto entre os dois */
+  .simular { padding-bottom: 8px; }
+  .solucoes { padding-top: 64px; }
 
   /* menu mobile */
   .nav-toggle {
@@ -705,6 +717,7 @@ section[id], .sol-card, #simular { scroll-margin-top: calc(var(--header-h) + 16p
 
 @media (max-width: 640px) {
   .section { padding: 64px 0; }
+  .simular { padding-bottom: 8px; }
   .shell, .shell-narrow { width: calc(100% - 32px); }
   .header-inner { width: calc(100% - 32px); }
   .brand img { width: 96px; }
@@ -715,6 +728,10 @@ section[id], .sol-card, #simular { scroll-margin-top: calc(var(--header-h) + 16p
   .hero-actions .button { width: 100%; }
   .hero-solutions { margin-top: 32px; }
   .hero-solutions a { padding: 8px 13px; font-size: 13.5px; }
+  /* mobile: primeira dobra centralizada (revisão 16/09) */
+  .hero-copy { text-align: center; }
+  .hero-title, .hero-subtitle { margin-inline: auto; }
+  .hero-solutions ul { justify-content: center; }
   .hero-card { animation: none; }
   .hc-top { display: none; }
   .hc-bottom { left: 12px; right: 12px; bottom: 12px; max-width: none; }
@@ -728,7 +745,7 @@ section[id], .sol-card, #simular { scroll-margin-top: calc(var(--header-h) + 16p
   .form-note { text-align: center; }
   .form-trust { justify-content: center; }
 
-  .solucoes { padding-top: 72px; }
+  .solucoes { padding-top: 48px; }
   .section-head { margin-bottom: 36px; }
   .sol-grid { grid-template-columns: 1fr; gap: 16px; }
   .sol-card { padding: 26px 22px; }
