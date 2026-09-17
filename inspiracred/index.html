@@ -422,6 +422,32 @@
       (function () {
         "use strict";
 
+        /* Envio do lead que NÃO depende do track.js. Com ele carregado, segue o caminho
+           normal (Pixel + servidor). Sem ele (rede instável, erro de script), manda direto
+           pro /analytics/track: o servidor grava no D1 e dispara RD + CAPI do mesmo jeito.
+           Mesma função nas 4 páginas com formulário — nenhum lead depende do script de rastreio. */
+        function enviarLead(payload) {
+          if (window.inspiraTrack && typeof window.inspiraTrack.lead === "function") {
+            try { window.inspiraTrack.lead(payload); return; } catch (e) {}
+          }
+          var body = { type: "lead", url: location.href, page_name: window.IC_PAGE || payload.source || "other" };
+          for (var k in payload) if (Object.prototype.hasOwnProperty.call(payload, k)) body[k] = payload[k];
+          try { body.session_id = localStorage.getItem("ic_sid"); } catch (e) {}
+          body.meta_events = (payload.meta_events || ["Lead"]).map(function (n) {
+            return typeof n === "string" ? { name: n, event_id: "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12) } : n;
+          });
+          body.event_id = body.meta_events.length ? body.meta_events[0].event_id : null;
+          try {
+            var q = new URLSearchParams(location.search);
+            ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"].forEach(function (u) { if (body[u] == null && q.get(u)) body[u] = q.get(u); });
+          } catch (e) {}
+          var json = JSON.stringify(body);
+          try {
+            if (navigator.sendBeacon && navigator.sendBeacon("/analytics/track", new Blob([json], { type: "text/plain;charset=UTF-8" }))) return;
+          } catch (e) {}
+          try { fetch("/analytics/track", { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: json, keepalive: true }); } catch (e) {}
+        }
+
         var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
         var form = document.getElementById("simulation-form");
         var resultPanel = document.getElementById("result-panel");
@@ -613,6 +639,29 @@
               ? "O valor desejado passa do limite estimado. A equipe vai avaliar alternativas com você pelo WhatsApp."
               : "Taxa de referência a partir de 1,09% a.m. em até 240 meses. Condições sujeitas à análise.";
 
+            // O LEAD sai primeiro e sem depender do track.js nem do evento de funil abaixo
+            // (antes, se o simulation_complete falhasse, o lead nem era enviado).
+            try {
+              enviarLead({
+                source: "landing_page",
+                form_type: "home_equity_simulator",
+                lead_kind: kind,
+                name: data.name,
+                phone: "+55" + phoneDigits,
+                property_type: data.propertyType.toLowerCase(),
+                property_value: data.propertyValue,
+                credit_value: data.creditValue,
+                value: data.creditValue,
+                possui_imovel: "Sim",
+                imovel_quitado: data.financed ? "Não" : "Sim",
+                documentacao_ok: data.docsOk ? "Sim" : "Não",
+                saldo_devedor: data.financed ? data.debtBalance : null,
+                financing_ratio: Number(financingRatio.toFixed(2)),
+                estimated_limit: availableLimit || maxCredit,
+                estimated_installment: Math.round(installment || 0),
+                meta_events: metaEvents(kind, data.financed, financingRatio, data.docsOk)
+              });
+            } catch (e) {}
             try {
               if (window.inspiraTrack) {
                 window.inspiraTrack.event("simulation_complete", {
@@ -626,25 +675,6 @@
                   lead_kind: kind,
                   name: data.name,
                   phone: "+55" + phoneDigits
-                });
-                window.inspiraTrack.lead({
-                  source: "landing_page",
-                  form_type: "home_equity_simulator",
-                  lead_kind: kind,
-                  name: data.name,
-                  phone: "+55" + phoneDigits,
-                  property_type: data.propertyType.toLowerCase(),
-                  property_value: data.propertyValue,
-                  credit_value: data.creditValue,
-                  value: data.creditValue,
-                  possui_imovel: "Sim",
-                  imovel_quitado: data.financed ? "Não" : "Sim",
-                  documentacao_ok: data.docsOk ? "Sim" : "Não",
-                  saldo_devedor: data.financed ? data.debtBalance : null,
-                  financing_ratio: Number(financingRatio.toFixed(2)),
-                  estimated_limit: availableLimit || maxCredit,
-                  estimated_installment: Math.round(installment || 0),
-                  meta_events: metaEvents(kind, data.financed, financingRatio, data.docsOk)
                 });
               }
             } catch (e) {}

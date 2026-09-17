@@ -11,6 +11,32 @@
 
   if (!form || !shell || !nextButton || !backButton) return;
 
+  /* Envio do lead que NÃO depende do track.js. Com ele carregado, segue o caminho
+     normal (Pixel + servidor). Sem ele (rede instável, erro de script), manda direto
+     pro /analytics/track: o servidor grava no D1 e dispara RD + CAPI do mesmo jeito.
+     Mesma função nas 4 páginas com formulário — nenhum lead depende do script de rastreio. */
+  function enviarLead(payload) {
+    if (window.inspiraTrack && typeof window.inspiraTrack.lead === "function") {
+      try { window.inspiraTrack.lead(payload); return; } catch (e) {}
+    }
+    var body = { type: "lead", url: location.href, page_name: window.IC_PAGE || payload.source || "other" };
+    for (var k in payload) if (Object.prototype.hasOwnProperty.call(payload, k)) body[k] = payload[k];
+    try { body.session_id = localStorage.getItem("ic_sid"); } catch (e) {}
+    body.meta_events = (payload.meta_events || ["Lead"]).map(function (n) {
+      return typeof n === "string" ? { name: n, event_id: "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12) } : n;
+    });
+    body.event_id = body.meta_events.length ? body.meta_events[0].event_id : null;
+    try {
+      var q = new URLSearchParams(location.search);
+      ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"].forEach(function (u) { if (body[u] == null && q.get(u)) body[u] = q.get(u); });
+    } catch (e) {}
+    var json = JSON.stringify(body);
+    try {
+      if (navigator.sendBeacon && navigator.sendBeacon("/analytics/track", new Blob([json], { type: "text/plain;charset=UTF-8" }))) return;
+    } catch (e) {}
+    try { fetch("/analytics/track", { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: json, keepalive: true }); } catch (e) {}
+  }
+
   var answers = {};
   var stepIndex = 0;
   var stepSeen = {};
@@ -795,6 +821,9 @@
       meta_events: metaEvents,
     };
 
+    // O LEAD sai primeiro e sem depender do track.js nem do evento de funil abaixo
+    // (antes, se o simulation_complete falhasse, o lead nem era enviado).
+    try { enviarLead(payload); } catch (e) {}
     try {
       if (window.inspiraTrack) {
         // name/email/phone vão SÓ pro Advanced Matching da CAPI: o servidor hasheia
@@ -819,7 +848,6 @@
           faixa_emprestimo_auto: answers.faixa_emprestimo_auto || null,
           city: answers.cidade || null
         });
-        window.inspiraTrack.lead(payload);
       }
     } catch (e) {}
 

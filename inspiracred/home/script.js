@@ -8,6 +8,32 @@
   var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var PAGE_SOURCE = "home_institucional";
 
+  /* Envio do lead que NÃO depende do track.js. Com ele carregado, segue o caminho
+     normal (Pixel + servidor). Sem ele (rede instável, erro de script), manda direto
+     pro /analytics/track: o servidor grava no D1 e dispara RD + CAPI do mesmo jeito.
+     Mesma função nas 4 páginas com formulário — nenhum lead depende do script de rastreio. */
+  function enviarLead(payload) {
+    if (window.inspiraTrack && typeof window.inspiraTrack.lead === "function") {
+      try { window.inspiraTrack.lead(payload); return; } catch (e) {}
+    }
+    var body = { type: "lead", url: location.href, page_name: window.IC_PAGE || payload.source || "other" };
+    for (var k in payload) if (Object.prototype.hasOwnProperty.call(payload, k)) body[k] = payload[k];
+    try { body.session_id = localStorage.getItem("ic_sid"); } catch (e) {}
+    body.meta_events = (payload.meta_events || ["Lead"]).map(function (n) {
+      return typeof n === "string" ? { name: n, event_id: "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12) } : n;
+    });
+    body.event_id = body.meta_events.length ? body.meta_events[0].event_id : null;
+    try {
+      var q = new URLSearchParams(location.search);
+      ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"].forEach(function (u) { if (body[u] == null && q.get(u)) body[u] = q.get(u); });
+    } catch (e) {}
+    var json = JSON.stringify(body);
+    try {
+      if (navigator.sendBeacon && navigator.sendBeacon("/analytics/track", new Blob([json], { type: "text/plain;charset=UTF-8" }))) return;
+    } catch (e) {}
+    try { fetch("/analytics/track", { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: json, keepalive: true }); } catch (e) {}
+  }
+
   /* ============================================================
      HEADER — fundo ao rolar, menu mobile e link da seção ativa
      ============================================================ */
@@ -216,13 +242,10 @@
       var leadKind = baixoValor ? "baixo_valor" : (data.solucao === "veiculos" ? "auto" : "institucional");
 
       try {
-        if (!window.inspiraTrack || typeof window.inspiraTrack.lead !== "function") {
-          throw new Error("Captura indisponível");
-        }
           var solucaoLabel = SOLUCOES[data.solucao] || data.solucao;
           // Mantém a régua própria da Home: abaixo de R$ 100 mil fica salvo no RD,
           // mas não conta conversão no Meta. Aqui não se coleta valor de imóvel.
-          window.inspiraTrack.lead(Object.assign({
+          enviarLead(Object.assign({
             name: data.nome,
             email: data.email,
             phone: "+55" + data.celular.replace(/\D/g, ""),
@@ -236,7 +259,7 @@
           }, getUtmParams()));
           // A tabela `leads` não tem coluna de solução/UF: registra num evento (coluna
           // JSON `properties`, sem migration) pra dar pra analisar por solução depois.
-          try { window.inspiraTrack.event("lead_solucao", { solucao: solucaoLabel, uf: data.estado, source: PAGE_SOURCE }); } catch (err) {}
+          try { if (window.inspiraTrack) window.inspiraTrack.event("lead_solucao", { solucao: solucaoLabel, uf: data.estado, source: PAGE_SOURCE }); } catch (err) {}
       } catch (err) {
         submitBtn.disabled = false;
         submitBtn.textContent = "Enviar";

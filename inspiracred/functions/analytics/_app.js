@@ -231,8 +231,12 @@ const LOGIN_HTML = `<!doctype html>
 async function handleTrack(request, env, cors, context) {
   try {
     const event = await request.json();
-    if (!event.type || !event.session_id) {
-      return json({ error: "type e session_id obrigatórios" }, 400, cors);
+    if (!event.type) return json({ error: "type obrigatório" }, 400, cors);
+    // Lead NUNCA é recusado por falta de sessão (ex.: envio de reserva de página sem o
+    // track.js e sem localStorage): gera um id aqui. Os outros tipos continuam exigindo.
+    if (!event.session_id) {
+      if (event.type !== "lead") return json({ error: "type e session_id obrigatórios" }, 400, cors);
+      event.session_id = "srv_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 9);
     }
     switch (event.type) {
       case "page_view":
@@ -301,7 +305,7 @@ async function handleTrack(request, env, cors, context) {
           event.event_id = null;
         }
 
-        const leadInsert = await env.DB.prepare(
+        const insertLead = () => env.DB.prepare(
           `INSERT INTO leads (session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbp, fbc, fbclid, gclid, event_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         ).bind(event.session_id || null, event.name || null, event.phone || null, event.email || null,
           event.property_type || null, event.property_value || null, event.credit_value || null,
@@ -309,6 +313,11 @@ async function handleTrack(request, env, cors, context) {
           event.utm_campaign || null, event.utm_content || null, event.utm_term || null,
           event.fbp || null, event.fbc || null, event.fbclid || null, event.gclid || null,
           event.event_id || null).run();
+        // 2ª tentativa: uma falha momentânea do D1 não pode custar o lead (o navegador
+        // manda por beacon, uma vez só — não existe reenvio do lado do cliente).
+        let leadInsert;
+        try { leadInsert = await insertLead(); }
+        catch (e) { leadInsert = await insertLead(); }
         const leadId = leadInsert.meta && leadInsert.meta.last_row_id;
         // Campos qualificadores no NOSSO D1 (pra o dado bater com o que vai pro RD).
         // UPDATE separado + try/catch: se a migration 0003 ainda não tiver criado as
@@ -1227,7 +1236,9 @@ async function handleOverview(request, env) {
 async function handleLeads(request, env) {
   const { start, end, page } = params(request.url);   // page já vem como lista (ou null)
   const p = new URL(request.url).searchParams;
-  const limit = Math.min(parseInt(p.get("limit")) || 100, 500);
+  // Teto alto de propósito: a aba Leads precisa mostrar TODO lead do período (com 500,
+  // 30 dias de campanha já estouravam e os mais antigos sumiam da tabela sem aviso).
+  const limit = Math.min(parseInt(p.get("limit")) || 100, 5000);
   // kind=nao_qualificado -> lead_kind IN baixo_valor/descarte; baixo_valor vai ao RD
   // como não qualificado, descarte fica só no nosso D1. kind=<valor específico> filtra
   // por um lead_kind exato.
@@ -2447,7 +2458,9 @@ function loadAll(){
   var scopeTxt="Exibindo: <b>"+pgTxt+"</b> - "+r.rotulo+" - <b>"+esc(srcTxt)+"</b>";
   document.getElementById("scope").innerHTML=scopeTxt+' - <span style="color:var(--muted)">carregando...</span>';
   var p1=fetch("${API}/overview"+qs+pageQ+srcQ+"&_="+Date.now()).then(function(r){return r.json()}).then(function(d){render(d);renderTraffic(d);});
-  var p2=fetch("${API}/leads"+qs+"&limit=500"+pageQ+srcQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderLeads);
+  // A aba Leads NÃO usa o filtro global de origem: ela mostra todo lead do período
+  // (tráfego pago e orgânico). A coluna Origem diz de onde cada um veio.
+  var p2=fetch("${API}/leads"+qs+"&limit=5000"+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderLeads);
   var p3=fetch("${API}/campaigns"+qs+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderCampaigns);
   var p5=fetch("${API}/health"+qs+pageQ+srcQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderHealth);
   if(hmPageLoaded)loadPageMap(); // mantém o mapa da página em sincronia com o período
@@ -3140,6 +3153,13 @@ function renderClicksByPage(pages,clicks){
 }
 
 function currentLeadFilter(){return mselValue("kind")}
+// Origem do lead na tabela: utm_source cru (fb, ig, meta_ads...) ou "Orgânico / direto"
+// quando chegou sem UTM (link na bio, Google, digitou o endereço...).
+function origemCell(l){
+  var s=String(l.utm_source||"").trim();
+  if(!s)return '<span class="pill wait" title="Chegou sem UTM: orgânico, link direto ou indicação">Orgânico / direto</span>';
+  return '<span class="pill '+(isMetaSourceValue(s)?'blue':'wait')+'">'+esc(s)+'</span>';
+}
 // Filtro de classificação: lista vazia = todas. Filtra no cliente (a tabela já veio).
 function leadMatchesFilter(l){
   var lista=mselList("kind");
@@ -3242,7 +3262,7 @@ function renderLeads(d){
   var n=lastLeads.length, totalAll=lastAllLeads.length;
   var kinds=mselList("kind");
   var filterLabel=kinds.length?kinds.map(function(k){return LEAD_KIND_LABELS[k]||k}).join(", "):"Todas";
-  document.getElementById("leadsTitle").textContent="Leads ("+n+(filter==="all"?"":" de "+totalAll)+")";
+  document.getElementById("leadsTitle").textContent="Leads ("+n+(filter==="all"?"":" de "+totalAll)+") · todas as origens"+(totalAll>=5000?" · mostrando os 5.000 mais recentes do período":"");
   var totalCredit=0, rdOk=0, metaOk=0;
   lastLeads.forEach(function(l){totalCredit+=Number(l.credit_value||0);if(l.rd_status==="ok")rdOk++;if(l.meta_status==="ok")metaOk++;});
   var totalCreditKpi=brlKpi(totalCredit), ticketKpi=n?brlKpi(Math.round(totalCredit/n)):{short:"-",full:"-"};
@@ -3260,11 +3280,11 @@ function renderLeads(d){
   renderLeadVisuals(lastLeads);
   if(!n){document.getElementById("leads").innerHTML='<div class="empty">Nenhum lead para este filtro.</div>';return}
   var html=eventLegend();
-  html+='<table><thead><tr><th>Data</th><th>Nome</th><th>Classificação</th><th>Página</th><th>Imóvel</th><th>Crédito</th><th>RD</th><th>Meta Lead</th><th>MQL</th><th></th></tr></thead><tbody>';
+  html+='<table><thead><tr><th>Data</th><th>Nome</th><th>Classificação</th><th>Página</th><th>Origem</th><th>Imóvel</th><th>Crédito</th><th>RD</th><th>Meta Lead</th><th>MQL</th><th></th></tr></thead><tbody>';
   lastLeads.forEach(function(l,i){
     html+='<tr><td>'+(l.created_at||"").slice(0,16)+'</td>'+
       '<td><button class="lead-name-btn" onclick="showLead('+i+')">'+esc(l.name||"Lead sem nome")+'</button><div class="hint">'+esc(l.phone||"")+'</div></td>'+
-      '<td>'+leadKindPill(l.lead_kind)+'</td><td>'+pageLeadLink(l.source)+'</td>'+
+      '<td>'+leadKindPill(l.lead_kind)+'</td><td>'+pageLeadLink(l.source)+'</td><td>'+origemCell(l)+'</td>'+
       '<td>'+valorCell(l.property_value,MIN_IMOVEL,l.lead_kind)+'</td>'+
       '<td>'+valorCell(l.credit_value,MIN_CREDITO,l.lead_kind)+'</td>'+
       '<td>'+leadEventDot(l,"rd")+'</td><td>'+leadEventDot(l,"lead")+'</td><td>'+leadEventDot(l,"mql")+'</td>'+
