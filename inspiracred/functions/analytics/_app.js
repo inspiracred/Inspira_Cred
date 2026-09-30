@@ -981,6 +981,98 @@ async function sendCustomEventToMeta(event, env, ctx) {
   }
 }
 
+// Eventos de CRM usados pela meta de desempenho "Leads de conversao" sao um fluxo
+// separado dos eventos do site. A Meta exige action_source=system_generated e os
+// marcadores lead_event_source/event_source=crm; uma carga de website, mesmo aceita
+// pela CAPI, nao conta para essa integracao.
+function findMetaLeadId(value, depth) {
+  if (!value || typeof value !== "object" || (depth || 0) > 6) return "";
+  const keys = ["lead_id", "leadid", "leadgen_id", "leadgenid", "facebook_lead_id", "fb_lead_id", "meta_lead_id"];
+  const fieldName = value.name || value.nome || value.key || value.slug || value.label;
+  const normalizedFieldName = String(fieldName || "").toLowerCase().replace(/[^a-z0-9_]/g, "");
+  if (keys.includes(normalizedFieldName)) {
+    const fieldValue = value.value ?? value.valor ?? value.content ?? value.conteudo;
+    const digits = String(fieldValue == null ? "" : fieldValue).replace(/\D/g, "");
+    if (/^\d{15,17}$/.test(digits)) return digits;
+  }
+  for (const [key, item] of Object.entries(value)) {
+    const normalizedKey = String(key).toLowerCase().replace(/[^a-z0-9_]/g, "");
+    if (keys.includes(normalizedKey)) {
+      const digits = String(item == null ? "" : item).replace(/\D/g, "");
+      if (/^\d{15,17}$/.test(digits)) return digits;
+    }
+  }
+  for (const item of Object.values(value)) {
+    if (!item || typeof item !== "object") continue;
+    const found = findMetaLeadId(item, (depth || 0) + 1);
+    if (found) return found;
+  }
+  return "";
+}
+
+function metaCrmEventName(stage, won) {
+  const raw = String(stage || "").trim();
+  const plain = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (won || /ganh|won|vendid|fechad|convertid/.test(plain)) return "Converted";
+  if (/agend|schedule|reuniao|appointment/.test(plain)) return "Schedule";
+  if (/qualific|mql|oportunidade/.test(plain)) return "QualifiedLead";
+  if (!plain || /nao trabalh|novo|new|lead|entrada/.test(plain)) return "Lead";
+  return raw.slice(0, 100);
+}
+
+function metaCrmEventTime(value) {
+  if (value == null || value === "") return Math.floor(Date.now() / 1000);
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return Math.floor(numeric > 1e12 ? numeric / 1000 : numeric);
+  }
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : Math.floor(Date.now() / 1000);
+}
+
+function normalizeMetaPhone(value) {
+  let digits = String(value || "").replace(/\D/g, "");
+  if ((digits.length === 10 || digits.length === 11) && !digits.startsWith("55")) digits = "55" + digits;
+  return digits;
+}
+
+async function sendCrmStageToMeta(event, env) {
+  if (!env.META_PIXEL_ID || !env.META_ACCESS_TOKEN) return { ok: false, status: "not_configured" };
+
+  const userData = {};
+  if (event.leadId) userData.lead_id = String(event.leadId);
+  const em = await sha256Hex(event.email);
+  const ph = await sha256Hex(normalizeMetaPhone(event.phone));
+  if (em) userData.em = [em];
+  if (ph) userData.ph = [ph];
+  if (!userData.lead_id && !em && !ph) return { ok: false, status: "missing_match_key" };
+
+  const payload = {
+    data: [{
+      event_name: event.eventName,
+      event_time: event.eventTime,
+      event_id: event.eventId || undefined,
+      action_source: "system_generated",
+      user_data: userData,
+      custom_data: {
+        lead_event_source: env.META_CRM_SOURCE_NAME || "RD Station CRM",
+        event_source: "crm",
+      },
+    }],
+  };
+  if (env.META_TEST_EVENT_CODE) payload.test_event_code = env.META_TEST_EVENT_CODE;
+
+  try {
+    const res = await fetch(
+      `https://graph.facebook.com/v21.0/${env.META_PIXEL_ID}/events?access_token=${env.META_ACCESS_TOKEN}`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
+    );
+    return { ok: res.ok, status: res.ok ? "ok" : `http_${res.status}` };
+  } catch (e) {
+    return { ok: false, status: "fetch_error" };
+  }
+}
+
 /* ---- MÉTRICAS ---- */
 /* `src` = filtro GLOBAL de origem (utm_source), aplicado no dashboard inteiro. O padrão
  * do painel é `meta_ads` porque é onde o cliente investe; dá pra trocar pra "todas".
@@ -1506,7 +1598,11 @@ async function handleHealth(request, env) {
  *  - Idempotente-ish: se vier `deal_id`, evita duplicar a MESMA etapa do MESMO negócio.
  */
 async function handleRdWebhook(request, env, context) {
-  const token = new URL(request.url).searchParams.get("token") || "";
+  const url = new URL(request.url);
+  const token = url.searchParams.get("token") || "";
+  // Opt-in obrigatorio: este fluxo serve somente para leads originados em
+  // Formularios Instantaneos da Meta. Leads do site usam a CAPI de website.
+  const metaCrmEnabled = url.searchParams.get("meta_crm") === "1";
   if (!env.RD_WEBHOOK_TOKEN) {
     return json({ ok: false, error: "RD_WEBHOOK_TOKEN não configurado no Pages" }, 503);
   }
@@ -1538,6 +1634,26 @@ async function handleRdWebhook(request, env, context) {
   const won = /ganh|won|vendid|fechad/i.test(String(stage || "") + " " + String(dig(body, ["deal.win", "win", "status"]) || "")) ? 1 : 0;
   const email = dig(body, ["deal.contacts.0.emails.0.email", "contact.email", "email", "lead.email", "deal.email"]);
   const phone = dig(body, ["deal.contacts.0.phones.0.phone", "contact.phone", "phone", "telefone", "lead.phone"]);
+  const metaLeadId = findMetaLeadId(body);
+  const metaEventName = metaCrmEventName(stage, won);
+  const metaEventTime = metaCrmEventTime(dig(body, [
+    "event_time", "updated_at", "changed_at", "created_at",
+    "deal.updated_at", "deal.changed_at", "deal.created_at",
+    "negociacao.updated_at", "negociacao.created_at",
+  ]));
+  const metaEventId = dealId
+    ? `rd:${String(dealId)}:${metaEventName}:${metaEventTime}`
+    : undefined;
+  const metaCrm = metaCrmEnabled
+    ? await sendCrmStageToMeta({
+        eventName: metaEventName,
+        eventTime: metaEventTime,
+        eventId: metaEventId,
+        leadId: metaLeadId,
+        email,
+        phone,
+      }, env)
+    : { ok: false, status: "disabled" };
 
   try {
     // tenta casar com um lead nosso: e-mail exato, senão sufixo do telefone (8+ dígitos)
@@ -1560,7 +1676,7 @@ async function handleRdWebhook(request, env, context) {
     if (dealId) {
       try {
         const dup = await env.DB.prepare(`SELECT id FROM rd_sales WHERE deal_id=? AND COALESCE(stage,'')=COALESCE(?,'') LIMIT 1`).bind(String(dealId), stage ? String(stage) : null).first();
-        if (dup) return json({ ok: true, dedup: true });
+        if (dup) return json({ ok: true, dedup: true, meta_crm: metaCrm });
       } catch (e) { /* tabela pode não existir ainda */ }
     }
 
@@ -1575,9 +1691,20 @@ async function handleRdWebhook(request, env, context) {
   } catch (e) {
     // tabela ausente (migration 0009 pendente) ou outro erro: responde 200 assim mesmo
     // pra o RD não ficar re-tentando em loop, mas sinaliza que precisa aplicar a migration
-    return json({ ok: false, stored: false, hint: "aplicar migration 0009_rd_sales ou verificar payload", parsed: { dealId, stage, value, won, email: !!email, phone: !!phone } }, 200);
+    return json({
+      ok: metaCrm.ok,
+      stored: false,
+      meta_crm: metaCrm,
+      hint: "aplicar migration 0009_rd_sales ou verificar payload",
+      parsed: { dealId, stage, value, won, email: !!email, phone: !!phone, metaLeadId: !!metaLeadId },
+    }, 200);
   }
-  return json({ ok: true, stored: true, parsed: { dealId, dealName, stage, value, won, matched: null } });
+  return json({
+    ok: true,
+    stored: true,
+    meta_crm: metaCrm,
+    parsed: { dealId, dealName, stage, value, won, matched: null, metaLeadId: !!metaLeadId },
+  });
 }
 
 /* Leitura do faturamento pro dashboard (atrás do Basic Auth como o resto da API). */
