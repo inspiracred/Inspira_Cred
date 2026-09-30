@@ -37,7 +37,7 @@ const backend = vm.createContext({
   Response,
   fetch: async (url, options) => {
     capturedRequest = { url, options, payload: JSON.parse(options.body) };
-    return { ok: true, status: 200 };
+    return { ok: true, status: 200, async json() { return { events_received: 1 }; } };
   },
 });
 vm.runInContext(hashCode + crmCode + safeEqualCode + webhookCode + jsonCode, backend);
@@ -100,7 +100,7 @@ test("sends a CRM event with Meta's required fields and hashed contact data", as
     META_CRM_SOURCE_NAME: "RD Station CRM",
   });
 
-  assert.deepEqual({ ...result }, { ok: true, status: "ok" });
+  assert.deepEqual({ ...result }, { ok: true, status: "ok", events_received: 1 });
   assert.ok(capturedRequest.url.includes("/3021870508000260/events"));
   const event = capturedRequest.payload.data[0];
   assert.equal(event.event_name, "Schedule");
@@ -166,6 +166,7 @@ test("sends the opted-in CRM event even while the local sales table is unavailab
   assert.equal(result.ok, true);
   assert.equal(result.stored, false);
   assert.equal(result.meta_crm.status, "ok");
+  assert.equal(result.meta_crm.events_received, 1);
   assert.equal(capturedRequest.payload.data[0].event_name, "Schedule");
   assert.equal(capturedRequest.payload.data[0].action_source, "system_generated");
 });

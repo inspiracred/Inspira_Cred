@@ -1067,7 +1067,15 @@ async function sendCrmStageToMeta(event, env) {
       `https://graph.facebook.com/v21.0/${env.META_PIXEL_ID}/events?access_token=${env.META_ACCESS_TOKEN}`,
       { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
     );
-    return { ok: res.ok, status: res.ok ? "ok" : `http_${res.status}` };
+    let response = {};
+    try { response = await res.json(); } catch (e) { response = {}; }
+    const eventsReceived = Number(response.events_received || 0);
+    const accepted = res.ok && eventsReceived > 0;
+    return {
+      ok: accepted,
+      status: accepted ? "ok" : (res.ok ? "not_received" : `http_${res.status}`),
+      events_received: eventsReceived,
+    };
   } catch (e) {
     return { ok: false, status: "fetch_error" };
   }
