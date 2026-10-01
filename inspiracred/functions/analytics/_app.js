@@ -1034,7 +1034,7 @@ function rdMetaLeadEvidence(value) {
   if (!value || typeof value !== "object") return false;
   if (findMetaLeadId(value)) return true;
 
-  const metaPattern = /\b(meta|facebook|instagram|fb|ig)\b|lead[\s_-]*ads|n8n[\s_-]*meta[\s_-]*lead[\s_-]*ads/i;
+  const metaPattern = /\b(meta|facebook|instagram|fb|ig)\b|meta[\s_-]*ads|lead[\s_-]*ads|n8n[\s_-]*meta[\s_-]*lead[\s_-]*ads/i;
   const sourceValues = [
     value.event_identifier,
     value.conversion_identifier,
@@ -1709,7 +1709,7 @@ async function handleRdWebhook(request, env, context) {
   // apenas uma vez; alterações de nota, responsável ou valor não são avanço de funil.
   if (dealId) {
     try {
-      const dup = await env.DB.prepare(`SELECT id FROM rd_sales WHERE deal_id=? AND COALESCE(stage,'')=COALESCE(?,'') LIMIT 1`).bind(String(dealId), stage ? String(stage) : null).first();
+      const dup = await env.DB.prepare(`SELECT id FROM rd_sales WHERE deal_id=? AND COALESCE(stage,'')=COALESCE(?,'') AND meta_status='ok' LIMIT 1`).bind(String(dealId), stage ? String(stage) : null).first();
       if (dup) return json({ ok: true, dedup: true, meta_crm: { ok: true, status: "duplicate_stage" } });
     } catch (e) { /* tabela pode não existir ainda */ }
   }
@@ -1754,12 +1754,12 @@ async function handleRdWebhook(request, env, context) {
     } catch (e) { /* matching é best-effort */ }
 
     await env.DB.prepare(
-      `INSERT INTO rd_sales (deal_id, deal_name, stage, value, won, contact_email, contact_phone, matched_lead_id, raw)
-       VALUES (?,?,?,?,?,?,?,?,?)`
+      `INSERT INTO rd_sales (deal_id, deal_name, stage, value, won, contact_email, contact_phone, matched_lead_id, meta_status, raw)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`
     ).bind(
       dealId ? String(dealId) : null, dealName ? String(dealName) : null, stage ? String(stage) : null,
       value, won, email ? String(email) : null, phone ? String(phone) : null, matchedLeadId,
-      JSON.stringify(body).slice(0, 8000)
+      metaCrm.status || null, JSON.stringify(body).slice(0, 8000)
     ).run();
   } catch (e) {
     // tabela ausente (migration 0009 pendente) ou outro erro: responde 200 assim mesmo

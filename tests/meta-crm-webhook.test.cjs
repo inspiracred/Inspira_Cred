@@ -82,6 +82,7 @@ test("finds a nested Meta leadgen id and rejects unrelated numbers", () => {
 test("recognizes Meta evidence without classifying unrelated CRM deals", () => {
   assert.equal(backend.rdMetaLeadEvidence({ campaign: { name: "n8n-meta-lead-ads" } }), true);
   assert.equal(backend.rdMetaLeadEvidence({ deal_source: { name: "Facebook Lead Ads" } }), true);
+  assert.equal(backend.rdMetaLeadEvidence({ custom_fields: [{ name: "UTM Source", value: "meta_ads" }] }), true);
   assert.equal(backend.rdMetaLeadEvidence({ campaign: { name: "Indicação de parceiro" } }), false);
 });
 
