@@ -29,6 +29,8 @@ const jsonCode = server.slice(
 );
 
 let capturedRequest = null;
+let capturedRdRequest = null;
+let rdContactResponse = null;
 const backend = vm.createContext({
   crypto: webcrypto,
   TextEncoder,
@@ -36,6 +38,14 @@ const backend = vm.createContext({
   URL,
   Response,
   fetch: async (url, options) => {
+    if (String(url).includes("crm.rdstation.com/api/v1/deals/")) {
+      capturedRdRequest = { url, options };
+      return {
+        ok: true,
+        status: 200,
+        async json() { return rdContactResponse || { contacts: [] }; },
+      };
+    }
     capturedRequest = { url, options, payload: JSON.parse(options.body) };
     return { ok: true, status: 200, async json() { return { events_received: 1 }; } };
   },
@@ -67,6 +77,12 @@ test("finds a nested Meta leadgen id and rejects unrelated numbers", () => {
     "1234567890123456"
   );
   assert.equal(backend.findMetaLeadId({ lead_id: "12345", phone: "5521999999999" }), "");
+});
+
+test("recognizes Meta evidence without classifying unrelated CRM deals", () => {
+  assert.equal(backend.rdMetaLeadEvidence({ campaign: { name: "n8n-meta-lead-ads" } }), true);
+  assert.equal(backend.rdMetaLeadEvidence({ deal_source: { name: "Facebook Lead Ads" } }), true);
+  assert.equal(backend.rdMetaLeadEvidence({ campaign: { name: "Indicação de parceiro" } }), false);
 });
 
 test("maps RD stages to stable Meta funnel events", () => {
@@ -152,6 +168,7 @@ test("sends the opted-in CRM event even while the local sales table is unavailab
     deal: {
       id: "deal-2",
       stage: { name: "Reunião agendada" },
+      campaign: { name: "n8n-meta-lead-ads" },
       contacts: [{ emails: [{ email: "pessoa@example.com" }] }],
     },
     leadgen_id: "1234567890123456",
@@ -169,4 +186,97 @@ test("sends the opted-in CRM event even while the local sales table is unavailab
   assert.equal(result.meta_crm.events_received, 1);
   assert.equal(capturedRequest.payload.data[0].event_name, "Schedule");
   assert.equal(capturedRequest.payload.data[0].action_source, "system_generated");
+});
+
+test("parses the official RD CRM document payload and loads its contact", async () => {
+  capturedRequest = null;
+  capturedRdRequest = null;
+  rdContactResponse = {
+    contacts: [{
+      emails: [{ email: "crm@example.com" }],
+      phones: [{ phone: "(11) 98888-7777" }],
+    }],
+  };
+
+  const response = await backend.handleRdWebhook(webhookRequest("&meta_crm=1", {
+    event_name: "crm_deal_updated",
+    event_timestamp: "2026-10-01T15:00:00Z",
+    transaction_uuid: "11111111-2222-4333-8444-555555555555",
+    document: {
+      id: "rd-deal-42",
+      name: "Lead Meta",
+      amount_total: 250000,
+      status: "ongoing",
+      deal_stage: { name: "Reunião Agendada" },
+      campaign: { name: "Facebook Lead Ads" },
+    },
+  }), {
+    RD_WEBHOOK_TOKEN: "secret",
+    RD_CRM_API_TOKEN: "rd-api-token",
+    META_PIXEL_ID: "3021870508000260",
+    META_ACCESS_TOKEN: "test-token",
+    DB: failingDb(),
+  });
+
+  const result = await response.json();
+  assert.equal(result.parsed.dealId, "rd-deal-42");
+  assert.equal(result.parsed.stage, "Reunião Agendada");
+  assert.equal(result.meta_crm.status, "ok");
+  assert.ok(capturedRdRequest.url.includes("/rd-deal-42/contacts"));
+  assert.ok(capturedRdRequest.url.includes("token=rd-api-token"));
+  assert.equal(capturedRequest.payload.data[0].event_name, "Schedule");
+  assert.equal(capturedRequest.payload.data[0].event_id, "11111111-2222-4333-8444-555555555555");
+  assert.match(capturedRequest.payload.data[0].user_data.em[0], /^[a-f0-9]{64}$/);
+});
+
+test("ignores a non-Meta deal even when the webhook opts in", async () => {
+  capturedRequest = null;
+  capturedRdRequest = null;
+  const response = await backend.handleRdWebhook(webhookRequest("&meta_crm=1", {
+    event_name: "crm_deal_updated",
+    document: {
+      id: "rd-deal-organic",
+      deal_stage: { name: "Reunião Agendada" },
+      campaign: { name: "Indicação de parceiro" },
+    },
+  }), {
+    RD_WEBHOOK_TOKEN: "secret",
+    RD_CRM_API_TOKEN: "rd-api-token",
+    META_PIXEL_ID: "3021870508000260",
+    META_ACCESS_TOKEN: "test-token",
+    DB: failingDb(),
+  });
+  const result = await response.json();
+  assert.equal(result.meta_crm.status, "ignored_non_meta");
+  assert.equal(capturedRequest, null);
+  assert.equal(capturedRdRequest, null);
+});
+
+test("deduplicates repeated updates in the same CRM stage before calling Meta", async () => {
+  capturedRequest = null;
+  const duplicateDb = {
+    prepare() {
+      return {
+        bind() { return this; },
+        async first() { return { id: 99 }; },
+        async run() { throw new Error("must not insert"); },
+      };
+    },
+  };
+  const response = await backend.handleRdWebhook(webhookRequest("&meta_crm=1", {
+    document: {
+      id: "rd-deal-duplicate",
+      deal_stage: { name: "Reunião Agendada" },
+      campaign: { name: "Facebook Lead Ads" },
+    },
+  }), {
+    RD_WEBHOOK_TOKEN: "secret",
+    META_PIXEL_ID: "3021870508000260",
+    META_ACCESS_TOKEN: "test-token",
+    DB: duplicateDb,
+  });
+  const result = await response.json();
+  assert.equal(result.dedup, true);
+  assert.equal(result.meta_crm.status, "duplicate_stage");
+  assert.equal(capturedRequest, null);
 });

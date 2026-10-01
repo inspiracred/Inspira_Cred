@@ -1030,6 +1030,50 @@ function metaCrmEventTime(value) {
   return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : Math.floor(Date.now() / 1000);
 }
 
+function rdMetaLeadEvidence(value) {
+  if (!value || typeof value !== "object") return false;
+  if (findMetaLeadId(value)) return true;
+
+  const metaPattern = /\b(meta|facebook|instagram|fb|ig)\b|lead[\s_-]*ads|n8n[\s_-]*meta[\s_-]*lead[\s_-]*ads/i;
+  const sourceValues = [
+    value.event_identifier,
+    value.conversion_identifier,
+    value.utm_source,
+    value.source,
+    value.deal_source && (value.deal_source.name || value.deal_source.value),
+    value.campaign && (value.campaign.name || value.campaign.value),
+  ];
+  if (sourceValues.some((item) => metaPattern.test(String(item || "")))) return true;
+
+  const customFields = value.deal_custom_fields || value.custom_fields || [];
+  return Array.isArray(customFields) && customFields.some((field) => {
+    const definition = field && (field.custom_field || field.field || {});
+    const label = definition.label || definition.name || field.label || field.name || field.key || "";
+    if (!/(origem|source|utm|campanh|evento|event|formul|leadgen|facebook|instagram|meta)/i.test(String(label))) return false;
+    const fieldValue = field.value ?? field.valor ?? field.content ?? "";
+    return metaPattern.test(Array.isArray(fieldValue) ? fieldValue.join(" ") : String(fieldValue));
+  });
+}
+
+async function fetchRdDealContact(dealId, env) {
+  if (!dealId || !env.RD_CRM_API_TOKEN) return null;
+  try {
+    const endpoint = `https://crm.rdstation.com/api/v1/deals/${encodeURIComponent(String(dealId))}/contacts?limit=1&token=${encodeURIComponent(env.RD_CRM_API_TOKEN)}`;
+    const response = await fetch(endpoint, { headers: { Accept: "application/json" } });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const contact = Array.isArray(payload.contacts) ? payload.contacts[0] : null;
+    if (!contact) return null;
+    return {
+      email: contact.emails && contact.emails[0] && contact.emails[0].email,
+      phone: contact.phones && contact.phones[0] && contact.phones[0].phone,
+      leadId: findMetaLeadId(contact),
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
 function normalizeMetaPhone(value) {
   let digits = String(value || "").replace(/\D/g, "");
   if ((digits.length === 10 || digits.length === 11) && !digits.startsWith("55")) digits = "55" + digits;
@@ -1634,34 +1678,63 @@ async function handleRdWebhook(request, env, context) {
   };
   const num = (x) => { if (x == null) return null; const n = Number(String(x).replace(/[^\d.,-]/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", ".")); return isFinite(n) ? n : null; };
 
-  const deal = body.deal || body.negociacao || body;
-  const dealId = dig(body, ["deal.id", "deal_id", "negociacao.id", "id"]);
-  const dealName = dig(body, ["deal.name", "deal_name", "negociacao.nome", "name"]);
-  const stage = dig(body, ["deal.stage.name", "deal_stage", "stage", "etapa", "deal.deal_stage.name"]);
-  const value = num(dig(body, ["deal.amount_total", "deal.amount_montly", "deal.value", "deal_value", "amount", "valor", "negociacao.valor"]));
-  const won = /ganh|won|vendid|fechad/i.test(String(stage || "") + " " + String(dig(body, ["deal.win", "win", "status"]) || "")) ? 1 : 0;
-  const email = dig(body, ["deal.contacts.0.emails.0.email", "contact.email", "email", "lead.email", "deal.email"]);
-  const phone = dig(body, ["deal.contacts.0.phones.0.phone", "contact.phone", "phone", "telefone", "lead.phone"]);
-  const metaLeadId = findMetaLeadId(body);
+  const deal = body.document || body.deal || body.negociacao || body;
+  const dealId = dig(body, ["document.id", "document._id", "deal.id", "deal._id", "deal_id", "negociacao.id", "id"]);
+  const dealName = dig(body, ["document.name", "deal.name", "deal_name", "negociacao.nome", "name"]);
+  const stage = dig(body, [
+    "document.deal_stage.name", "document.stage.name", "document.stage",
+    "deal.stage.name", "deal.deal_stage.name", "deal_stage.name", "deal_stage", "stage", "etapa",
+  ]);
+  const value = num(dig(body, [
+    "document.amount_total", "document.amount_unique", "deal.amount_total", "deal.amount_montly",
+    "deal.value", "deal_value", "amount", "valor", "negociacao.valor",
+  ]));
+  const won = /ganh|won|vendid|fechad/i.test(String(stage || "") + " " + String(dig(body, ["document.win", "document.status", "deal.win", "win", "status"]) || "")) ? 1 : 0;
+  let email = dig(body, ["document.contacts.0.emails.0.email", "deal.contacts.0.emails.0.email", "contact.email", "email", "lead.email", "deal.email"]);
+  let phone = dig(body, ["document.contacts.0.phones.0.phone", "deal.contacts.0.phones.0.phone", "contact.phone", "phone", "telefone", "lead.phone"]);
+  let metaLeadId = findMetaLeadId(body);
+  const metaEligible = rdMetaLeadEvidence(deal) || rdMetaLeadEvidence(body);
   const metaEventName = metaCrmEventName(stage, won);
   const metaEventTime = metaCrmEventTime(dig(body, [
-    "event_time", "updated_at", "changed_at", "created_at",
+    "event_timestamp", "event_time", "updated_at", "changed_at", "created_at",
+    "document.updated_at", "document.changed_at", "document.created_at",
     "deal.updated_at", "deal.changed_at", "deal.created_at",
     "negociacao.updated_at", "negociacao.created_at",
   ]));
-  const metaEventId = dealId
+  const metaEventId = dig(body, ["transaction_uuid", "event_id"]) || (dealId
     ? `rd:${String(dealId)}:${metaEventName}:${metaEventTime}`
-    : undefined;
-  const metaCrm = metaCrmEnabled
-    ? await sendCrmStageToMeta({
+    : undefined);
+
+  // crm_deal_updated dispara em qualquer edição. Uma mesma etapa deve chegar à Meta
+  // apenas uma vez; alterações de nota, responsável ou valor não são avanço de funil.
+  if (dealId) {
+    try {
+      const dup = await env.DB.prepare(`SELECT id FROM rd_sales WHERE deal_id=? AND COALESCE(stage,'')=COALESCE(?,'') LIMIT 1`).bind(String(dealId), stage ? String(stage) : null).first();
+      if (dup) return json({ ok: true, dedup: true, meta_crm: { ok: true, status: "duplicate_stage" } });
+    } catch (e) { /* tabela pode não existir ainda */ }
+  }
+
+  if (metaCrmEnabled && metaEligible && dealId && !metaLeadId && (!email || !phone)) {
+    const contact = await fetchRdDealContact(dealId, env);
+    if (contact) {
+      email = email || contact.email;
+      phone = phone || contact.phone;
+      metaLeadId = metaLeadId || contact.leadId;
+    }
+  }
+
+  const metaCrm = !metaCrmEnabled
+    ? { ok: false, status: "disabled" }
+    : !metaEligible
+      ? { ok: true, status: "ignored_non_meta" }
+      : await sendCrmStageToMeta({
         eventName: metaEventName,
         eventTime: metaEventTime,
         eventId: metaEventId,
         leadId: metaLeadId,
         email,
         phone,
-      }, env)
-    : { ok: false, status: "disabled" };
+        }, env);
 
   try {
     // tenta casar com um lead nosso: e-mail exato, senão sufixo do telefone (8+ dígitos)
@@ -1679,14 +1752,6 @@ async function handleRdWebhook(request, env, context) {
         }
       }
     } catch (e) { /* matching é best-effort */ }
-
-    // dedup leve: mesma etapa do mesmo negócio não grava 2x
-    if (dealId) {
-      try {
-        const dup = await env.DB.prepare(`SELECT id FROM rd_sales WHERE deal_id=? AND COALESCE(stage,'')=COALESCE(?,'') LIMIT 1`).bind(String(dealId), stage ? String(stage) : null).first();
-        if (dup) return json({ ok: true, dedup: true, meta_crm: metaCrm });
-      } catch (e) { /* tabela pode não existir ainda */ }
-    }
 
     await env.DB.prepare(
       `INSERT INTO rd_sales (deal_id, deal_name, stage, value, won, contact_email, contact_phone, matched_lead_id, raw)
