@@ -1605,6 +1605,7 @@ async function handleCampaigns(request, env) {
   const AGG = `COUNT(*) leads,
                SUM(CASE WHEN lead_kind='home_equity_mql' THEN 1 ELSE 0 END) mql,
                SUM(CASE WHEN lead_kind IN ('baixo_valor','descarte') THEN 1 ELSE 0 END) desq,
+               SUM(CASE WHEN COALESCE(credit_value,0)>0 THEN 1 ELSE 0 END) credit_n,
                SUM(COALESCE(credit_value,0)) valor`;
 
   const [rows, totals, daily] = await Promise.all([
@@ -2072,6 +2073,9 @@ const DASHBOARD_HTML = `<!doctype html>
   .msel>button{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .msel>button.on{border-color:var(--blue);box-shadow:0 0 0 3px rgba(11,45,114,.10)}
   .msel-panel{position:absolute;top:calc(100% + 6px);left:0;z-index:70;min-width:250px;max-height:320px;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 16px 38px rgba(6,26,66,.18);padding:8px}
+  .msel-apply{position:sticky;bottom:-8px;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px -8px -8px;padding:9px 10px;background:#fff;border-top:1px solid var(--border);border-radius:0 0 12px 12px}
+  .msel-apply small{color:var(--muted);font-size:10.5px}
+  .msel-apply button{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:800}
   .msel-actions{display:flex;gap:6px;padding:0 2px 8px;border-bottom:1px solid var(--border);margin-bottom:6px}
   .msel-actions button{padding:4px 10px;font-size:12px;border-radius:8px}
   .msel-opt{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:8px;font-size:13px;cursor:pointer}
@@ -2208,7 +2212,7 @@ const DASHBOARD_HTML = `<!doctype html>
   .am-level.active{background:var(--blue);color:#fff;box-shadow:0 6px 16px rgba(11,45,114,.22)}
   .am-level.active b{background:rgba(255,255,255,.16);border-color:transparent;color:#fff}
   .camp-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(300px,.85fr);gap:18px;align-items:start;margin-bottom:18px}
-  .am-row{display:grid;grid-template-columns:34px minmax(0,1fr) repeat(6,minmax(62px,86px)) 26px;align-items:center;gap:12px;width:100%;padding:13px 14px;border:1px solid var(--border);border-radius:15px;background:#fff;text-align:left;margin-bottom:9px;transition:border-color .15s,box-shadow .15s,transform .15s}
+  .am-row{display:grid;grid-template-columns:34px minmax(0,1fr) repeat(8,minmax(62px,86px)) 26px;align-items:center;gap:12px;width:100%;padding:13px 14px;border:1px solid var(--border);border-radius:15px;background:#fff;text-align:left;margin-bottom:9px;transition:border-color .15s,box-shadow .15s,transform .15s}
   .am-row:hover{border-color:rgba(249,115,22,.45);box-shadow:0 10px 24px rgba(6,26,66,.09);transform:translateY(-1px)}
   .am-row.is-flat{cursor:default}
   .am-row.is-flat:hover{transform:none;border-color:var(--border);box-shadow:none}
@@ -2229,7 +2233,7 @@ const DASHBOARD_HTML = `<!doctype html>
   .am-metric.hot b{color:var(--orange)}
   .am-go{font-size:19px;color:var(--muted);text-align:center}
   .am-row:hover .am-go{color:var(--orange)}
-  .am-head{display:grid;grid-template-columns:34px minmax(0,1fr) repeat(6,minmax(62px,86px)) 26px;gap:12px;padding:0 14px 9px;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .am-head{display:grid;grid-template-columns:34px minmax(0,1fr) repeat(8,minmax(62px,86px)) 26px;gap:12px;padding:0 14px 9px;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
   .am-head span:nth-child(n+3){text-align:right}
   .aud-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px}
   .aud-card{border:1px solid var(--border);border-radius:15px;padding:13px;background:var(--surface)}
@@ -2382,6 +2386,7 @@ const DASHBOARD_HTML = `<!doctype html>
           <button type="button" id="pageCapt" title="Só as páginas que capturam lead">Só captação</button>
         </div>
         <div id="pageList"></div>
+        <div class="msel-apply"><small>Marque as opções</small><button type="button" data-msel-apply="page">Aplicar</button></div>
       </div>
     </div>
     <div class="msel" id="srcWrap">
@@ -2392,6 +2397,7 @@ const DASHBOARD_HTML = `<!doctype html>
           <button type="button" id="srcOnlyMeta" title="Seleciona as origens Meta do periodo">So Meta</button>
         </div>
         <div id="srcList"></div>
+        <div class="msel-apply"><small>Marque as opções</small><button type="button" data-msel-apply="src">Aplicar</button></div>
       </div>
     </div>
     <select id="rangeSel"><option value="7">Últimos 7 dias</option><option value="30" selected>Últimos 30 dias</option><option value="90">Últimos 90 dias</option><option value="custom">Período personalizado…</option></select>
@@ -2470,6 +2476,7 @@ const DASHBOARD_HTML = `<!doctype html>
                 <button type="button" id="kindConv" title="Só quem conta conversão no Meta">Só conversões</button>
               </span>
               <span id="kindList"></span>
+              <span class="msel-apply"><small>Marque as opções</small><button type="button" data-msel-apply="kind">Aplicar</button></span>
             </span>
           </span>
         </label>
@@ -2518,7 +2525,7 @@ const DASHBOARD_HTML = `<!doctype html>
     </div>
     <div class="card">
       <div class="h2row"><h2 id="campRowsTitle">Campanhas</h2><span class="hint" id="campRowsHint"></span></div>
-      <div class="am-head"><span></span><span>Nome</span><span>Leads</span><span>Conversão</span><span>Gasto</span><span>CPL</span><span>Crédito</span><span>Qualif.</span><span></span></div>
+      <div class="am-head"><span></span><span>Nome</span><span>Leads</span><span>Conversão</span><span>Gasto</span><span>CPL</span><span>Crédito total</span><span>Crédito médio</span><span>Qualificados</span><span>Taxa qualif.</span><span></span></div>
       <div id="campRows"></div>
     </div>
     <div class="card" style="margin-top:18px">
@@ -2742,7 +2749,7 @@ function mselToggle(id,open){
 function mselCloseAll(){Object.keys(MSEL).forEach(function(id){mselToggle(id,false)});}
 
 /* Atalhos de cada filtro (origem/página/classificação): sempre uma lista de valores. */
-function mselAtalho(id,lista){mselSet(id,lista);}
+function mselAtalho(id,lista){mselSet(id,lista);mselToggle(id,false);}
 
 function currentPage(){return mselValue("page")}
 function currentPageList(){return mselList("page")}
@@ -2794,9 +2801,10 @@ function loadAll(){
   var scopeTxt="Exibindo: <b>"+pgTxt+"</b> - "+r.rotulo+" - <b>"+esc(srcTxt)+"</b>";
   document.getElementById("scope").innerHTML=scopeTxt+' - <span style="color:var(--muted)">carregando...</span>';
   var p1=fetch("${API}/overview"+qs+pageQ+srcQ+"&_="+Date.now()).then(function(r){return r.json()}).then(function(d){render(d);renderTraffic(d);});
-  // A aba Leads NÃO usa o filtro global de origem: ela mostra todo lead do período
-  // (tráfego pago e orgânico). A coluna Origem diz de onde cada um veio.
-  var p2=fetch("${API}/leads"+qs+"&limit=5000"+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderLeads);
+  // Origem é um filtro global: a aba Leads precisa respeitar o mesmo recorte das
+  // métricas e campanhas. Sem isso, o botão dizia "dashboard inteiro", mas a tabela
+  // continuava misturando tráfego pago e orgânico.
+  var p2=fetch("${API}/leads"+qs+"&limit=5000"+pageQ+srcQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderLeads);
   var p3=fetch("${API}/campaigns"+qs+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderCampaigns);
   var p5=fetch("${API}/health"+qs+pageQ+srcQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderHealth);
   if(hmPageLoaded)loadPageMap(); // mantém o mapa da página em sincronia com o período
@@ -3136,10 +3144,11 @@ function campAggregate(level){
   ((campData&&campData.rows)||[]).forEach(function(r){
     if(!campInScope(r,level))return;
     var k=campKeyOf(r,level);
-    if(!map[k])map[k]={k:k,leads:0,mql:0,desq:0,valor:0,srcs:{},kids:{}};
+    if(!map[k])map[k]={k:k,leads:0,mql:0,desq:0,creditN:0,valor:0,srcs:{},kids:{}};
     var m=map[k];
     m.leads+=Number(r.leads||0); m.mql+=Number(r.mql||0);
-    m.desq+=Number(r.desq||0);   m.valor+=Number(r.valor||0);
+    m.desq+=Number(r.desq||0);   m.creditN+=Number(r.credit_n||0);
+    m.valor+=Number(r.valor||0);
     m.srcs[r.src]=1;
     m.kids[level==="campaign"?r.med:r.cont]=1;
   });
@@ -3320,6 +3329,9 @@ function renderCampRows(){
     var conv=v?pct(r.leads,v)+"%":"—";
     var spend=Number(mt.spend||0);
     var cpl=(spend&&shownLeads)?brlMetric(spend/shownLeads):"—";
+    var avgCredit=r.creditN?brlShort(Number(r.valor||0)/r.creditN):"—";
+    var qualifiedCount=r.leads?pretty(r.mql):"—";
+    var qualifiedRate=r.leads?pct(r.mql,r.leads)+"%":"—";
     var kidsTxt=level==="campaign"?(r.kidsN+" conjunto"+(r.kidsN===1?"":"s")):(level==="adset"?(r.kidsN+" anúncio"+(r.kidsN===1?"":"s")):"");
     var tags='<span class="am-tag">'+esc((r.srcList||[]).slice(0,2).join(" · "))+'</span>'+
              (kidsTxt?'<span class="am-tag">'+kidsTxt+'</span>':'')+
@@ -3339,8 +3351,10 @@ function renderCampRows(){
       '<span class="am-metric'+(v?' hot':'')+'"><b>'+conv+'</b><small>conversão</small></span>'+
       '<span class="am-metric"><b>'+metaMoney(spend)+'</b><small>gasto</small></span>'+
       '<span class="am-metric"><b>'+cpl+'</b><small>CPL</small></span>'+
-      '<span class="am-metric"><b>'+brlShort(r.valor)+'</b><small>crédito</small></span>'+
-      '<span class="am-metric"><b>'+pct(r.mql,r.leads)+'%</b><small>qualif.</small></span>'+
+      '<span class="am-metric"><b>'+brlShort(r.valor)+'</b><small>crédito total</small></span>'+
+      '<span class="am-metric"><b>'+avgCredit+'</b><small>crédito médio</small></span>'+
+      '<span class="am-metric"><b>'+qualifiedCount+'</b><small>qualificados</small></span>'+
+      '<span class="am-metric"><b>'+qualifiedRate+'</b><small>taxa qualif.</small></span>'+
       '<span class="am-go">'+(drillable?'›':'')+'</span>'+
     '</button>';
   }).join("")+(totalLeads?'':'');
@@ -4356,6 +4370,9 @@ document.getElementById("pageAll").addEventListener("click",function(){mselAtalh
 document.getElementById("pageCapt").addEventListener("click",function(){mselAtalho("page",["landing_page","home_equity_lp","home_equity_form","home_institucional"]);});
 document.getElementById("kindAll").addEventListener("click",function(){mselAtalho("kind",[]);});
 document.getElementById("kindConv").addEventListener("click",function(){mselAtalho("kind",["home_equity","home_equity_mql","auto","institucional"]);});
+document.querySelectorAll("[data-msel-apply]").forEach(function(btn){
+  btn.addEventListener("click",function(){mselToggle(btn.getAttribute("data-msel-apply"),false);});
+});
 // clicar fora (ou Esc) fecha os painéis — é ao fechar que o filtro é aplicado
 document.addEventListener("click",mselCloseAll);
 document.addEventListener("keydown",function(e){if(e.key==="Escape")mselCloseAll();});
@@ -4380,8 +4397,7 @@ document.getElementById("hmViewport").addEventListener("wheel",function(e){
    preferência de quem abre — não faz sentido gravar no servidor pra todo mundo. */
 var FILTER_KEY="ic_dash_filter";
 function saveFilter(){
-  var f={page:currentPage(),src:currentSrc(),days:document.getElementById("rangeSel").value,
-         de:document.getElementById("dateFrom").value,ate:document.getElementById("dateTo").value};
+  var f=currentFilterSnapshot();
   try{ localStorage.setItem(FILTER_KEY,JSON.stringify(f)); }catch(e){}
   var b=document.getElementById("saveFilter");
   b.textContent="★ Filtro salvo"; b.classList.add("saved");
@@ -4394,11 +4410,21 @@ function clearFilter(){
 function readSavedFilter(){
   try{ return JSON.parse(localStorage.getItem(FILTER_KEY)||"null"); }catch(e){ return null; }
 }
+function currentFilterSnapshot(){
+  return {page:currentPage(),src:currentSrc(),days:document.getElementById("rangeSel").value,
+          de:document.getElementById("dateFrom").value,ate:document.getElementById("dateTo").value};
+}
+function savedFilterMatches(s){
+  if(!s)return false;
+  var c=currentFilterSnapshot();
+  return s.page===c.page&&s.src===c.src&&String(s.days)===c.days&&
+    (c.days!=="custom"||(String(s.de||"")===c.de&&String(s.ate||"")===c.ate));
+}
 // Reflete no botão se o filtro atual é o que está salvo (estrela cheia = salvo/igual).
 function syncSaveBtn(){
   var b=document.getElementById("saveFilter"); if(!b)return;
   var s=readSavedFilter();
-  var igual=s&&s.page===currentPage()&&s.src===currentSrc()&&String(s.days)===document.getElementById("rangeSel").value;
+  var igual=savedFilterMatches(s);
   b.classList.toggle("saved",!!igual);
   b.title=igual?"Este é o filtro padrão deste navegador — clique para remover":"Guardar página, origem e período como padrão deste navegador";
   b.textContent=igual?"★ Filtro salvo":"☆ Salvar filtro";
@@ -4423,11 +4449,13 @@ function applySavedFilter(){
 }
 document.getElementById("saveFilter").addEventListener("click",function(){
   var s=readSavedFilter();
-  var igual=s&&s.page===currentPage()&&s.src===currentSrc()&&String(s.days)===document.getElementById("rangeSel").value;
+  var igual=savedFilterMatches(s);
   if(igual) clearFilter(); else saveFilter();
 });
 // (página e origem chamam syncSaveBtn no onApply do próprio filtro, ao fechar o painel)
 document.getElementById("rangeSel").addEventListener("change",syncSaveBtn);
+document.getElementById("dateFrom").addEventListener("change",syncSaveBtn);
+document.getElementById("dateTo").addEventListener("change",syncSaveBtn);
 // (a origem chama syncSaveBtn dentro do srcTogglePanel, ao fechar o painel)
 document.getElementById("criteriaBtn").addEventListener("click",openCriteria);
 document.getElementById("criteriaClose").addEventListener("click",function(){document.getElementById("criteriaModal").classList.remove("show");});

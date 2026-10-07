@@ -15,6 +15,19 @@ const attributionCode = server.slice(
 const backend = vm.createContext({ decodeURIComponent, Map, String });
 vm.runInContext(attributionCode, backend);
 
+function dashboardHtml() {
+  const dashboardContext = vm.createContext({ console });
+  const executableServer = server.replace(
+    "export async function onRequest",
+    "async function onRequest"
+  );
+  vm.runInContext(
+    `${executableServer};globalThis.__dashboard = DASHBOARD_HTML;`,
+    dashboardContext
+  );
+  return dashboardContext.__dashboard;
+}
+
 const currentMetaRows = [{
   campaign_id: "12001",
   campaign_name: "[Leads_LP]_04/09",
@@ -111,20 +124,33 @@ test("fallback legado continua disponível sem a tabela de aliases", async () =>
 });
 
 test("filtro Facebook/Instagram mantém as métricas da Ads API visíveis", () => {
-  const dashboardContext = vm.createContext({ console });
-  const executableServer = server.replace(
-    "export async function onRequest",
-    "async function onRequest"
-  );
-  vm.runInContext(
-    `${executableServer};globalThis.__dashboard = DASHBOARD_HTML;`,
-    dashboardContext
-  );
-  const dashboard = dashboardContext.__dashboard;
+  const dashboard = dashboardHtml();
 
   assert.doesNotMatch(dashboard, /\u0008/);
   assert.match(
     dashboard,
     /function campMetaApplies\(\)\{\s*if\(!campSrc\.length\)return true;\s*return campSrc\.some\(isMetaSourceValue\);\s*\}/
   );
+});
+
+test("campanhas mostram crédito médio e volume absoluto de qualificados", () => {
+  const dashboard = dashboardHtml();
+
+  assert.match(server, /SUM\(CASE WHEN COALESCE\(credit_value,0\)>0 THEN 1 ELSE 0 END\) credit_n/);
+  assert.match(dashboard, /Crédito médio/);
+  assert.match(dashboard, /Qualificados/);
+  assert.match(dashboard, /var avgCredit=r\.creditN\?brlShort\(Number\(r\.valor\|\|0\)\/r\.creditN\):"—"/);
+  assert.match(dashboard, /var qualifiedCount=r\.leads\?pretty\(r\.mql\):"—"/);
+});
+
+test("filtro global de origem também recorta a mesa de leads", () => {
+  const dashboard = dashboardHtml();
+
+  assert.match(
+    dashboard,
+    /fetch\("\/analytics\/api\/leads"\+qs\+"&limit=5000"\+pageQ\+srcQ/
+  );
+  assert.match(dashboard, /data-msel-apply="page">Aplicar/);
+  assert.match(dashboard, /data-msel-apply="src">Aplicar/);
+  assert.match(dashboard, /function savedFilterMatches\(s\)/);
 });
