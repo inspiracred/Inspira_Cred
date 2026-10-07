@@ -55,6 +55,9 @@ CREATE TABLE IF NOT EXISTS leads (
   utm_campaign   TEXT,
   utm_content    TEXT,
   utm_term       TEXT,
+  meta_campaign_id TEXT,
+  meta_adset_id    TEXT,
+  meta_ad_id       TEXT,
   -- Atribuição + status de entrega (RD Station / Meta CAPI) — adicionadas out-of-band
   -- em produção via ALTER TABLE; aqui só pra ambientes novos partirem já corretos.
   fbp            TEXT,

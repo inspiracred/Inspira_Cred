@@ -25,7 +25,7 @@
     body.event_id = body.meta_events.length ? body.meta_events[0].event_id : null;
     try {
       var q = new URLSearchParams(location.search);
-      ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"].forEach(function (u) { if (body[u] == null && q.get(u)) body[u] = q.get(u); });
+      ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "meta_campaign_id", "meta_adset_id", "meta_ad_id"].forEach(function (u) { if (body[u] == null && q.get(u)) body[u] = q.get(u); });
     } catch (e) {}
     var json = JSON.stringify(body);
     try {
@@ -195,7 +195,10 @@
         utm_medium: params.get("utm_medium") || null,
         utm_campaign: params.get("utm_campaign") || null,
         utm_content: params.get("utm_content") || null,
-        utm_term: params.get("utm_term") || null
+        utm_term: params.get("utm_term") || null,
+        meta_campaign_id: params.get("meta_campaign_id") || null,
+        meta_adset_id: params.get("meta_adset_id") || null,
+        meta_ad_id: params.get("meta_ad_id") || null
       };
     }
 

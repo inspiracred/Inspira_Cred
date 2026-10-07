@@ -62,6 +62,9 @@ export async function onRequest(context) {
   const utmCampaign = url.searchParams.get("utm_campaign") || "";
   const utmContent = url.searchParams.get("utm_content") || "";
   const utmTerm = url.searchParams.get("utm_term") || "";
+  const metaCampaignId = url.searchParams.get("meta_campaign_id") || "";
+  const metaAdsetId = url.searchParams.get("meta_adset_id") || "";
+  const metaAdId = url.searchParams.get("meta_ad_id") || "";
 
   const fbp = existingFbp || `fb.${SUB_DOMAIN_INDEX}.${Date.now()}.${Math.floor(Math.random() * 9000000000) + 1000000000}`;
 
@@ -94,8 +97,8 @@ export async function onRequest(context) {
       (async () => {
         try {
           await env.DB.prepare(
-            `INSERT INTO sessions (session_id, external_id, fbclid, gclid, msclkid, fbc, fbp, ip_address, user_agent, referrer, landing_url, utm_source, utm_medium, utm_campaign, utm_content, utm_term, created_at, updated_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            `INSERT INTO sessions (session_id, external_id, fbclid, gclid, msclkid, fbc, fbp, ip_address, user_agent, referrer, landing_url, utm_source, utm_medium, utm_campaign, utm_content, utm_term, meta_campaign_id, meta_adset_id, meta_ad_id, created_at, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
              ON CONFLICT(session_id) DO UPDATE SET
                fbclid = CASE WHEN excluded.fbclid != '' THEN excluded.fbclid ELSE sessions.fbclid END,
                gclid = CASE WHEN excluded.gclid != '' THEN excluded.gclid ELSE sessions.gclid END,
@@ -106,11 +109,15 @@ export async function onRequest(context) {
                utm_campaign = CASE WHEN excluded.utm_campaign != '' THEN excluded.utm_campaign ELSE sessions.utm_campaign END,
                utm_content = CASE WHEN excluded.utm_content != '' THEN excluded.utm_content ELSE sessions.utm_content END,
                utm_term = CASE WHEN excluded.utm_term != '' THEN excluded.utm_term ELSE sessions.utm_term END,
+               meta_campaign_id = CASE WHEN excluded.meta_campaign_id != '' THEN excluded.meta_campaign_id ELSE sessions.meta_campaign_id END,
+               meta_adset_id = CASE WHEN excluded.meta_adset_id != '' THEN excluded.meta_adset_id ELSE sessions.meta_adset_id END,
+               meta_ad_id = CASE WHEN excluded.meta_ad_id != '' THEN excluded.meta_ad_id ELSE sessions.meta_ad_id END,
                updated_at = excluded.updated_at`
           ).bind(
             sessionId, externalId, fbclid, gclid, msclkid, fbc, fbp,
             clientIp, userAgent, referrer, url.toString(),
-            utmSource, utmMedium, utmCampaign, utmContent, utmTerm, now, now
+            utmSource, utmMedium, utmCampaign, utmContent, utmTerm,
+            metaCampaignId, metaAdsetId, metaAdId, now, now
           ).run();
         } catch (e) {
           // sessions ainda não existe (migration 0006 pendente) ou falha transitória — ok.

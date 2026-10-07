@@ -56,9 +56,13 @@
     } catch (e) { return null; }
   }
 
-  // UTMs da URL (first-touch: guarda na sessão pra não perder em cliques posteriores
-  // nem em navegação interna que chegue sem os parâmetros).
-  var UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
+  // Atribuição da URL (first-touch: guarda na sessão pra não perder em cliques
+  // posteriores nem em navegação interna que chegue sem os parâmetros). Os IDs Meta
+  // são a chave estável; as UTMs continuam como rótulo humano/auditoria.
+  var UTM_KEYS = [
+    "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term",
+    "meta_campaign_id", "meta_adset_id", "meta_ad_id"
+  ];
   var UTM_STORE = "ic_utm";
   function utmParams() {
     var out = {};

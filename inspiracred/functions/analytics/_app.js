@@ -282,7 +282,7 @@ async function handleTrack(request, env, cors, context) {
         // gclid/UTMs herdam da sessão quando faltaram no lead.
         if (s) {
           if (!event.gclid && s.gclid) event.gclid = s.gclid;
-          ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"].forEach((k) => {
+          ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "meta_campaign_id", "meta_adset_id", "meta_ad_id"].forEach((k) => {
             if (!event[k] && s[k]) event[k] = s[k];
           });
         }
@@ -306,11 +306,12 @@ async function handleTrack(request, env, cors, context) {
         }
 
         const insertLead = () => env.DB.prepare(
-          `INSERT INTO leads (session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbp, fbc, fbclid, gclid, event_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          `INSERT INTO leads (session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, meta_campaign_id, meta_adset_id, meta_ad_id, fbp, fbc, fbclid, gclid, event_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         ).bind(event.session_id || null, event.name || null, event.phone || null, event.email || null,
           event.property_type || null, event.property_value || null, event.credit_value || null,
           event.source || null, event.utm_source || null, event.utm_medium || null,
           event.utm_campaign || null, event.utm_content || null, event.utm_term || null,
+          event.meta_campaign_id || null, event.meta_adset_id || null, event.meta_ad_id || null,
           event.fbp || null, event.fbc || null, event.fbclid || null, event.gclid || null,
           event.event_id || null).run();
         // 2ª tentativa: uma falha momentânea do D1 não pode custar o lead (o navegador
@@ -657,6 +658,11 @@ async function sendLeadToRD(event, env, leadId) {
     // Mandar só pro cf_anuncio deixava o campo "UTM Content" da Negociação vazio.
     cf_utm_content: str(event.utm_content),
     cf_utm_term: str(event.utm_term),
+    // IDs imutaveis da hierarquia Meta. Os campos precisam existir no RD como texto;
+    // enquanto nao existirem, o RD apenas ignora estas chaves sem afetar o lead.
+    cf_meta_campaign_id: str(event.meta_campaign_id),
+    cf_meta_adset_id: str(event.meta_adset_id),
+    cf_meta_ad_id: str(event.meta_ad_id),
     // "Formulário de Origem" — campo de Lead CRIADO em 2026-07-23 + mapeado pra Negociação.
     // ⚠️ O identificador tem "de": `cf_formulario_de_origem` (o RD gera o slug a partir do
     // nome e MANTÉM as preposições). Enviar `cf_formulario_origem` seria descartado em
@@ -1283,6 +1289,111 @@ async function fetchMetaAdInsights(env, start, end) {
 
   return { enabled: true, ok: true, account, rows, totals, pages };
 }
+
+/* Atribuição estável do Meta
+ *
+ * Nomes de campanha/conjunto/anúncio são rótulos editáveis. Os IDs são a chave
+ * permanente. Esta camada traduz os IDs gravados no site para os nomes atuais
+ * devolvidos pela Ads API e mantém aliases apenas para o histórico anterior aos IDs.
+ */
+const LEGACY_META_CAMPAIGN_ALIASES = [
+  { raw_name: "[Leads_LP]_03/09", canonical_name: "[Leads_LP]_04/09", campaign_id: "" },
+];
+
+function decodeAttributionLabel(value) {
+  let out = String(value == null ? "" : value).trim();
+  for (let i = 0; i < 2 && /%[0-9a-f]{2}/i.test(out); i++) {
+    try {
+      const decoded = decodeURIComponent(out);
+      if (decoded === out) break;
+      out = decoded;
+    } catch (e) { break; }
+  }
+  return out;
+}
+
+async function loadMetaCampaignAliases(env) {
+  const merged = new Map(LEGACY_META_CAMPAIGN_ALIASES.map((a) => [decodeAttributionLabel(a.raw_name), { ...a }]));
+  try {
+    const result = await env.DB.prepare(
+      `SELECT raw_name, canonical_name, COALESCE(campaign_id,'') campaign_id FROM meta_campaign_aliases`
+    ).all();
+    for (const a of (result.results || [])) {
+      const raw = decodeAttributionLabel(a.raw_name);
+      if (raw) merged.set(raw, {
+        raw_name: raw,
+        canonical_name: decodeAttributionLabel(a.canonical_name) || raw,
+        campaign_id: String(a.campaign_id || ""),
+      });
+    }
+  } catch (e) { /* migration ainda não aplicada: mantém os aliases legados do código */ }
+  return [...merged.values()];
+}
+
+function metaAttributionMaps(metaRows) {
+  const maps = {
+    campaignById: new Map(), campaignByName: new Map(),
+    adsetById: new Map(), adsetByName: new Map(),
+    adById: new Map(), adByName: new Map(),
+  };
+  for (const item of (metaRows || [])) {
+    const campaignId = String(item.campaign_id || "");
+    const campaignName = decodeAttributionLabel(item.campaign_name);
+    const adsetId = String(item.adset_id || "");
+    const adsetName = decodeAttributionLabel(item.adset_name);
+    const adId = String(item.ad_id || "");
+    const adName = decodeAttributionLabel(item.ad_name);
+    if (campaignId) maps.campaignById.set(campaignId, item);
+    if (campaignName) maps.campaignByName.set(campaignName, item);
+    if (adsetId) maps.adsetById.set(adsetId, item);
+    if (adsetName) maps.adsetByName.set(`${campaignId}\u0000${adsetName}`, item);
+    if (adId) maps.adById.set(adId, item);
+    if (adName) maps.adByName.set(`${adsetId}\u0000${adName}`, item);
+  }
+  return maps;
+}
+
+function reconcileAttributionRows(rows, metaRows, aliases) {
+  const maps = metaAttributionMaps(metaRows);
+  const aliasByRaw = new Map((aliases || []).map((a) => [decodeAttributionLabel(a.raw_name), a]));
+  return (rows || []).map((input) => {
+    const row = { ...input };
+    row.camp = decodeAttributionLabel(row.camp) || "(sem campanha)";
+    row.med = decodeAttributionLabel(row.med) || row.med;
+    row.cont = decodeAttributionLabel(row.cont) || row.cont;
+    row.meta_campaign_id = String(row.meta_campaign_id || "");
+    row.meta_adset_id = String(row.meta_adset_id || "");
+    row.meta_ad_id = String(row.meta_ad_id || "");
+
+    const alias = aliasByRaw.get(row.camp);
+    const canonicalName = decodeAttributionLabel(alias && alias.canonical_name) || row.camp;
+    const aliasCampaignId = String((alias && alias.campaign_id) || "");
+    const campaign = maps.campaignById.get(row.meta_campaign_id)
+      || maps.campaignById.get(aliasCampaignId)
+      || maps.campaignByName.get(canonicalName);
+    if (campaign) {
+      row.meta_campaign_id = String(campaign.campaign_id || row.meta_campaign_id || aliasCampaignId);
+      row.camp = decodeAttributionLabel(campaign.campaign_name) || canonicalName;
+    } else {
+      if (!row.meta_campaign_id && aliasCampaignId) row.meta_campaign_id = aliasCampaignId;
+      row.camp = canonicalName;
+    }
+
+    const adset = maps.adsetById.get(row.meta_adset_id)
+      || maps.adsetByName.get(`${row.meta_campaign_id}\u0000${row.med || ""}`);
+    if (adset) {
+      row.meta_adset_id = String(adset.adset_id || row.meta_adset_id);
+      row.med = decodeAttributionLabel(adset.adset_name) || row.med;
+    }
+    const ad = maps.adById.get(row.meta_ad_id)
+      || maps.adByName.get(`${row.meta_adset_id}\u0000${row.cont || ""}`);
+    if (ad) {
+      row.meta_ad_id = String(ad.ad_id || row.meta_ad_id);
+      row.cont = decodeAttributionLabel(ad.ad_name) || row.cont;
+    }
+    return row;
+  });
+}
 async function handleOverview(request, env) {
   const { start, end, page, src } = params(request.url);
   const pv = page ? ` AND ${inCond("page_name", page)}` : "";   // filtro por página (page_views/clicks/forms/events)
@@ -1390,7 +1501,7 @@ async function handleLeads(request, env) {
   // Colunas base + qualificadores (migration 0003). Se as colunas novas ainda não
   // existirem no D1, o 1º SELECT falha e caímos no fallback com as colunas antigas —
   // o dashboard nunca quebra por causa de migration pendente.
-  const BASE = `id, session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, rd_status, meta_status, created_at`;
+  const BASE = `id, session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, meta_campaign_id, meta_adset_id, meta_ad_id, rd_status, meta_status, created_at`;
   const QUAL = `, imovel_quitado, documentacao_ok, situacao_imovel, saldo_devedor, possui_imovel, possui_matricula, faixa_credito, city, lead_kind, fbp_source, fbc_source`;
   const conds = [];
   const binds = [start, end];
@@ -1443,8 +1554,10 @@ async function handleLeads(request, env) {
 }
 
 /* ---- CAMPANHAS (hierarquia igual à do Gerenciador de Anúncios do Meta) ----
- * Os 3 níveis do Meta chegam pra gente pelas UTMs dos anúncios (ver CLAUDE.md):
+ * Os 3 níveis do Meta chegam pelos IDs estáveis + UTMs dos anúncios:
  *   utm_campaign = CAMPANHA · utm_medium = CONJUNTO · utm_content = ANÚNCIO ({{ad.name}}).
+ * O servidor resolve os IDs contra os nomes atuais da Ads API. Para o histórico sem
+ * IDs, aliases explícitos impedem que uma simples renomeação abra uma linha nova.
  * Devolvemos as combinações CRUAS (uma linha por src/camp/med/cont) e o dashboard
  * agrega no nível que o usuário está olhando — assim a navegação campanha → conjunto
  * → anúncio é instantânea, sem refetch a cada clique.
@@ -1456,9 +1569,9 @@ async function handleLeads(request, env) {
  *     período anterior a isso tem lead sem visita e a taxa fica inflada.
  *   - `visits_page_scoped: false`: sessão é do SITE, não de uma página — com filtro
  *     de página ligado, os leads filtram mas as visitas não.
- * NÃO temos gasto/CPA/impressão/idade/gênero: isso exige `ads_read` na conta de
- * anúncios do cliente, que segue bloqueado (CLAUDE.md). O painel de público usa o
- * que É nosso: dispositivo, navegador, cidade, faixa de crédito e tipo de imóvel.
+ * Gasto/impressões/resultados vêm da Ads API. O painel de público usa o que é nosso:
+ * dispositivo, navegador, cidade, faixa de crédito e tipo de imóvel (não inferimos
+ * demografia do Meta a partir dos dados do site).
  */
 async function handleCampaigns(request, env) {
   const { start, end, page } = params(request.url);
@@ -1471,6 +1584,9 @@ async function handleCampaigns(request, env) {
   const CAMP = "COALESCE(NULLIF(utm_campaign,''),'(sem campanha)')";
   const CONT = "COALESCE(NULLIF(utm_content,''),'(sem criativo)')";
   const MED = "COALESCE(NULLIF(utm_medium,''),'(sem conjunto)')";
+  const CID = "COALESCE(NULLIF(meta_campaign_id,''),'')";
+  const SID = "COALESCE(NULLIF(meta_adset_id,''),'')";
+  const AID = "COALESCE(NULLIF(meta_ad_id,''),'')";
   const WHERE = `WHERE DATE(created_at) BETWEEN ? AND ?${sc}`;
   // sessions.created_at é INTEGER (unix seconds) — precisa do 'unixepoch'.
   const SWHERE = `WHERE DATE(created_at,'unixepoch') BETWEEN ? AND ?`;
@@ -1480,7 +1596,7 @@ async function handleCampaigns(request, env) {
                SUM(COALESCE(credit_value,0)) valor`;
 
   const [rows, totals, daily] = await Promise.all([
-    many(`SELECT ${SRC} src, ${CAMP} camp, ${MED} med, ${CONT} cont, ${AGG} FROM leads ${WHERE} GROUP BY src,camp,med,cont ORDER BY leads DESC`),
+    many(`SELECT ${SRC} src, ${CAMP} camp, ${MED} med, ${CONT} cont, ${CID} meta_campaign_id, ${SID} meta_adset_id, ${AID} meta_ad_id, ${AGG} FROM leads ${WHERE} GROUP BY src,camp,med,cont,meta_campaign_id,meta_adset_id,meta_ad_id ORDER BY leads DESC`),
     env.DB.prepare(
       `SELECT COUNT(*) total,
               SUM(CASE WHEN COALESCE(utm_source,'')<>'' THEN 1 ELSE 0 END) com_utm,
@@ -1488,7 +1604,7 @@ async function handleCampaigns(request, env) {
               SUM(COALESCE(credit_value,0)) valor
        FROM leads ${WHERE}`
     ).bind(...b).first(),
-    many(`SELECT DATE(created_at) d, ${CAMP} camp, ${SRC} src, COUNT(*) n FROM leads ${WHERE} GROUP BY d, camp, src ORDER BY d`),
+    many(`SELECT DATE(created_at) d, ${CAMP} camp, ${SRC} src, ${CID} meta_campaign_id, COUNT(*) n FROM leads ${WHERE} GROUP BY d, camp, src, meta_campaign_id ORDER BY d`),
   ]);
 
   // Visitas/sessões (tabela da Fase A). Se ainda não existir no banco, o dashboard
@@ -1496,8 +1612,8 @@ async function handleCampaigns(request, env) {
   let visits = [], daily_visits = [], visits_since = null;
   try {
     [visits, daily_visits, visits_since] = await Promise.all([
-      manyS(`SELECT ${SRC} src, ${CAMP} camp, ${MED} med, ${CONT} cont, COUNT(*) n FROM sessions ${SWHERE} GROUP BY src,camp,med,cont`),
-      manyS(`SELECT DATE(created_at,'unixepoch') d, ${CAMP} camp, ${SRC} src, COUNT(*) n FROM sessions ${SWHERE} GROUP BY d, camp, src ORDER BY d`),
+      manyS(`SELECT ${SRC} src, ${CAMP} camp, ${MED} med, ${CONT} cont, ${CID} meta_campaign_id, ${SID} meta_adset_id, ${AID} meta_ad_id, COUNT(*) n FROM sessions ${SWHERE} GROUP BY src,camp,med,cont,meta_campaign_id,meta_adset_id,meta_ad_id`),
+      manyS(`SELECT DATE(created_at,'unixepoch') d, ${CAMP} camp, ${SRC} src, ${CID} meta_campaign_id, COUNT(*) n FROM sessions ${SWHERE} GROUP BY d, camp, src, meta_campaign_id ORDER BY d`),
       env.DB.prepare(`SELECT MIN(DATE(created_at,'unixepoch')) d FROM sessions`).first().then((r) => (r && r.d) || null),
     ]);
   } catch (e) { /* sessions ainda não criada */ }
@@ -1514,20 +1630,28 @@ async function handleCampaigns(request, env) {
       ["Tipo de imóvel", "COALESCE(NULLIF(property_type,''),'(não informado)')"],
     ];
     const parts = await Promise.all(dims.map(([dim, expr]) =>
-      many(`SELECT '${dim}' dim, ${expr} k, ${CAMP} camp, ${SRC} src, COUNT(*) n FROM leads ${WHERE} GROUP BY k, camp, src`)
+      many(`SELECT '${dim}' dim, ${expr} k, ${CAMP} camp, ${SRC} src, ${CID} meta_campaign_id, COUNT(*) n FROM leads ${WHERE} GROUP BY k, camp, src, meta_campaign_id`)
     ));
     audience = parts.flat();
   } catch (e) { /* colunas das migrations 0003/0008 ausentes */ }
 
-  const meta = await fetchMetaAdInsights(env, start, end);
+  const [meta, aliases] = await Promise.all([
+    fetchMetaAdInsights(env, start, end),
+    loadMetaCampaignAliases(env),
+  ]);
+  const rowsOut = reconcileAttributionRows(rows, meta.rows, aliases);
+  const dailyOut = reconcileAttributionRows(daily, meta.rows, aliases);
+  const visitsOut = reconcileAttributionRows(visits, meta.rows, aliases);
+  const dailyVisitsOut = reconcileAttributionRows(daily_visits, meta.rows, aliases);
+  const audienceOut = reconcileAttributionRows(audience, meta.rows, aliases);
   const t = totals || {};
   const total = t.total || 0, com_utm = t.com_utm || 0;
   return json({
     range: { start, end }, page: page || "all",
     totals: { total, com_utm, direto: total - com_utm, valor: t.valor || 0, mql: t.mql || 0 },
-    rows, daily, visits, daily_visits, visits_since,
+    rows: rowsOut, daily: dailyOut, visits: visitsOut, daily_visits: dailyVisitsOut, visits_since,
     visits_page_scoped: false,
-    audience,
+    audience: audienceOut,
     ads_api: meta.enabled,
     meta_insights_ok: meta.ok,
     meta_account: meta.account,
@@ -3555,6 +3679,9 @@ function showLead(i,list){
   row("Campanha (utm_campaign)",pretty(l.utm_campaign));
   row("Criativo (utm_content)",pretty(l.utm_content));
   opt("Termo (utm_term)",l.utm_term);
+  opt("Meta Campaign ID",l.meta_campaign_id);
+  opt("Meta Ad Set ID",l.meta_adset_id);
+  opt("Meta Ad ID",l.meta_ad_id);
   sec("Entrega");
   // Baixo valor também segue para RD; descarte fica só no banco.
   row("RD Station", badge(l.rd_status));
@@ -3613,7 +3740,7 @@ function loadJourney(sid){
   }).catch(function(e){console.error(e);jb.disabled=false;jb.textContent="Ver jornada ↓";box.innerHTML='<div class="empty">Erro ao carregar a jornada.</div>';});
 }
 
-var CSV_COLS=["created_at","name","phone","email","lead_kind","property_type","property_value","credit_value","faixa_credito","imovel_quitado","situacao_imovel","documentacao_ok","possui_imovel","possui_matricula","saldo_devedor","city","source","utm_source","utm_medium","utm_campaign","utm_content","utm_term","rd_status","meta_status"];
+var CSV_COLS=["created_at","name","phone","email","lead_kind","property_type","property_value","credit_value","faixa_credito","imovel_quitado","situacao_imovel","documentacao_ok","possui_imovel","possui_matricula","saldo_devedor","city","source","utm_source","utm_medium","utm_campaign","utm_content","utm_term","meta_campaign_id","meta_adset_id","meta_ad_id","rd_status","meta_status"];
 function downloadCSV(rows,cols,filename){
   if(!rows.length){alert("Sem leads para exportar.");return}
   var head=cols.join(",");
