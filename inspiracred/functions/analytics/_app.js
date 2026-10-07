@@ -1335,6 +1335,7 @@ function metaAttributionMaps(metaRows) {
     campaignById: new Map(), campaignByName: new Map(),
     adsetById: new Map(), adsetByName: new Map(),
     adById: new Map(), adByName: new Map(),
+    adsetsByCampaignId: new Map(), uniqueAdsetByCampaignId: new Map(),
   };
   for (const item of (metaRows || [])) {
     const campaignId = String(item.campaign_id || "");
@@ -1347,8 +1348,15 @@ function metaAttributionMaps(metaRows) {
     if (campaignName) maps.campaignByName.set(campaignName, item);
     if (adsetId) maps.adsetById.set(adsetId, item);
     if (adsetName) maps.adsetByName.set(`${campaignId}\u0000${adsetName}`, item);
+    if (campaignId && adsetId) {
+      if (!maps.adsetsByCampaignId.has(campaignId)) maps.adsetsByCampaignId.set(campaignId, new Map());
+      maps.adsetsByCampaignId.get(campaignId).set(adsetId, item);
+    }
     if (adId) maps.adById.set(adId, item);
     if (adName) maps.adByName.set(`${adsetId}\u0000${adName}`, item);
+  }
+  for (const [campaignId, adsets] of maps.adsetsByCampaignId) {
+    if (adsets.size === 1) maps.uniqueAdsetByCampaignId.set(campaignId, adsets.values().next().value);
   }
   return maps;
 }
@@ -1380,7 +1388,11 @@ function reconcileAttributionRows(rows, metaRows, aliases) {
     }
 
     const adset = maps.adsetById.get(row.meta_adset_id)
-      || maps.adsetByName.get(`${row.meta_campaign_id}\u0000${row.med || ""}`);
+      || maps.adsetByName.get(`${row.meta_campaign_id}\u0000${row.med || ""}`)
+      // Histórico antigo usava utm_medium=paid_social em vez do nome do conjunto.
+      // Se a campanha possui UM único conjunto na Meta, a correspondência é
+      // inequívoca e podemos reunir as duas linhas sem inventar atribuição.
+      || (!row.meta_adset_id && maps.uniqueAdsetByCampaignId.get(row.meta_campaign_id));
     if (adset) {
       row.meta_adset_id = String(adset.adset_id || row.meta_adset_id);
       row.med = decodeAttributionLabel(adset.adset_name) || row.med;

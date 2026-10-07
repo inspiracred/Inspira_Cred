@@ -46,6 +46,39 @@ test("um campaign_id antigo assume o nome atual devolvido pela Meta", () => {
   assert.equal(row.cont, "Vídeo 01");
 });
 
+test("campanha com conjunto único substitui o utm_medium genérico do histórico", () => {
+  const [row] = backend.reconcileAttributionRows([{
+    camp: "[Leads_LP]_04/09",
+    med: "paid_social",
+    cont: "Vídeo 01",
+  }], currentMetaRows, []);
+
+  assert.equal(row.meta_campaign_id, "12001");
+  assert.equal(row.meta_adset_id, "22001");
+  assert.equal(row.med, "RJ | Proprietários");
+  assert.equal(row.meta_ad_id, "32001");
+  assert.equal(row.cont, "Vídeo 01");
+});
+
+test("não adivinha o conjunto quando a campanha possui mais de um", () => {
+  const metaRows = currentMetaRows.concat({
+    ...currentMetaRows[0],
+    adset_id: "22002",
+    adset_name: "SP | Proprietários",
+    ad_id: "32002",
+    ad_name: "Vídeo 02",
+  });
+  const [row] = backend.reconcileAttributionRows([{
+    camp: "[Leads_LP]_04/09",
+    med: "paid_social",
+    cont: "Vídeo 01",
+  }], metaRows, []);
+
+  assert.equal(row.meta_campaign_id, "12001");
+  assert.equal(row.meta_adset_id, "");
+  assert.equal(row.med, "paid_social");
+});
+
 test("alias histórico reúne 03/09 à campanha atual e preenche o ID", () => {
   const aliases = [{
     raw_name: "[Leads_LP]_03/09",
