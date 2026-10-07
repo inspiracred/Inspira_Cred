@@ -76,3 +76,22 @@ test("fallback legado continua disponível sem a tabela de aliases", async () =>
   assert.equal(aliases[0].raw_name, "[Leads_LP]_03/09");
   assert.equal(aliases[0].canonical_name, "[Leads_LP]_04/09");
 });
+
+test("filtro Facebook/Instagram mantém as métricas da Ads API visíveis", () => {
+  const dashboardContext = vm.createContext({ console });
+  const executableServer = server.replace(
+    "export async function onRequest",
+    "async function onRequest"
+  );
+  vm.runInContext(
+    `${executableServer};globalThis.__dashboard = DASHBOARD_HTML;`,
+    dashboardContext
+  );
+  const dashboard = dashboardContext.__dashboard;
+
+  assert.doesNotMatch(dashboard, /\u0008/);
+  assert.match(
+    dashboard,
+    /function campMetaApplies\(\)\{\s*if\(!campSrc\.length\)return true;\s*return campSrc\.some\(isMetaSourceValue\);\s*\}/
+  );
+});

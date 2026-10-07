@@ -3145,7 +3145,7 @@ function campVisitsMap(level){
 }
 function campMetaApplies(){
   if(!campSrc.length)return true;
-  return campSrc.some(function(s){return /meta|facebook|instagram|\bfb\b|\big\b/i.test(String(s||""));});
+  return campSrc.some(isMetaSourceValue);
 }
 function metaKeyOf(r,level){return level==="campaign"?(r.campaign_name||"(sem campanha)"):(level==="adset"?(r.adset_name||"(sem conjunto)"):(r.ad_name||"(sem criativo)"));}
 function metaInScope(r,level){
