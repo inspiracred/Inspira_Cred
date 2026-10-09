@@ -90,14 +90,6 @@
     var formMessage = document.getElementById("form-message");
     var submitBtn = form.querySelector("button[type='submit']");
     var MIN_CREDITO = 100000;
-    // value do <select> -> rótulo legível (vai pro RD como tag e pro D1 como evento)
-    var SOLUCOES = {
-      home_equity: "Empréstimo com garantia de imóvel",
-      capital_giro: "Capital de giro",
-      financiamento_imoveis: "Financiamento de imóveis",
-      veiculos: "Financiamento e refinanciamento de veículos"
-    };
-
     function setError(name, msg) {
       var el = form.querySelector('[data-error="' + name + '"]');
       var input = form.querySelector('[name="' + name + '"]');
@@ -131,10 +123,10 @@
     var celular = document.getElementById("f-celular");
     celular.addEventListener("input", function () {
       var d = celular.value.replace(/\D/g, "");
-      // Remove DDIs 55 excedentes sem confundir o DDD 55 nacional nem cortar o sufixo.
+      // Remove somente DDIs excedentes; nunca corta os dígitos finais.
       var original = d;
       while (d.length > 11 && d.slice(0, 2) === "55") d = d.slice(2);
-      if (d.length > 11) d = original; // mantém inválido visível para correção
+      if (d.length > 11) d = original; // inválido permanece visível para correção
       if (!d) celular.value = "";
       else if (d.length <= 2) celular.value = "(" + d;
       else if (d.length <= 6) celular.value = "(" + d.slice(0, 2) + ") " + d.slice(2);
@@ -214,7 +206,6 @@
       if (!data.cidade) { setError("cidade", "Informe sua cidade."); ok = false; }
       var credito = parseMoney(data.valor_credito);
       if (!credito) { setError("valor_credito", "Informe o valor do crédito."); ok = false; }
-      if (!Object.prototype.hasOwnProperty.call(SOLUCOES, data.solucao)) { setError("solucao", "Selecione o tipo de solução."); ok = false; }
       return ok;
     }
 
@@ -229,8 +220,7 @@
         celular: celular.value.trim(),
         estado: ufSelect.value,
         cidade: document.getElementById("f-cidade").value.trim(),
-        valor_credito: document.getElementById("f-valor").value.trim(),
-        solucao: document.getElementById("f-solucao").value
+        valor_credito: document.getElementById("f-valor").value.trim()
       };
       if (!validate(data)) {
         var firstInvalid = form.querySelector(".is-invalid");
@@ -242,10 +232,9 @@
       submitBtn.textContent = "Enviando...";
       var credito = parseMoney(data.valor_credito);
       var baixoValor = credito < MIN_CREDITO;
-      var leadKind = baixoValor ? "baixo_valor" : (data.solucao === "veiculos" ? "auto" : "institucional");
+      var leadKind = baixoValor ? "baixo_valor" : "institucional";
 
       try {
-          var solucaoLabel = SOLUCOES[data.solucao] || data.solucao;
           // Mantém a régua própria da Home: abaixo de R$ 100 mil fica salvo no RD,
           // mas não conta conversão no Meta. Aqui não se coleta valor de imóvel.
           enviarLead(Object.assign({
@@ -255,14 +244,10 @@
             city: data.cidade,
             state: data.estado,
             credit_value: credito,
-            solucao: solucaoLabel,
             source: PAGE_SOURCE,
             lead_kind: leadKind,
             meta_events: baixoValor ? [] : ["Lead"]
           }, getUtmParams()));
-          // A tabela `leads` não tem coluna de solução/UF: registra num evento (coluna
-          // JSON `properties`, sem migration) pra dar pra analisar por solução depois.
-          try { if (window.inspiraTrack) window.inspiraTrack.event("lead_solucao", { solucao: solucaoLabel, uf: data.estado, source: PAGE_SOURCE }); } catch (err) {}
       } catch (err) {
         submitBtn.disabled = false;
         submitBtn.textContent = "Enviar";

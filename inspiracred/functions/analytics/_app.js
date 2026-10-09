@@ -459,9 +459,9 @@ const RD_PAGE_CONFIG = {
   landing_page: { identificador: "Simulação", label: "Simulação" },
   home_equity_lp: { identificador: "Home Equity", label: "Home Equity" },
   home_equity_form: { identificador: "Typeform", label: "Typeform" },
-  // Home institucional (/home/). ⚠️ Identificador NOVO: pra virar Negociação, o cliente
-  // precisa incluí-lo como gatilho do fluxo "Form nativo > pipe" no RD.
-  home_institucional: { identificador: "Site Institucional", label: "Site Institucional" },
+  // Home institucional (/home/): reutiliza o identificador histórico já ligado ao fluxo
+  // que cria a Negociação. A origem continua separada por label, tag e UTMs.
+  home_institucional: { identificador: "landing-nova-raiz", label: "Site Institucional" },
 };
 
 // Rótulo legível da classificação — vai no campo de Lead cf_classificacao_lead.

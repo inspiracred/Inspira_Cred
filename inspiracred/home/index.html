@@ -31,6 +31,8 @@
       <symbol id="i-car" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></g></symbol>
       <symbol id="i-key" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></g></symbol>
       <symbol id="i-landmark" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></g></symbol>
+      <symbol id="i-building" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M8 7h2M14 7h2M8 11h2M14 11h2M8 15h2M14 15h2M9 21v-3h6v3"/></g></symbol>
+      <symbol id="i-construction" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M6 21V9l6-4 6 4v12M9 13h6M9 17h6"/><path d="M4 7h16"/></g></symbol>
       <symbol id="i-users" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></g></symbol>
       <symbol id="i-chat" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></g></symbol>
       <symbol id="i-route" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></g></symbol>
@@ -84,6 +86,8 @@
                 <li><a href="#sol-capital-giro">Capital de giro</a></li>
                 <li><a href="#sol-veiculos">Veículos</a></li>
                 <li><a href="#sol-financiamento-imoveis">Financiamento de imóveis</a></li>
+                <li><a href="#sol-condominios">Crédito para condomínios</a></li>
+                <li><a href="#sol-construcao">Financiamento para construção</a></li>
               </ul>
             </div>
           </div>
@@ -131,7 +135,7 @@
                     <p class="field-error" data-error="celular"></p>
                   </div>
                 </div>
-                <div class="form-row form-row-4">
+                <div class="form-row form-row-3">
                   <div class="field">
                     <label for="f-estado">Estado <span class="req">*</span></label>
                     <select class="select" id="f-estado" name="estado" autocomplete="address-level1">
@@ -178,17 +182,6 @@
                     <label for="f-valor">Valor do crédito desejado <span class="req">*</span></label>
                     <input class="input money" id="f-valor" name="valor_credito" type="text" inputmode="numeric" placeholder="Informe o valor desejado" />
                     <p class="field-error" data-error="valor_credito"></p>
-                  </div>
-                  <div class="field">
-                    <label for="f-solucao">Tipo de solução desejada <span class="req">*</span></label>
-                    <select class="select" id="f-solucao" name="solucao">
-                      <option value="" disabled selected>Selecione</option>
-                      <option value="home_equity">Empréstimo com garantia de imóvel</option>
-                      <option value="capital_giro">Capital de giro</option>
-                      <option value="financiamento_imoveis">Financiamento de imóveis</option>
-                      <option value="veiculos">Financiamento e refinanciamento de veículos</option>
-                    </select>
-                    <p class="field-error" data-error="solucao"></p>
                   </div>
                 </div>
               </div>
@@ -266,6 +259,32 @@
               <p class="sol-highlight"><strong>Financiamento para sua nova casa</strong>, a partir de R$ 300 mil de crédito.</p>
               <div class="sol-cta">
                 <a class="button-wa" id="home-wa-financiamento-imoveis" href="https://wa.me/5521977340731?text=Ol%C3%A1%2C%20vim%20pelo%20site%20da%20InspiraCred%20e%20tenho%20interesse%20em%20financiamento%20de%20im%C3%B3veis." target="_blank" rel="noopener noreferrer"><svg class="ic" aria-hidden="true"><use href="#i-wa"/></svg>Fale com um especialista</a>
+              </div>
+            </article>
+
+            <article class="sol-card" id="sol-condominios">
+              <div class="sol-top">
+                <span class="sol-ic"><svg class="ic" aria-hidden="true"><use href="#i-building"/></svg></span>
+                <span class="sol-num" aria-hidden="true">05</span>
+              </div>
+              <h3>Crédito para Condomínios</h3>
+              <p>Viabilize reformas, reparos e melhorias no seu condomínio sem precisar esperar anos para reunir os recursos. O crédito permite antecipar projetos, distribuindo o pagamento ao longo do tempo e facilitando o planejamento financeiro.</p>
+              <p class="sol-highlight"><strong>Tenha possibilidade de até 90 meses para pagar e até 3 meses de carência</strong>, conforme análise.</p>
+              <div class="sol-cta">
+                <a class="button-wa" id="home-wa-condominios" href="https://wa.me/5521977340731?text=Ol%C3%A1%2C%20vim%20pelo%20site%20da%20InspiraCred%20e%20tenho%20interesse%20em%20cr%C3%A9dito%20para%20condom%C3%ADnios." target="_blank" rel="noopener noreferrer"><svg class="ic" aria-hidden="true"><use href="#i-wa"/></svg>Fale com um especialista</a>
+              </div>
+            </article>
+
+            <article class="sol-card" id="sol-construcao">
+              <div class="sol-top">
+                <span class="sol-ic"><svg class="ic" aria-hidden="true"><use href="#i-construction"/></svg></span>
+                <span class="sol-num" aria-hidden="true">06</span>
+              </div>
+              <h3>Financiamento para Construção</h3>
+              <p>Tenha recursos para começar, continuar ou concluir uma construção residencial ou comercial. O crédito é liberado por etapas, conforme o avanço comprovado da obra, ajudando você a planejar os investimentos em materiais e mão de obra e preservar parte das suas reservas.</p>
+              <p class="sol-highlight"><strong>Crédito de até 50% do valor avaliado do imóvel pronto.</strong> Juros cobrados somente sobre os valores já liberados.</p>
+              <div class="sol-cta">
+                <a class="button-wa" id="home-wa-construcao" href="https://wa.me/5521977340731?text=Ol%C3%A1%2C%20vim%20pelo%20site%20da%20InspiraCred%20e%20tenho%20interesse%20em%20financiamento%20para%20constru%C3%A7%C3%A3o." target="_blank" rel="noopener noreferrer"><svg class="ic" aria-hidden="true"><use href="#i-wa"/></svg>Fale com um especialista</a>
               </div>
             </article>
           </div>

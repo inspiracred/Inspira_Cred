@@ -26,12 +26,11 @@ function element(value = "") {
   };
 }
 
-function submit(value, solution, tracking = "ok", overrides = {}) {
+function submit(value, tracking = "ok", overrides = {}) {
   const fields = {
     nome: ["f-nome", "Teste Local"], email: ["f-email", "teste@example.com"],
     celular: ["f-celular", "(21) 99999-9999"], estado: ["f-estado", "RJ"],
     cidade: ["f-cidade", "Niteroi"], valor_credito: ["f-valor", value],
-    solucao: ["f-solucao", solution],
   };
   const ids = {};
   const inputs = {};
@@ -39,7 +38,7 @@ function submit(value, solution, tracking = "ok", overrides = {}) {
   for (const [name, [id, initial]] of Object.entries(fields)) {
     const el = element(overrides[name] ?? initial);
     el.name = name;
-    if (name === "estado" || name === "solucao") el.tagName = "SELECT";
+    if (name === "estado") el.tagName = "SELECT";
     ids[id] = inputs[name] = el;
     errors[name] = element();
   }
@@ -83,29 +82,28 @@ function submit(value, solution, tracking = "ok", overrides = {}) {
   return { window, leads, events, button, inputs, errors, message: ids["form-message"], send };
 }
 
-for (const solution of ["home_equity", "capital_giro", "financiamento_imoveis", "veiculos"]) {
-  for (const credit of [1, 99999, 100000, 500000]) {
-    test(solution + " / R$ " + credit, () => {
-      const result = submit(credit.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), solution);
-      assert.equal(result.leads.length, 1);
-      const payload = result.leads[0];
-      const kind = credit < 100000 ? "baixo_valor" : solution === "veiculos" ? "auto" : "institucional";
-      assert.equal(payload.lead_kind, kind);
-      assert.equal(payload.credit_value, credit);
-      assert.equal(payload.utm_source, "teste-local");
-      assert.equal(JSON.stringify(payload.meta_events), credit < 100000 ? "[]" : '["Lead"]');
-      assert.equal(result.window.location.href, credit < 100000 ? "/obrigado/home-nao-elegivel/" : "/obrigado/home/");
-      assert.equal(backend.normalizeLeadKind(payload), kind);
-      assert.equal(backend.shouldSendLeadToRD(kind), true);
-      result.send();
-      assert.equal(result.leads.length, 1, "double submit must not duplicate lead");
-    });
-  }
+for (const credit of [1, 99999, 100000, 500000]) {
+  test("home sem tipo de solução / R$ " + credit, () => {
+    const result = submit(credit.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
+    assert.equal(result.leads.length, 1);
+    const payload = result.leads[0];
+    const kind = credit < 100000 ? "baixo_valor" : "institucional";
+    assert.equal(payload.lead_kind, kind);
+    assert.equal(payload.credit_value, credit);
+    assert.equal(payload.utm_source, "teste-local");
+    assert.equal(Object.hasOwn(payload, "solucao"), false);
+    assert.equal(JSON.stringify(payload.meta_events), credit < 100000 ? "[]" : '["Lead"]');
+    assert.equal(result.window.location.href, credit < 100000 ? "/obrigado/home-nao-elegivel/" : "/obrigado/home/");
+    assert.equal(backend.normalizeLeadKind(payload), kind);
+    assert.equal(backend.shouldSendLeadToRD(kind), true);
+    result.send();
+    assert.equal(result.leads.length, 1, "double submit must not duplicate lead");
+  });
 }
 
 for (const value of ["", "R$ 0,00"]) {
   test("reject empty or zero credit: " + value, () => {
-    const r = submit(value, "home_equity");
+    const r = submit(value);
     assert.equal(r.leads.length, 0);
     assert.equal(r.window.location.href, "/home/");
     assert.ok(r.errors.valor_credito.textContent);
@@ -113,24 +111,30 @@ for (const value of ["", "R$ 0,00"]) {
 }
 for (const overrides of [{ email: "invalido" }, { celular: "123" }, { cidade: "" }, { estado: "" }, { nome: "" }]) {
   test("validate required contact: " + JSON.stringify(overrides), () => {
-    const r = submit("R$ 100.000,00", "home_equity", "ok", overrides);
+    const r = submit("R$ 100.000,00", "ok", overrides);
     assert.equal(r.leads.length, 0);
     assert.equal(r.window.location.href, "/home/");
   });
 }
-for (const solution of ["", "unknown", "toString"]) {
-  test("reject unsupported solution " + solution, () => {
-    assert.equal(submit("R$ 100.000,00", solution).leads.length, 0);
-  });
-}
 for (const state of ["missing", "throw"]) {
   test("keep form usable when tracking is " + state, () => {
-    const r = submit("R$ 100.000,00", "home_equity", state);
+    const r = submit("R$ 100.000,00", state);
     assert.equal(r.window.location.href, "/home/");
     assert.equal(r.button.disabled, false);
     assert.ok(r.message.classList.contains("is-visible"));
   });
 }
+test("home removes solution field and includes the two requested services", () => {
+  const html = fs.readFileSync(path.join(root, "home/index.html"), "utf8");
+  assert.doesNotMatch(html, /id="f-solucao"|name="solucao"|Tipo de solução desejada/);
+  assert.match(html, /id="sol-condominios"/);
+  assert.match(html, /id="sol-construcao"/);
+  assert.match(html, /id="home-wa-condominios"/);
+  assert.match(html, /id="home-wa-construcao"/);
+});
+test("home reuses the documented RD identifier that creates a negotiation", () => {
+  assert.match(server, /home_institucional:\s*\{\s*identificador:\s*"landing-nova-raiz"/);
+});
 test("backend enforces home minimum for legacy auto payloads", () => {
   assert.equal(backend.normalizeLeadKind({ source: "home_institucional", lead_kind: "auto", credit_value: 50000 }), "baixo_valor");
   assert.equal(backend.normalizeLeadKind({ source: "home_institucional", credit_value: "invalid" }), "baixo_valor");
