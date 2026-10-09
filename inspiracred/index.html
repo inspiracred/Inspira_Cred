@@ -433,10 +433,8 @@
           var body = { type: "lead", url: location.href, page_name: window.IC_PAGE || payload.source || "other" };
           for (var k in payload) if (Object.prototype.hasOwnProperty.call(payload, k)) body[k] = payload[k];
           try { body.session_id = localStorage.getItem("ic_sid"); } catch (e) {}
-          body.meta_events = (payload.meta_events || ["Lead"]).map(function (n) {
-            return typeof n === "string" ? { name: n, event_id: "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12) } : n;
-          });
-          body.event_id = body.meta_events.length ? body.meta_events[0].event_id : null;
+          body.meta_events = [{ name: "Lead", event_id: "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12) }];
+          body.event_id = body.meta_events[0].event_id;
           try {
             var q = new URLSearchParams(location.search);
             ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "meta_campaign_id", "meta_adset_id", "meta_ad_id"].forEach(function (u) { if (body[u] == null && q.get(u)) body[u] = q.get(u); });
@@ -519,16 +517,6 @@
           if (creditValue < MIN_CREDIT || propertyValue < MIN_PROPERTY) return "baixo_valor";
           if (creditValue >= MQL_CREDIT && propertyValue >= MQL_PROPERTY) return "home_equity_mql";
           return "home_equity";
-        }
-
-        function metaEvents(kind, financed, financingRatio, docsOk) {
-          var events = [];
-          if (kind === "home_equity_mql") events = ["Lead", "LeadQualificado"];
-          if (kind === "home_equity") events = ["Lead"];
-          if (!events.length) return events;
-          if (!docsOk) events.push("DocumentacaoIrregular");
-          if (financed) events.push(financingRatio >= 0.5 ? "Financiado50Mais" : "Financiado50Menos");
-          return events;
         }
 
         if (form) {
@@ -661,22 +649,14 @@
                 financing_ratio: Number(financingRatio.toFixed(2)),
                 estimated_limit: availableLimit || maxCredit,
                 estimated_installment: Math.round(installment || 0),
-                meta_events: metaEvents(kind, data.financed, financingRatio, data.docsOk)
+                meta_events: ["Lead"]
               });
             } catch (e) {}
             try {
               if (window.inspiraTrack) {
                 window.inspiraTrack.event("simulation_complete", {
                   source: "landing_page",
-                  form_type: "home_equity_simulator",
-                  property_type: data.propertyType,
-                  property_value: data.propertyValue,
-                  credit_value: data.creditValue,
-                  imovel_quitado: data.financed ? "Não" : "Sim",
-                  documentacao_ok: data.docsOk ? "Sim" : "Não",
-                  lead_kind: kind,
-                  name: data.name,
-                  phone: "+55" + phoneDigits
+                  form_type: "home_equity_simulator"
                 });
               }
             } catch (e) {}

@@ -22,10 +22,8 @@
     var body = { type: "lead", url: location.href, page_name: window.IC_PAGE || payload.source || "other" };
     for (var k in payload) if (Object.prototype.hasOwnProperty.call(payload, k)) body[k] = payload[k];
     try { body.session_id = localStorage.getItem("ic_sid"); } catch (e) {}
-    body.meta_events = (payload.meta_events || ["Lead"]).map(function (n) {
-      return typeof n === "string" ? { name: n, event_id: "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12) } : n;
-    });
-    body.event_id = body.meta_events.length ? body.meta_events[0].event_id : null;
+    body.meta_events = [{ name: "Lead", event_id: "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12) }];
+    body.event_id = body.meta_events[0].event_id;
     try {
       var q = new URLSearchParams(location.search);
       ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "meta_campaign_id", "meta_adset_id", "meta_ad_id"].forEach(function (u) { if (body[u] == null && q.get(u)) body[u] = q.get(u); });
@@ -93,16 +91,6 @@
     }
   };
 
-  // Eventos do Meta (Pixel + CAPI) por tipo de lead:
-  // Sem evento = não conta como Lead no Meta; Lead = Lead; MQL = Lead + LeadQualificado.
-  var META_EVENTS = {
-    home_equity: ["Lead"],
-    home_equity_mql: ["Lead", "LeadQualificado"],
-    auto: ["Lead"],
-    baixo_valor: [],
-    descarte: [],
-  };
-
   var steps = [
     {
       id: "possui_imovel",
@@ -161,8 +149,7 @@
         { label: "Não", value: "nao" }
       ],
       // Responder "Não" abre a caixa do saldo devedor NA MESMA tela (sem etapa extra).
-      // É esse valor que separa Financiado50Mais de Financiado50Menos no Meta e que vai
-      // pro RD no campo cf_saldo_devedor. Financiado NÃO desqualifica o lead.
+      // O valor segue para o RD no campo cf_saldo_devedor e não é enviado à Meta.
       conditional: {
         when: "nao",
         id: "saldo_devedor",
@@ -612,7 +599,7 @@
       if (!ok) return false;
 
       // Caixa condicional aberta (ex.: imóvel não quitado -> saldo devedor): o valor é
-      // obrigatório porque é ele que separa Financiado50Mais de Financiado50Menos.
+      // obrigatório para completar a análise operacional interna.
       // Não é trava de perfil — qualquer valor passa, só não pode ficar vazio.
       var cond = step.conditional;
       if (cond && answers[step.id] === cond.when) {
@@ -687,7 +674,7 @@
   }
 
   // Classifica o lead pelo que foi respondido.
-  //  baixo_valor      = RD como lead não qualificado, mas sem evento Lead no Meta
+  //  baixo_valor      = RD como lead não qualificado; ainda gera o Lead padrão na Meta
   //  home_equity      = imóvel + matrícula + crédito >= 200 mil + imóvel >= 400 mil
   //  home_equity_mql  = imóvel + matrícula + crédito >= 500 mil + imóvel >= 1M
   //  auto             = não tem imóvel, mas tem automóvel (garantia de veículo)
@@ -697,15 +684,14 @@
       var propertyValue = selectedAssetValue();
       if (creditValue < MIN_CREDIT_VALUE || propertyValue < MIN_RD_PROPERTY_VALUE) return "baixo_valor";
       // Sem matrícula NÃO desqualifica mais: "Seu imóvel possui matrícula?" é a mesma
-      // pergunta que "Documentação regularizada?" da landing, e ela virou marcador
-      // (DocumentacaoIrregular) em vez de gate. Só o valor decide. (cliente, 28/07/2026)
+      // pergunta que "Documentação regularizada?" da landing. Permanece apenas no
+      // D1/RD e não cria marcador na Meta. Só o valor decide a classificação interna.
       if (creditValue >= MQL_CREDIT_VALUE && propertyValue >= MQL_PROPERTY_VALUE) return "home_equity_mql";
       if (creditValue >= MIN_RD_CREDIT_VALUE && propertyValue >= MIN_RD_PROPERTY_VALUE) return "home_equity";
       return "baixo_valor";
     }
     if (answers.possui_automovel === "sim") return "auto";
-    // sem imóvel e sem automóvel — não qualificado pra nenhum funil: contato fica só
-    // no nosso banco, ver META_EVENTS/_app.js.
+    // sem imóvel e sem automóvel — classificação comercial de descarte no banco.
     return "descarte";
   }
 
@@ -773,22 +759,7 @@
     var phoneDigits = (answers.whatsapp || "").replace(/\D/g, "");
     var assetValue = selectedAssetValue();
     var creditValue = selectedCreditValue();
-    var metaEvents = META_EVENTS[kind] || [];
-    if (kind === "auto") {
-      metaEvents = creditValue >= MIN_CREDIT_VALUE ? ["Lead"] : [];
-    }
-    // Marcador: acompanha o Lead, nunca vai sozinho. Imóvel financiado NÃO desqualifica
-    // (quem decide a faixa é o valor) — só ganha a marcação, pra dar pra separar ou
-    // excluir esse público depois. (decisão do cliente, 28/07/2026)
     var saldoValue = parseMoney(answers.saldo_devedor || "");
-    if (metaEvents.length && answers.imovel_quitado === "nao") {
-      metaEvents = metaEvents.concat(saldoValue > assetValue * 0.5 ? "Financiado50Menos" : "Financiado50Mais");
-    }
-    // Sem matrícula = documentação irregular (mesma pergunta da landing, outro nome).
-    // Marcador, não impeditivo: serve pra excluir esse público no Meta depois.
-    if (metaEvents.length && answers.possui_matricula === "nao") {
-      metaEvents = metaEvents.concat("DocumentacaoIrregular");
-    }
 
     var payload = {
       name: answers.nome || null,
@@ -815,8 +786,7 @@
       valor_automovel: isAutoBranch ? assetValue : null,
       faixa_emprestimo: isAutoBranch ? labelFor("faixa_emprestimo_auto", answers.faixa_emprestimo_auto) : null,
       city: answers.cidade || null,
-      // nomes dos eventos do Meta pra este lead (o track.js gera 1 event_id por nome)
-      meta_events: metaEvents,
+      meta_events: ["Lead"],
     };
 
     // O LEAD sai primeiro e sem depender do track.js nem do evento de funil abaixo
@@ -828,23 +798,7 @@
         // (buildUserData) e o stripPii impede que caiam em events.properties/custom_data.
         // É o maior ganho de EMQ do funil — aqui a etapa de contato já foi preenchida.
         window.inspiraTrack.event("simulation_complete", {
-          name: answers.nome || null,
-          email: answers.email || null,
-          phone: phoneDigits ? "+55" + phoneDigits : null,
-          source: "home_equity_form",
-          lead_kind: kind,
-          possui_imovel: answers.possui_imovel || null,
-          tipo_imovel: answers.tipo_imovel || null,
-          possui_matricula: answers.possui_matricula || null,
-          imovel_quitado: answers.imovel_quitado || null,
-          saldo_devedor: answers.imovel_quitado === "nao" ? saldoValue : null,
-          valor_imovel: isAutoBranch ? null : assetValue,
-          faixa_credito: answers.faixa_credito || null,
-          possui_automovel: answers.possui_automovel || null,
-          automovel_quitado: answers.automovel_quitado || null,
-          valor_automovel: isAutoBranch ? assetValue : null,
-          faixa_emprestimo_auto: answers.faixa_emprestimo_auto || null,
-          city: answers.cidade || null
+          source: "home_equity_form"
         });
       }
     } catch (e) {}

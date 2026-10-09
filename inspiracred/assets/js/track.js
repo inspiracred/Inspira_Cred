@@ -1,20 +1,16 @@
 /**
- * InspiraCred — tracking leve (page views, cliques, formulários) + Meta Pixel.
+ * InspiraCred — tracking leve (page views, cliques, formulários) + Meta CAPI.
  * Envia eventos para o Worker de analytics. Configurar a página assim,
  * ANTES de carregar este arquivo:
  *   <script>window.IC_PAGE="landing_page";</script>
  *   <script src="assets/js/track.js" defer></script>
  *
- * META PIXEL: o Pixel do navegador usa o mesmo Pixel/Dataset ID configurado no
- * Cloudflare para a CAPI. O Pixel dispara PageView e Lead no navegador; o
- * servidor dispara o MESMO Lead via CAPI com o mesmo
- * event_id (o Meta deduplica). O ID do Pixel é público (aparece no navegador),
- * então pode ficar aqui — o TOKEN da CAPI é que é secret, fica no Cloudflare.
- * ⚠️ Este ID (client) e o secret META_PIXEL_ID (server) precisam ser IGUAIS.
+ * META: conversões são encaminhadas apenas pelo servidor (CAPI). A restrição
+ * básica aplicada pela Meta a este dataset proíbe parâmetros personalizados e
+ * conteúdo de URL após o domínio; por isso este arquivo não carrega nem chama o
+ * Pixel no navegador. A qualificação financeira permanece só no tracking interno.
  */
 (function () {
-  var META_PIXEL_ID = "3021870508000260"; // Pixel/Dataset ID — precisa bater com o META_PIXEL_ID do Cloudflare/CAPI
-
   var ENDPOINT = "https://nova.inspiracred.com.br/analytics/track";
   var PAGE = window.IC_PAGE || "other";
   var KEY = "ic_sid";
@@ -86,91 +82,6 @@
     return payload;
   }
 
-  /* ---- Meta Pixel (só carrega se META_PIXEL_ID estiver preenchido) ---- */
-  if (META_PIXEL_ID) {
-    !function (f, b, e, v, n, t, s) {
-      if (f.fbq) return; n = f.fbq = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments); };
-      if (!f._fbq) f._fbq = n; n.push = n; n.loaded = !0; n.version = "2.0"; n.queue = [];
-      t = b.createElement(e); t.async = !0; t.src = v; s = b.getElementsByTagName(e)[0]; s.parentNode.insertBefore(t, s);
-    }(window, document, "script", "https://connect.facebook.net/en_US/fbevents.js");
-    window.fbq("init", META_PIXEL_ID);
-    window.fbq("track", "PageView");
-  }
-  // Eventos PADRÃO do Meta (fbq('track', ...)); qualquer outro nome (SimulacaoIniciada,
-  // LeadQualificado etc.) precisa de fbq('trackCustom', ...) —
-  // chamar 'track' com nome não-padrão faz o Pixel SUPRIMIR o evento (confirmado no
-  // console: "non-standard event... The event was suppressed").
-  var STANDARD_PIXEL_EVENTS = {
-    PageView: 1, AddPaymentInfo: 1, AddToCart: 1, AddToWishlist: 1, CompleteRegistration: 1,
-    Contact: 1, CustomizeProduct: 1, Donate: 1, FindLocation: 1, InitiateCheckout: 1,
-    Lead: 1, Purchase: 1, Schedule: 1, Search: 1, StartTrial: 1, SubmitApplication: 1,
-    Subscribe: 1, ViewContent: 1,
-  };
-  var pixelFallbackImages = [];
-  function metaEventWasRequested(name, eventId) {
-    try {
-      if (!window.performance || !performance.getEntriesByType) return false;
-      var entries = performance.getEntriesByType("resource") || [];
-      for (var i = entries.length - 1; i >= 0; i--) {
-        var url = entries[i] && entries[i].name;
-        if (!url || url.indexOf("facebook.com/tr/") === -1) continue;
-        if (url.indexOf("ev=" + encodeURIComponent(name)) === -1) continue;
-        if (eventId && url.indexOf("eid=" + encodeURIComponent(eventId)) === -1) continue;
-        return true;
-      }
-    } catch (e) {}
-    return false;
-  }
-  function appendPixelParam(params, key, value) {
-    if (value == null || value === "") return;
-    params.push(encodeURIComponent(key) + "=" + encodeURIComponent(String(value)));
-  }
-  function sendPixelBrowserFallback(name, data, eventId) {
-    try {
-      if (!META_PIXEL_ID || metaEventWasRequested(name, eventId)) return;
-      var params = [];
-      appendPixelParam(params, "id", META_PIXEL_ID);
-      appendPixelParam(params, "ev", name);
-      appendPixelParam(params, "dl", location.href);
-      appendPixelParam(params, "rl", document.referrer || "");
-      appendPixelParam(params, "if", "false");
-      appendPixelParam(params, "ts", Date.now());
-      appendPixelParam(params, "sw", screen && screen.width);
-      appendPixelParam(params, "sh", screen && screen.height);
-      appendPixelParam(params, "v", "2.9");
-      appendPixelParam(params, "r", "stable");
-      if (eventId) appendPixelParam(params, "eid", eventId);
-      data = data || {};
-      for (var k in data) {
-        if (Object.prototype.hasOwnProperty.call(data, k) && data[k] != null) {
-          appendPixelParam(params, "cd[" + k + "]", data[k]);
-        }
-      }
-      var img = new Image();
-      pixelFallbackImages.push(img);
-      img.onload = img.onerror = function () {
-        var idx = pixelFallbackImages.indexOf(img);
-        if (idx > -1) pixelFallbackImages.splice(idx, 1);
-      };
-      img.src = "https://www.facebook.com/tr/?" + params.join("&");
-    } catch (e) {}
-  }
-  function pixel(name, data, eventId) {
-    try {
-      if (typeof window.fbq === "function") {
-        var method = STANDARD_PIXEL_EVENTS[name] ? "track" : "trackCustom";
-        window.fbq(method, name, data || {}, eventId ? { eventID: eventId } : undefined);
-        // Em teste real (Chrome DevTools + Meta Pixel Helper), alguns eventos
-        // trackCustom foram chamados pelo fbq mas não viraram request /tr no browser.
-        // Mantemos o fbq oficial e, só se o request não apareceu, enviamos o mesmo
-        // evento direto no endpoint do Pixel. A CAPI recebe o mesmo event_id e a Meta
-        // deduplica browser + servidor normalmente.
-        if (!STANDARD_PIXEL_EVENTS[name]) {
-          setTimeout(function () { sendPixelBrowserFallback(name, data || {}, eventId); }, 160);
-        }
-      }
-    } catch (e) {}
-  }
   // Nomes de evento internos -> evento PADRÃO do Meta.
   // ⚠️ Precisa ser padrão: a conta está sob "Restrições de compartilhamento de dados —
   // configuração básica" (categoria serviço financeiro), e nessa configuração evento
@@ -184,6 +95,12 @@
     simulation_start: "InitiateCheckout",
     simulation_complete: "SubmitApplication",
   };
+
+  // A URL usada na CAPI é somente o domínio. UTMs, caminho e IDs de anúncio ficam
+  // no tracking interno e nunca seguem para a Meta dentro de event_source_url.
+  function metaSourceUrl() {
+    return "https://nova.inspiracred.com.br/";
+  }
 
   function send(payload) {
     payload.session_id = sid;
@@ -212,9 +129,10 @@
       var body = JSON.stringify(payload);
       // text/plain evita preflight CORS em requisições cross-subdomain (links -> nova)
       var blob = new Blob([body], { type: "text/plain;charset=UTF-8" });
-      if (navigator.sendBeacon && navigator.sendBeacon(ENDPOINT, blob)) return;
-      fetch(ENDPOINT, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: body, keepalive: true, mode: "cors" });
-    } catch (e) {}
+      if (navigator.sendBeacon && navigator.sendBeacon(ENDPOINT, blob)) return true;
+      return fetch(ENDPOINT, { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: body, keepalive: true, mode: "cors" })
+        .then(function (response) { return response.ok; }, function () { return false; });
+    } catch (e) { return false; }
   }
 
   // Page view
@@ -319,62 +237,35 @@
 
   // API para eventos manuais (usada pela landing na simulação/lead)
   window.inspiraTrack = {
-    meta: function (name, props) {
-      props = props || {};
-      var eventId = uuid();
-      pixel(name, props, eventId);
-      send(withUtm({
-        type: "event",
-        event_name: name,
-        properties: props,
-        meta_event_name: name,
-        event_id: eventId,
-        url: location.href,
-        fbclid: rawParam("fbclid") || null,
-        gclid: rawParam("gclid") || null,
-        fbp: cookieVal("_fbp") || null,
-        fbc: cookieVal("_fbc") || null,
-      }));
-    },
     event: function (name, props) {
       props = props || {};
       var pixelName = PIXEL_EVENT[name] || null;
       var eventId = pixelName ? uuid() : null;
-      if (pixelName) pixel(pixelName, props, eventId);
+      // A Meta recebe via CAPI somente a ocorrência da ação. Propriedades de negócio ficam
+      // no D1; valores, classificação, documentação e dívida nunca viram custom_data.
       var p = { type: "event", event_name: name, properties: props };
-      // Eventos de funil mapeados pro Meta também vão server-side (CAPI), usando
-      // o mesmo event_id do browser pra deduplicação.
+      // Eventos de funil mapeados pro Meta seguem server-side (CAPI).
       if (pixelName) {
         p.meta_event_name = pixelName;
         p.event_id = eventId;
-        p.url = location.href;
+        p.url = metaSourceUrl();
         p.fbclid = rawParam("fbclid") || null;
         p.gclid = rawParam("gclid") || null;
         p.fbp = cookieVal("_fbp") || null;
         p.fbc = cookieVal("_fbc") || null;
       }
-      send(withUtm(p));
+      return send(withUtm(p));
     },
     lead: function (data) {
       data = data || {};
-      // Um lead pode disparar 1+ eventos do Meta (ex.: MQL = "Lead" + "LeadQualificado"),
-      // ou ZERO (ex.: lead "descarte" — não conta como conversão de ads). Testa
-      // `!== undefined` (não `.length`) pra um array VAZIO explícito não cair no
-      // fallback ["Lead"] (um [].length é 0, que é falsy — bug já corrigido aqui).
-      // Cada nome ganha um event_id próprio; o MESMO {name,event_id} vai no Pixel
-      // (browser) e na CAPI (server) -> o Meta deduplica par a par.
-      var names = data.meta_events !== undefined ? data.meta_events : ["Lead"];
-      var metaEvents = names.map(function (name) { return { name: name, event_id: uuid() }; });
-      var custom = {
-        currency: "BRL",
-        value: data.credit_value != null ? Number(data.credit_value) : undefined,
-        content_category: data.property_type || undefined,
-      };
-      metaEvents.forEach(function (ev) { pixel(ev.name, custom, ev.event_id); });
+      // Conversão honesta e não selecionada: todo envio válido gera exatamente Lead.
+      // MQL, faixas, dívida e documentação permanecem internos, nunca são codificados
+      // em nomes alternativos nem em parâmetros enviados à Meta.
+      var metaEvents = [{ name: "Lead", event_id: uuid() }];
       // Payload pro servidor: carrega os eventos (nome+id) + fbclid/gclid + url pra CAPI/atribuição.
       // Mantém event_id "solto" (1º evento) pra compatibilidade com a coluna leads.event_id —
       // null quando não há nenhum evento de Meta (metaEvents vazio não quebra mais aqui).
-      var p = { type: "lead", meta_events: metaEvents, event_id: metaEvents.length ? metaEvents[0].event_id : null, url: location.href };
+      var p = { type: "lead", meta_events: metaEvents, event_id: metaEvents[0].event_id, url: metaSourceUrl() };
       p.fbclid = rawParam("fbclid") || null;
       p.gclid = rawParam("gclid") || null;
       // _fbp/_fbc lidos pelo navegador (Pixel ou cookie de edge). O servidor usa como
@@ -384,7 +275,7 @@
       for (var k in data) if (k !== "meta_events") p[k] = data[k];
       // withUtm preenche utm_* de first-touch (localStorage) quando o payload não trouxe —
       // sem isso o lead perde a origem se a URL "limpou" as UTMs antes do envio (→ "direto").
-      send(withUtm(p));
+      return send(withUtm(p));
     },
   };
 })();

@@ -11,24 +11,25 @@
      Mesma função nas 4 páginas com formulário — nenhum lead depende do script de rastreio. */
   function enviarLead(payload) {
     if (window.inspiraTrack && typeof window.inspiraTrack.lead === "function") {
-      try { window.inspiraTrack.lead(payload); return; } catch (e) {}
+      try { return window.inspiraTrack.lead(payload); } catch (e) {}
     }
     var body = { type: "lead", url: location.href, page_name: window.IC_PAGE || payload.source || "other" };
     for (var k in payload) if (Object.prototype.hasOwnProperty.call(payload, k)) body[k] = payload[k];
     try { body.session_id = localStorage.getItem("ic_sid"); } catch (e) {}
-    body.meta_events = (payload.meta_events || ["Lead"]).map(function (n) {
-      return typeof n === "string" ? { name: n, event_id: "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12) } : n;
-    });
-    body.event_id = body.meta_events.length ? body.meta_events[0].event_id : null;
+    body.meta_events = [{ name: "Lead", event_id: "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12) }];
+    body.event_id = body.meta_events[0].event_id;
     try {
       var q = new URLSearchParams(location.search);
       ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "meta_campaign_id", "meta_adset_id", "meta_ad_id"].forEach(function (u) { if (body[u] == null && q.get(u)) body[u] = q.get(u); });
     } catch (e) {}
     var json = JSON.stringify(body);
     try {
-      if (navigator.sendBeacon && navigator.sendBeacon("/analytics/track", new Blob([json], { type: "text/plain;charset=UTF-8" }))) return;
+      if (navigator.sendBeacon && navigator.sendBeacon("/analytics/track", new Blob([json], { type: "text/plain;charset=UTF-8" }))) return true;
     } catch (e) {}
-    try { fetch("/analytics/track", { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: json, keepalive: true }); } catch (e) {}
+    try {
+      return fetch("/analytics/track", { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: json, keepalive: true })
+        .then(function (response) { return response.ok; }, function () { return false; });
+    } catch (e) { return false; }
   }
 
   /* ============================================================
@@ -150,8 +151,8 @@
       return situacaoSelect && situacaoSelect.value === "Financiado";
     }
 
-    // Saldo devedor só existe quando o bem está financiado. É ele que separa
-    // Financiado50Mais de Financiado50Menos no Meta e alimenta o cf_saldo_devedor do RD.
+    // Saldo devedor só existe quando o bem está financiado e alimenta exclusivamente
+    // o cf_saldo_devedor do RD; não é enviado à Meta.
     function syncSaldoField() {
       if (!saldoField) return;
       var mostrar = isFinanciado();
@@ -214,9 +215,7 @@
       if (!isAuto && !data.tipo_imovel) { setError("tipo_imovel", "Selecione o tipo de imóvel."); ok = false; }
       if (!data.situacao_imovel) { setError("situacao_imovel", isAuto ? "Selecione a situação do automóvel." : "Selecione a situação do imóvel."); ok = false; }
       if (!data.valor_imovel || propertyValue <= 0) { setError("valor_imovel", isAuto ? "Informe o valor do automóvel." : "Informe o valor do imóvel."); ok = false; }
-      // Financiado: o saldo devedor é obrigatório porque é ele que separa
-      // Financiado50Mais de Financiado50Menos. Não é trava de perfil — qualquer valor
-      // passa, só precisa estar preenchido.
+      // Financiado: o saldo devedor é obrigatório para a análise interna no RD.
       if (data.situacao_imovel === "Financiado" && (!data.saldo_devedor || parseMoney(data.saldo_devedor) <= 0)) {
         setError("saldo_devedor", isAuto ? "Informe quanto falta pagar do automóvel." : "Informe quanto falta pagar do imóvel.");
         ok = false;
@@ -227,8 +226,11 @@
       return ok;
     }
 
-    form.addEventListener("submit", function (e) {
+    var submitting = false;
+    var submitted = false;
+    form.addEventListener("submit", async function (e) {
       e.preventDefault();
+      if (submitting || submitted) return;
       if (formMessage) formMessage.className = "form-message";
 
       var data = {
@@ -245,20 +247,20 @@
 
       if (!validate(data)) return;
 
+      submitting = true;
+      var submitLabel = submitBtn.textContent;
       submitBtn.disabled = true;
       submitBtn.textContent = "Enviando...";
 
       // Envio do lead: nosso analytics D1 grava o lead e dispara pro RD Station
       // server-side (Pages Function /analytics/track, ver inspiracred/functions/analytics/_app.js).
+      var accepted = false;
       try {
         { // sem "if (window.inspiraTrack)": o enviarLead tem envio de reserva se o track.js faltar
-          // Regra comercial: abaixo de R$200 mil de crédito vai ao RD como não qualificado,
-          // mas fica sem evento Lead no Meta.
+          // A regra comercial permanece interna no RD/D1 e não seleciona o Lead da Meta.
           // Imóvel precisa ter no mínimo R$400 mil. A partir de R$500 mil de crédito +
-          // imóvel de R$1M vira LeadQualificado. Automóvel quitado vai ao RD como auto.
-          // ⚠️ Quem decide a faixa é SÓ o valor. Bem financiado não desqualifica mais —
-          // vira marcador de evento (metaMarkers), pra dar pra separar/excluir esse
-          // público depois sem perder o lead. (decisão do cliente, 28/07/2026)
+          // imóvel de R$1M vira MQL interno. Automóvel quitado vai ao RD como auto.
+          // Bem financiado não desqualifica, e não cria marcador na Meta.
           var creditValue = parseMoney(data.valor_emprestimo);
           var propertyValue = parseMoney(data.valor_imovel);
           var saldoValue = parseMoney(data.saldo_devedor || "");
@@ -267,17 +269,7 @@
           var isLead = isAuto || (!isLowValue && creditValue >= MIN_RD_EMP);
           var isMql = !isAuto && isLead && creditValue >= MQL_EMP && propertyValue >= MQL_IMOVEL;
           var leadKind = isLead ? (isAuto ? "auto" : (isMql ? "home_equity_mql" : "home_equity")) : "baixo_valor";
-          var shouldSendMetaLead = isLead && (!isAuto || creditValue >= MIN_EMP);
-
-          // Marcadores: acompanham o Lead, nunca vão sozinhos.
-          var metaMarkers = [];
-          if (data.situacao_imovel === "Financiado") {
-            metaMarkers.push(saldoValue > propertyValue * 0.5 ? "Financiado50Menos" : "Financiado50Mais");
-          }
-          var metaEvents = shouldSendMetaLead
-            ? (isMql ? ["Lead", "LeadQualificado"] : ["Lead"]).concat(metaMarkers)
-            : [];
-          enviarLead(Object.assign({
+          accepted = await enviarLead(Object.assign({
             name: data.nome,
             phone: "+55" + data.celular.replace(/\D/g, ""),
             email: data.email || null,
@@ -288,7 +280,7 @@
             saldo_devedor: data.situacao_imovel === "Financiado" ? saldoValue : null,
             source: "home_equity_lp",
             lead_kind: leadKind,
-            meta_events: metaEvents,
+            meta_events: ["Lead"],
             possui_imovel: isAuto ? "Não" : "Sim",
             possui_automovel: isAuto ? "Sim" : "Não",
             automovel_quitado: isAuto ? data.situacao_imovel || null : null,
@@ -297,8 +289,27 @@
         }
       } catch (e) {}
 
+      // Confirma somente que o navegador aceitou encaminhar o payload. Recebimento
+      // no D1/RD/Meta continua sendo verificado separadamente.
+      if (!accepted) {
+        submitting = false;
+        submitBtn.disabled = false;
+        submitBtn.textContent = submitLabel;
+        if (formMessage) {
+          formMessage.textContent = "Não foi possível enviar. Tente novamente.";
+          formMessage.classList.add("is-visible");
+        }
+        return;
+      }
+      submitted = true;
+      try {
+        if (window.inspiraTrack && typeof window.inspiraTrack.event === "function") {
+          window.inspiraTrack.event("simulation_complete", { source: "home_equity_lp" });
+        }
+      } catch (e) {}
+
       // Mostra o sucesso inline por um instante e redireciona pra página de obrigado.
-      // O atraso deixa o beacon do lead + Pixel dispararem antes da navegação; a
+      // O atraso deixa o encaminhamento local concluir antes da navegação; a
       // conversão já foi enviada acima (a página de obrigado não dispara evento).
       form.classList.add("is-hidden");
       formSuccess.classList.remove("is-hidden");

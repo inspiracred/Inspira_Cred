@@ -300,10 +300,12 @@ async function handleTrack(request, env, cors, context) {
         const hasName = event.name ? 1 : 0;
 
         event.lead_kind = normalizeLeadKind(event);
-        if (event.source === "home_institucional" && event.lead_kind === "baixo_valor") {
-          event.meta_events = [];
-          event.event_id = null;
-        }
+        // Fronteira de política no servidor: clientes antigos ou manipulados não
+        // escolhem nomes/quantidade de eventos Meta. Todo envio de lead já aceito
+        // pelo nosso endpoint gera exatamente o evento padrão Lead, sem seleção por
+        // valor, MQL, dívida, documentação ou tipo de bem.
+        event.meta_events = normalizeLeadMetaEvents(event);
+        event.event_id = event.meta_events[0].event_id;
 
         const insertLead = () => env.DB.prepare(
           `INSERT INTO leads (session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, meta_campaign_id, meta_adset_id, meta_ad_id, fbp, fbc, fbclid, gclid, event_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
@@ -359,14 +361,9 @@ async function handleTrack(request, env, cors, context) {
               uaInfo.browser, uaInfo.os, uaInfo.isMobile ? 1 : 0, hasEmail, hasPhone, hasName, leadId
             ).run();
           } catch (e) { /* colunas 0008 ainda não existem — ok */ }
-          if (context) context.waitUntil(recordMetaEventAudit(env, event, leadId));
-          else await recordMetaEventAudit(env, event, leadId);
         }
         if (leadId && context) {
           const sendsToRD = shouldSendLeadToRD(event.lead_kind);
-          const hasExplicitMetaEvents = Array.isArray(event.meta_events);
-          const sendsToMeta = !hasExplicitMetaEvents || event.meta_events.length > 0;
-
           if (sendsToRD) {
             context.waitUntil(sendLeadToRD(event, env, leadId));
           } else {
@@ -377,9 +374,7 @@ async function handleTrack(request, env, cors, context) {
           // vai pra CAPI — não polui o Pixel/otimização. O lead já foi salvo no D1 com
           // is_bot=1 (métrica de saúde correta). O RD NÃO é gateado por bot de propósito:
           // dropar um lead real por falso-positivo de UA no CRM custa mais que um bot raro.
-          if (!sendsToMeta) {
-            context.waitUntil(markLeadStatus(env, leadId, "meta_status", "nao_enviado"));
-          } else if (!bot.isBot) {
+          if (!bot.isBot) {
             context.waitUntil(sendLeadToMeta(event, env, leadId, {
               clientIp: request.headers.get("CF-Connecting-IP") || "",
               userAgent: leadUA,
@@ -400,21 +395,15 @@ async function handleTrack(request, env, cors, context) {
           `INSERT INTO events (session_id, event_type, event_name, properties, page_name) VALUES (?,?,?,?,?)`
         ).bind(event.session_id, event.event_type || "custom", event.event_name || "custom",
           JSON.stringify(eventProps), event.page_name || null).run();
-        if (event.meta_event_name && context) {
+        const allowedMetaEvent = normalizeFunnelMetaEvent(event.event_name);
+        if (allowedMetaEvent && context) {
           const eventCookies = parseCookies(request.headers.get("Cookie") || "");
           const eventUA = request.headers.get("User-Agent") || "";
           const bot = detectBot(eventUA);
           if (!bot.isBot) {
-            const eventSourceUrl = event.url || request.headers.get("Referer") || "";
+            const eventSourceUrl = sanitizeMetaSourceUrl(event.url || request.headers.get("Referer") || "");
             event.external_id = eventCookies._krob_eid || event.session_id || null;
-            // O client manda name/email/phone/city DENTRO de properties; buildUserData
-            // lê do topo do evento. Eleva aqui (e o stripPii acima já garantiu que a PII
-            // não foi parar na coluna events.properties).
-            const rawProps = event.properties && typeof event.properties === "object" ? event.properties : {};
-            if (!event.name && rawProps.name) event.name = rawProps.name;
-            if (!event.email && rawProps.email) event.email = rawProps.email;
-            if (!event.phone && rawProps.phone) event.phone = rawProps.phone;
-            if (!event.city && rawProps.city) event.city = rawProps.city;
+            event.meta_event_name = allowedMetaEvent;
             // Mesma cadeia do lead (body -> cookie -> sessions). Antes o caso "event"
             // parava no cookie e perdia o fbc cru em navegação interna — era o caminho
             // dos 4 eventos que a Meta acusou com "fbclid modificado".
@@ -489,14 +478,44 @@ function normalizeLeadKind(event) {
 
   const credit = Number(event.credit_value || 0);
   const property = Number(event.property_value || 0);
-  // ⚠️ SÓ O VALOR desqualifica. Nada de qualificador vira impeditivo: imóvel financiado
-  // e documentação irregular (= "possui matrícula? não", a mesma pergunta com outro nome
-  // no formulário) viram MARCADOR de evento no Meta — Financiado50Mais/Menos e
-  // DocumentacaoIrregular. A ideia é conseguir excluir esses públicos no Meta depois sem
-  // perder o lead agora. (decisão do cliente, 28/07/2026)
+  // ⚠️ SÓ O VALOR define a classificação comercial interna. Imóvel financiado e
+  // documentação irregular não impedem a captura; esses dados permanecem apenas no
+  // D1/RD e nunca viram evento, parâmetro ou marcador na Meta.
   if (credit < 200000 || property < 400000) return "baixo_valor";
   if (credit >= 500000 && property >= 1000000) return "home_equity_mql";
   return "home_equity";
+}
+
+function normalizeMetaEventId(value) {
+  // Nunca repassar IDs controlados pelo cliente: um identificador textual poderia
+  // codificar valor, faixa, documentação ou classificação. Sem Pixel no navegador,
+  // não há deduplicação client/server a preservar; o servidor gera um UUID opaco.
+  try { return crypto.randomUUID(); }
+  catch (_) { return `srv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`; }
+}
+
+function normalizeLeadMetaEvents(event) {
+  const raw = Array.isArray(event.meta_events) ? event.meta_events : [];
+  const lead = raw.find((item) => {
+    const name = typeof item === "string" ? item : item && item.name;
+    return name === "Lead";
+  });
+  const candidate = typeof lead === "object" && lead ? lead.event_id : event.event_id;
+  return [{ name: "Lead", event_id: normalizeMetaEventId(candidate) }];
+}
+
+const FUNNEL_META_EVENTS = {
+  simulation_start: "InitiateCheckout",
+  simulation_complete: "SubmitApplication",
+};
+
+function normalizeFunnelMetaEvent(eventName) {
+  if (typeof eventName !== "string" || !Object.hasOwn(FUNNEL_META_EVENTS, eventName)) return "";
+  return FUNNEL_META_EVENTS[eventName];
+}
+
+function sanitizeMetaSourceUrl(value) {
+  return "https://nova.inspiracred.com.br/";
 }
 
 function shouldSendLeadToRD(kind) {
@@ -508,29 +527,6 @@ async function markLeadStatus(env, leadId, column, status) {
   try {
     await env.DB.prepare(`UPDATE leads SET ${column} = ? WHERE id = ?`).bind(status, leadId).run();
   } catch (e) { /* não derruba captura */ }
-}
-
-async function recordMetaEventAudit(env, event, leadId) {
-  const raw = Array.isArray(event.meta_events)
-    ? event.meta_events
-    : (event.meta_events === undefined ? [{ name: "Lead", event_id: event.event_id }] : []);
-  if (!raw.length) return;
-  for (const item of raw) {
-    const name = typeof item === "string" ? item : item && item.name;
-    if (!name) continue;
-    const eventId = typeof item === "string" ? event.event_id : item.event_id;
-    try {
-      await env.DB.prepare(
-        `INSERT INTO events (session_id, event_type, event_name, properties, page_name) VALUES (?,?,?,?,?)`
-      ).bind(
-        event.session_id || null,
-        "meta",
-        name,
-        JSON.stringify({ lead_id: leadId || null, lead_kind: event.lead_kind || null, event_id: eventId || null, channel: "pixel_capi" }),
-        event.source || event.page_name || "lead"
-      ).run();
-    } catch (e) { /* auditoria não pode derrubar captura */ }
-  }
 }
 
 // Identificador do RD por PÁGINA. O tipo do lead vai separado por tag +
@@ -632,8 +628,8 @@ async function sendLeadToRD(event, env, leadId) {
     state: str(event.state),
     // "Saldo Devedor" (cf_saldo_devedor, TEXTO) — campo de Lead CRIADO em 2026-07-28.
     // ⚠️ Identificador LIDO na tela depois de criar (o RD gera o slug a partir do nome);
-    // conferido: `cf_saldo_devedor`. Só vem preenchido quando o bem está financiado —
-    // é o valor que separa Financiado50Mais de Financiado50Menos no Meta.
+    // conferido: `cf_saldo_devedor`. Só vem preenchido quando o bem está financiado e
+    // permanece restrito à operação interna no RD.
     // Falta criar a Combinação de Campos p/ subir pra Negociação (texto->texto).
     cf_saldo_devedor: str(event.saldo_devedor),
     traffic_source: event.utm_source || undefined,
@@ -890,6 +886,57 @@ function parseBrowser(ua) {
   return r;
 }
 
+// Resposta agregada do lote, nunca recibo de aceitação de cada event_id.
+// Allowlist técnica: não persistir body, mensagens, payload, URL, cookies ou PII.
+function metaAuditInteger(value, max = 2147483647) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= max ? value : null;
+}
+
+async function readMetaAuditResponse(res, sentCount) {
+  const audit = { http_status: metaAuditInteger(res.status, 599), events_received: null,
+    error_code: null, error_subcode: null, outcome: res.ok ? "invalid_response" : "http_error" };
+  let reader;
+  try {
+    reader = res.body.getReader();
+    const chunks = [];
+    let size = 0;
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      size += part.value.byteLength;
+      if (size > 16384) { await reader.cancel(); return audit; }
+      chunks.push(part.value);
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    const body = JSON.parse(new TextDecoder().decode(bytes));
+    if (!body || typeof body !== "object" || Array.isArray(body)) return audit;
+    audit.events_received = metaAuditInteger(body.events_received, 1000);
+    if (body.error && typeof body.error === "object") {
+      audit.error_code = metaAuditInteger(body.error.code);
+      audit.error_subcode = metaAuditInteger(body.error.error_subcode);
+      audit.outcome = "api_error";
+    } else if (res.ok) {
+      audit.outcome = audit.events_received === null ? "count_unknown"
+        : audit.events_received === sentCount ? "batch_reported" : "count_mismatch";
+    }
+  } catch (_) { /* resultado indeterminado; não guardar mensagem livre */ }
+  finally { if (reader) reader.releaseLock(); }
+  return audit;
+}
+
+async function recordMetaBatchAudit(env, leadId, metaEvents, audit) {
+  if (!Number.isSafeInteger(leadId) || leadId <= 0) return;
+  try {
+    await env.DB.prepare(`INSERT INTO meta_capi_batches
+      (lead_id, sent_count, http_status, events_received, error_code, error_subcode, outcome)
+      VALUES (?,?,?,?,?,?,?)`).bind(leadId, metaAuditInteger(metaEvents.length, 1000),
+        audit.http_status, audit.events_received, audit.error_code, audit.error_subcode, audit.outcome).run();
+    await env.DB.prepare(`DELETE FROM meta_capi_batches WHERE created_at < datetime('now','-30 days')`).run();
+  } catch (_) { /* auditoria ausente/falha não bloqueia captura nem fan-out */ }
+}
+
 async function sendLeadToMeta(event, env, leadId, ctx) {
   if (!env.META_PIXEL_ID || !env.META_ACCESS_TOKEN) return; // dormindo até ter os secrets
 
@@ -898,45 +945,38 @@ async function sendLeadToMeta(event, env, leadId, ctx) {
   const fbc = buildFbc({ fbc: event.fbc, fbclid: event.fbclid, clickTs: event.click_ts });
   const userData = await buildUserData(event, ctx, fbc);
 
-  // Um lead pode disparar 1+ eventos (ex.: MQL = "Lead" + "LeadQualificado").
-  // O client manda meta_events = [{name, event_id}] — reenviamos CADA um pela CAPI
-  // com o MESMO event_id que o Pixel usou, pra o Meta deduplicar par a par. Array
-  // VAZIO é válido e intencional (lead "descarte": não deve contar como conversão
-  // de ads) — testa Array.isArray, NÃO .length, senão [] cai no fallback errado.
-  // Fallback: só leads antigos/sem meta_events (campo ausente) viram um "Lead" solto.
-  const metaEvents = Array.isArray(event.meta_events)
-    ? event.meta_events
-    : [{ name: "Lead", event_id: event.event_id }];
-  if (!metaEvents.length) return; // nenhum evento pra este lead (por design) — não chama a API
+  // Defesa em profundidade: mesmo chamadas internas devem respeitar a mesma
+  // conversão não selecionada imposta no handleTrack.
+  const metaEvents = normalizeLeadMetaEvents(event);
   const eventTime = Math.floor(Date.now() / 1000);
-  const customData = {
-    currency: "BRL",
-    value: event.credit_value != null ? Number(event.credit_value) : undefined,
-    content_category: event.property_type || undefined,
-  };
   const payload = {
     data: metaEvents.map((ev) => ({
-      event_name: ev.name || "Lead",
+      event_name: "Lead",
       event_time: eventTime,
       event_id: ev.event_id || event.event_id || undefined,
-      event_source_url: ctx.sourceUrl || undefined,
+      event_source_url: sanitizeMetaSourceUrl(ctx.sourceUrl),
       action_source: "website",
       user_data: userData,
-      custom_data: customData,
+      custom_data: {},
     })),
   };
   if (env.META_TEST_EVENT_CODE) payload.test_event_code = env.META_TEST_EVENT_CODE;
 
   let status = "erro";
+  let audit = { http_status: null, events_received: null, error_code: null, error_subcode: null, outcome: "network_error" };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
   try {
     const res = await fetch(
       `https://graph.facebook.com/v21.0/${env.META_PIXEL_ID}/events?access_token=${env.META_ACCESS_TOKEN}`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: controller.signal }
     );
-    status = res.ok ? "ok" : `http_${res.status}`;
+    audit = await readMetaAuditResponse(res, payload.data.length);
+    status = audit.outcome === "batch_reported" ? "ok" : audit.outcome;
   } catch (e) {
     status = "fetch_error";
-  }
+  } finally { clearTimeout(timer); }
+  await recordMetaBatchAudit(env, leadId, payload.data, audit);
   try {
     await env.DB.prepare(`UPDATE leads SET meta_status = ? WHERE id = ?`).bind(status, leadId).run();
   } catch (e) {
@@ -945,35 +985,27 @@ async function sendLeadToMeta(event, env, leadId, ctx) {
 }
 
 async function sendCustomEventToMeta(event, env, ctx) {
-  if (!env.META_PIXEL_ID || !env.META_ACCESS_TOKEN || !event.meta_event_name) return;
+  const allowedEvent = normalizeFunnelMetaEvent(event.event_name);
+  if (!env.META_PIXEL_ID || !env.META_ACCESS_TOKEN || !allowedEvent) return;
 
   const fbc = buildFbc({ fbc: event.fbc, fbclid: event.fbclid, clickTs: event.click_ts });
-  // Advanced Matching completo tambem nos eventos de funil. No /formulario/ o
-  // simulation_complete dispara DEPOIS da etapa de contato, entao nome/telefone/e-mail
-  // ja existem - e dai que vem o maior salto de EMQ. Nos eventos de load (ViewContent,
-  // simulation_start) nao ha PII e o user_data fica so com fbc/fbp/external_id/country.
+  // Eventos de funil usam somente identidade técnica de sessão/click. A PII de
+  // contato fica concentrada no evento Lead após o envio válido.
+  event.name = "";
+  event.email = "";
+  event.phone = "";
+  event.city = "";
   const userData = await buildUserData(event, ctx, fbc);
-
-  // custom_data NUNCA leva PII - so as props de negocio.
-  const customData = {};
-  const props = stripPii(event.properties);
-  Object.keys(props).forEach((key) => {
-    const value = props[key];
-    if (value == null) return;
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      customData[key] = value;
-    }
-  });
 
   const payload = {
     data: [{
-      event_name: event.meta_event_name,
+      event_name: allowedEvent,
       event_time: Math.floor(Date.now() / 1000),
-      event_id: event.event_id || undefined,
-      event_source_url: ctx.sourceUrl || undefined,
+      event_id: normalizeMetaEventId(),
+      event_source_url: sanitizeMetaSourceUrl(ctx.sourceUrl),
       action_source: "website",
       user_data: userData,
-      custom_data: customData,
+      custom_data: {},
     }],
   };
   if (env.META_TEST_EVENT_CODE) payload.test_event_code = env.META_TEST_EVENT_CODE;
@@ -988,10 +1020,8 @@ async function sendCustomEventToMeta(event, env, ctx) {
   }
 }
 
-// Eventos de CRM usados pela meta de desempenho "Leads de conversao" sao um fluxo
-// separado dos eventos do site. A Meta exige action_source=system_generated e os
-// marcadores lead_event_source/event_source=crm; uma carga de website, mesmo aceita
-// pela CAPI, nao conta para essa integracao.
+// Dados de CRM permanecem internos. O webhook ainda registra as etapas no D1, mas
+// nenhuma etapa do CRM é enviada à Meta: elas podem refletir qualificação financeira.
 function findMetaLeadId(value, depth) {
   if (!value || typeof value !== "object" || (depth || 0) > 6) return "";
   const keys = ["lead_id", "leadid", "leadgen_id", "leadgenid", "facebook_lead_id", "fb_lead_id", "meta_lead_id"];
@@ -1018,13 +1048,7 @@ function findMetaLeadId(value, depth) {
 }
 
 function metaCrmEventName(stage, won) {
-  const raw = String(stage || "").trim();
-  const plain = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  if (won || /ganh|won|vendid|fechad|convertid/.test(plain)) return "Converted";
-  if (/agend|schedule|reuniao|appointment/.test(plain)) return "Schedule";
-  if (/qualific|mql|oportunidade/.test(plain)) return "QualifiedLead";
-  if (!plain || /nao trabalh|novo|new|lead|entrada/.test(plain)) return "Lead";
-  return raw.slice(0, 100);
+  return "";
 }
 
 function metaCrmEventTime(value) {
@@ -1088,48 +1112,7 @@ function normalizeMetaPhone(value) {
 }
 
 async function sendCrmStageToMeta(event, env) {
-  if (!env.META_PIXEL_ID || !env.META_ACCESS_TOKEN) return { ok: false, status: "not_configured" };
-
-  const userData = {};
-  if (event.leadId) userData.lead_id = String(event.leadId);
-  const em = await sha256Hex(event.email);
-  const ph = await sha256Hex(normalizeMetaPhone(event.phone));
-  if (em) userData.em = [em];
-  if (ph) userData.ph = [ph];
-  if (!userData.lead_id && !em && !ph) return { ok: false, status: "missing_match_key" };
-
-  const payload = {
-    data: [{
-      event_name: event.eventName,
-      event_time: event.eventTime,
-      event_id: event.eventId || undefined,
-      action_source: "system_generated",
-      user_data: userData,
-      custom_data: {
-        lead_event_source: env.META_CRM_SOURCE_NAME || "RD Station CRM",
-        event_source: "crm",
-      },
-    }],
-  };
-  if (env.META_TEST_EVENT_CODE) payload.test_event_code = env.META_TEST_EVENT_CODE;
-
-  try {
-    const res = await fetch(
-      `https://graph.facebook.com/v21.0/${env.META_PIXEL_ID}/events?access_token=${env.META_ACCESS_TOKEN}`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
-    );
-    let response = {};
-    try { response = await res.json(); } catch (e) { response = {}; }
-    const eventsReceived = Number(response.events_received || 0);
-    const accepted = res.ok && eventsReceived > 0;
-    return {
-      ok: accepted,
-      status: accepted ? "ok" : (res.ok ? "not_received" : `http_${res.status}`),
-      events_received: eventsReceived,
-    };
-  } catch (e) {
-    return { ok: false, status: "fetch_error" };
-  }
+  return { ok: true, status: "policy_skip" };
 }
 
 /* ---- MÉTRICAS ---- */
@@ -1537,31 +1520,11 @@ async function handleLeads(request, env) {
     else rows = (await env.DB.prepare(`SELECT ${BASE} FROM leads${where}${tail}`).bind(...binds).all()).results || [];
   }
 
-  // Eventos que foram REALMENTE disparados pro Meta em cada lead (auditoria que o
-  // recordMetaEventAudit grava na tabela `events`). Antes isso só dava pra ver abrindo a
-  // jornada e garimpando linha por linha — agora vai direto na ficha.
-  // Uma query só pra página inteira: busca por session_id e depois casa pelo lead_id que
-  // vai dentro do `properties` (a mesma sessão pode gerar mais de um lead).
-  rows.forEach((r) => { r.meta_events = []; });
-  try {
-    const sids = [...new Set(rows.map((r) => r.session_id).filter(Boolean))];
-    if (sids.length) {
-      const ph = sids.map(() => "?").join(",");
-      const evs = (await env.DB.prepare(
-        `SELECT session_id, event_name, properties, created_at FROM events
-          WHERE event_type = 'meta' AND session_id IN (${ph}) ORDER BY created_at`
-      ).bind(...sids).all()).results || [];
-      const porLead = new Map();
-      for (const e of evs) {
-        let leadId = null;
-        try { leadId = JSON.parse(e.properties || "{}").lead_id; } catch (x) { /* properties inválido */ }
-        if (leadId == null) continue;
-        if (!porLead.has(leadId)) porLead.set(leadId, []);
-        porLead.get(leadId).push({ name: e.event_name, at: e.created_at });
-      }
-      rows.forEach((r) => { r.meta_events = porLead.get(r.id) || []; });
-    }
-  } catch (e) { /* sem tabela/coluna de auditoria — a ficha só não lista os eventos */ }
+  // A Meta só fornece recibo agregado por lote. Não persistimos IDs individuais nem
+  // alegamos aceite por evento: a ficha deriva apenas o estado técnico consolidado.
+  rows.forEach((r) => {
+    r.meta_events = r.meta_status === "ok" ? [{ name: "Lead", at: r.created_at }] : [];
+  });
 
   return json({ leads: rows, count: rows.length });
 }
@@ -1850,15 +1813,6 @@ async function handleRdWebhook(request, env, context) {
       const dup = await env.DB.prepare(`SELECT id FROM rd_sales WHERE deal_id=? AND COALESCE(stage,'')=COALESCE(?,'') AND meta_status='ok' LIMIT 1`).bind(String(dealId), stage ? String(stage) : null).first();
       if (dup) return json({ ok: true, dedup: true, meta_crm: { ok: true, status: "duplicate_stage" } });
     } catch (e) { /* tabela pode não existir ainda */ }
-  }
-
-  if (metaCrmEnabled && metaEligible && dealId && !metaLeadId && (!email || !phone)) {
-    const contact = await fetchRdDealContact(dealId, env);
-    if (contact) {
-      email = email || contact.email;
-      phone = phone || contact.phone;
-      metaLeadId = metaLeadId || contact.leadId;
-    }
   }
 
   const metaCrm = !metaCrmEnabled
@@ -2861,8 +2815,7 @@ function eventLabel(name){
     section_view:"Seção visualizada",
     scroll_depth:"Profundidade de scroll",
     CompleteRegistration:"CompleteRegistration",
-    Lead:"Lead",
-    LeadQualificado:"Lead qualificado"
+    Lead:"Lead"
   };
   return m[name]||name;
 }
@@ -2884,15 +2837,15 @@ function renderEventSummary(d){
   var kinds=d.lead_kind_summary||[];
   var byKind={};
   kinds.forEach(function(k){byKind[k.kind]=k;});
-  var leadOk=(byKind.home_equity&&byKind.home_equity.meta_ok||0)+(byKind.auto&&byKind.auto.meta_ok||0)+(byKind.home_equity_mql&&byKind.home_equity_mql.meta_ok||0);
-  var mqlOk=(byKind.home_equity_mql&&byKind.home_equity_mql.meta_ok||0);
+  var leadOk=kinds.reduce(function(a,k){return a+Number(k.meta_ok||0)},0);
+  var mqlInternal=(byKind.home_equity_mql&&byKind.home_equity_mql.n||0);
   var rdOk=kinds.reduce(function(a,k){return a+Number(k.rd_ok||0)},0);
-  var metaSkip=kinds.reduce(function(a,k){return a+Number(k.meta_skip||0)},0);
+  var metaPending=Math.max(0,kinds.reduce(function(a,k){return a+Number(k.n||0)},0)-leadOk);
   var kpis=[
     ["Meta Lead",pretty(leadOk),"eventos com entrega CAPI ok"],
-    ["Meta LeadQualificado",pretty(mqlOk),"MQLs enviados ao Meta"],
+    ["MQL interno",pretty(mqlInternal),"classificação restrita ao CRM/D1"],
     ["RD Station",pretty(rdOk),"leads enviados ao CRM"],
-    ["Sem Lead no Meta",pretty(metaSkip),"não qualificados por regra"]
+    ["Meta pendente/falha",pretty(metaPending),"sem recibo agregado confirmado"]
   ];
   document.getElementById("eventKpis").innerHTML=kpis.map(function(k){return '<div class="kpi"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="sub"><b>'+k[2]+'</b></div></div>'}).join("");
   var t=d.totals||{};
@@ -2900,7 +2853,7 @@ function renderEventSummary(d){
   var signalRows=[
     {name:"Simulacoes iniciadas",n:t.sim_start||0,sub:pct(t.sim_start||0,t.visitors||0)+"% das visitas comecaram a simulacao",hot:true},
     {name:"Leads captados",n:t.leads||0,sub:pct(t.leads||0,t.visitors||0)+"% das visitas viraram lead",hot:true},
-    {name:"Leads qualificados",n:mqlOk,sub:pct(mqlOk,t.leads||0)+"% dos leads viraram MQL"},
+    {name:"Leads qualificados",n:mqlInternal,sub:pct(mqlInternal,t.leads||0)+"% dos leads viraram MQL interno"},
     {name:"Desqualificados",n:desq,sub:pct(desq,t.leads||0)+"% dos leads fora do perfil"}
   ];
   document.getElementById("overviewEvents").innerHTML=signalCards(signalRows);
@@ -3043,12 +2996,10 @@ function renderHealth(d){
     g.innerHTML=''; sig.innerHTML=''; fbp.innerHTML=br.innerHTML=bots.innerHTML='';
     return;
   }
-  // "Não enviados por regra" (baixo_valor/descarte) e bots NÃO são perda de entrega —
-  // são decisão nossa de não mandar pro Meta. A entrega tem que ser medida só sobre os
-  // leads ELEGÍVEIS (os que a gente de fato tenta enviar), senão o gate de qualificação
-  // aparece como se fosse falha da CAPI (era o "38% / Muita perda" que assustava).
+  // Todo formulário válido tenta um Lead; apenas robôs são barrados de propósito.
+  // meta_skip representa histórico legado, não uma regra atual de qualificação.
   var metaSkip=t.meta_skip||0, metaBot=t.meta_bot||0;
-  var elegiveis=Math.max(0, total-metaSkip-metaBot);
+  var elegiveis=Math.max(0, total-metaBot);
   var entrega=elegiveis?pct(t.meta_ok,elegiveis):100;
   var pii=Math.round((pct(t.com_email,total)+pct(t.com_telefone,total)+pct(t.com_nome,total))/3);
   var atrib=pct(t.com_fbclid,total);
@@ -3060,16 +3011,15 @@ function renderHealth(d){
   document.getElementById("healthVerdict").textContent=
     geral==="good"?"Rastreamento saudável":(geral==="warn"?"Rastreamento funcionando, com pontos de atenção":"Rastreamento com problema");
   document.getElementById("healthSummary").textContent=
-    "De "+total+" lead"+(total===1?"":"s")+" no período, "+pretty(elegiveis)+" eram elegíveis para o Meta e "+
-    pretty(t.meta_ok)+" foram entregues pela CAPI. "+pretty(metaSkip)+" não foram enviados por regra de "+
-    "qualificação (baixo valor/descarte) — isso é decisão nossa, não perda.";
+    "De "+total+" lead"+(total===1?"":"s")+" no período, "+pretty(elegiveis)+" tiveram envio elegível para a Meta e "+
+    pretty(t.meta_ok)+" tiveram recibo agregado confirmado pela CAPI. "+pretty(metaSkip)+" registros são legado sem envio.";
   document.getElementById("healthMeta").innerHTML=
     '<span class="chip">'+(d.page==="all"?"Todas as páginas":label(d.page||"all"))+'</span>'+
     '<span class="chip">'+(d.range?d.range.start+" → "+d.range.end:"")+'</span>';
 
   g.innerHTML=
     gaugeCard("Entrega no Meta",entrega,"dos elegíveis",
-      "Dos leads que a gente ENVIA pro Meta (tirando os barrados por regra de qualificação e os robôs), quantos a CAPI aceitou. Falha aqui, sim, é perda real de conversão.",
+      "Dos leads válidos, tirando apenas robôs, quantos tiveram recibo agregado compatível na CAPI.",
       vEnt==="good"?"Entregando bem":(vEnt==="warn"?"Perdendo alguns":"Muita perda"),vEnt)+
     gaugeCard("Dados para casar a pessoa",pii,"de cobertura",
       "Média de e-mail, telefone e nome enviados. Quanto mais completo, maior a chance da Meta reconhecer quem é e dar o crédito da venda ao anúncio certo.",
@@ -3078,13 +3028,13 @@ function renderHealth(d){
       "Leads que chegaram com o identificador de clique do anúncio (fbclid). Sem ele a Meta não sabe qual anúncio trouxe a pessoa.",
       vAtr==="good"?"Atribuição forte":(vAtr==="warn"?"Parcial":"Pouca atribuição"),vAtr)+
     gaugeCard("Tráfego limpo",limpo,"humanos",
-      "Parte dos leads que veio de gente de verdade. Os robôs identificados são bloqueados antes de sujar o Pixel.",
+      "Parte dos leads que veio de gente de verdade. Os robôs identificados são bloqueados antes da CAPI.",
       vLimpo==="good"?"Sem poluição":(vLimpo==="warn"?"Alguns robôs":"Muito robô"),vLimpo);
 
   sig.innerHTML=signalCards([
     {name:"Resgatados pelo cookie",n:t.itp_recuperado||0,sub:"leads que o Safari/ITP teria feito perder a origem e o nosso cookie de servidor salvou",hot:true},
-    {name:"Robôs barrados",n:t.bots||0,sub:"crawlers bloqueados antes de virarem conversão falsa no Pixel"},
-    {name:"Não enviados por regra",n:metaSkip,sub:"leads baixo valor/descarte que a nossa qualificação NÃO manda pro Meta (não é perda)"},
+    {name:"Robôs barrados",n:t.bots||0,sub:"crawlers bloqueados antes de virarem conversão falsa na CAPI"},
+    {name:"Legado sem envio",n:metaSkip,sub:"registros antigos anteriores à regra atual de Lead não selecionado"},
     {name:"Sem cookie do Meta",n:t.sem_cookie_meta||0,sub:"navegador chegou sem cookie do Pixel no envio (bloqueador ou navegação privada)"},
     {name:"Entregues no Meta",n:t.meta_ok||0,sub:"eventos aceitos pela CAPI no período",hot:true}
   ],Math.max(total,1));
@@ -3527,22 +3477,22 @@ function leadKindPill(k){
   return '<span class="pill '+cls+'">'+esc(lb)+'</span>';
 }
 function leadHasMetaLead(l){
-  return (l.lead_kind==="home_equity"||l.lead_kind==="home_equity_mql"||l.lead_kind==="auto"||l.lead_kind==="institucional")&&l.meta_status==="ok";
+  return l.meta_status==="ok";
 }
-function leadHasMql(l){return l.lead_kind==="home_equity_mql"&&l.meta_status==="ok";}
+function leadHasMql(l){return l.lead_kind==="home_equity_mql";}
 function eventDot(label,state,title){
   var ok={sent:1,skip:1,err:1,bot:1,off:1};
   var cls=ok[state]?state:"off";
   return '<span class="event-dot '+cls+'"'+(title?' title="'+esc(title)+'"':'')+'>'+label+'</span>';
 }
 /* Traduz o status cru gravado no D1 pro selo colorido. Cada cor tem UM significado:
-   verde = entregue · laranja = não enviado de propósito (regra) · roxo = robô barrado
-   antes de sujar o Pixel · vermelho = FALHA de verdade (a API recusou/deu erro) ·
+   verde = recibo agregado compatível · laranja = legado sem envio · roxo = robô barrado
+   antes da CAPI · vermelho = FALHA de verdade (a API recusou/deu erro) ·
    cinza = não se aplica a este tipo de lead. O status cru vai no title (hover). */
 function statusDot(label,status,applies,skipWhy){
   if(!applies)return eventDot(label,"off","Não se aplica a este tipo de lead");
   if(status==="ok")return eventDot(label,"sent","Entregue com sucesso");
-  if(status==="nao_enviado")return eventDot(label,"skip",skipWhy||"Não enviado por regra de qualificação");
+  if(status==="nao_enviado")return eventDot(label,"skip",skipWhy||"Registro legado sem envio");
   if(status==="bot_skip")return eventDot(label,"bot","Acesso identificado como robô — não enviado de propósito");
   if(status==null||status==="")return eventDot(label,"off",skipWhy||"Sem registro de envio");
   return eventDot(label,"err","Falha no envio — resposta da API: "+status);
@@ -3556,21 +3506,18 @@ function leadEventDot(l,type){
     return statusDot("RD",l.rd_status,true);
   }
   if(type==="lead"){
-    var appliesLead=kind==="home_equity"||kind==="home_equity_mql"||kind==="auto"||kind==="institucional";
-    return statusDot("Lead",l.meta_status,appliesLead||!!l.meta_status,
-      appliesLead?null:"Lead desqualificado não dispara evento de conversão no Meta");
+    return statusDot("Lead",l.meta_status,true);
   }
   if(type==="mql"){
-    if(kind!=="home_equity_mql")return eventDot("MQL","off","Só leads qualificados disparam MQL");
-    return statusDot("MQL",l.meta_status,true);
+    return eventDot("MQL interno",kind==="home_equity_mql"?"sent":"off","Classificação interna; nunca enviada à Meta");
   }
   return eventDot(type,"off");
 }
 function eventLegend(){
   return '<div class="event-legend">'+
     eventDot("entregue","sent","Chegou no destino")+
-    eventDot("não enviado por regra","skip","De propósito: o lead não se qualifica para esse envio")+
-    eventDot("robô barrado","bot","Crawler detectado — bloqueado antes de sujar o Pixel")+
+    eventDot("legado sem envio","skip","Registro anterior à regra atual de Lead não selecionado")+
+    eventDot("robô barrado","bot","Crawler detectado — bloqueado antes da CAPI")+
     eventDot("falha no envio","err","A API respondeu com erro — vale investigar")+
     eventDot("não se aplica","off","Esse envio não existe para este tipo de lead")+
   '</div>';
@@ -3594,9 +3541,9 @@ function criteriaBox(){
   return '<div class="criteria" style="margin:0">'+
     '<b>Como um lead vira qualificado</b>'+
     '<ul>'+
-      '<li><span class="val-ok">Imóvel a partir de '+brl(MIN_IMOVEL)+'</span> <b>E</b> <span class="val-ok">crédito a partir de '+brl(MIN_CREDITO)+'</span> → conta como <b>Lead</b> no Meta e vai pro RD.</li>'+
-      '<li>Imóvel a partir de '+brl(MQL_IMOVEL)+' <b>E</b> crédito a partir de '+brl(MQL_CREDITO)+' → <b>Lead qualificado</b> (MQL).</li>'+
-      '<li><span class="val-no">Abaixo de qualquer um dos dois</span> → <b>vai pro RD Station do mesmo jeito</b>, mas <b>não</b> dispara evento de conversão no Meta.</li>'+
+      '<li>Todo formulário válido gera exatamente um <b>Lead</b> padrão na Meta, sem seleção por valor ou perfil.</li>'+
+      '<li>Imóvel a partir de '+brl(MIN_IMOVEL)+' e crédito a partir de '+brl(MIN_CREDITO)+' → classificação comercial interna como Lead.</li>'+
+      '<li>Imóvel a partir de '+brl(MQL_IMOVEL)+' <b>E</b> crédito a partir de '+brl(MQL_CREDITO)+' → <b>MQL interno</b>, restrito ao D1/RD.</li>'+
       '<li>Sem imóvel <b>e</b> sem veículo → fica só no nosso banco (não vai pro RD).</li>'+
     '</ul>'+
     '<small>As duas condições valem juntas (E, não OU): imóvel de R$ 1 milhão pedindo R$ 100 mil <b>não</b> é qualificado, porque o crédito está abaixo do mínimo.</small>'+
@@ -3622,7 +3569,7 @@ function renderLeads(d){
     ["Valor total solicitado",totalCreditKpi.short,"em cr&eacute;dito",totalCreditKpi.full],
     ["Ticket m&eacute;dio",ticketKpi.short,"por lead",ticketKpi.full],
     ["Entrega RD Station",rdOk+"/"+n,pct(rdOk,n)+"% no CRM"],
-    ["Entrega Meta CAPI",metaOk+"/"+n,pct(metaOk,n)+"% no Pixel"]
+    ["Entrega Meta CAPI",metaOk+"/"+n,pct(metaOk,n)+"% com recibo agregado"]
   ];
   document.getElementById("leadKpis").innerHTML=lk.map(function(k){
     var title=k[3]?(' title="'+esc(k[3])+'"'):"";
@@ -3668,7 +3615,7 @@ function renderLeadVisuals(rows){
     {name:"RD Station",n:rd},
     {name:"Meta Lead",n:metaLead},
     {name:"Lead qualificado",n:mql},
-    {name:"Sem Lead no Meta",n:Math.max(0,total-metaLead)}
+    {name:"Meta pendente/falha",n:Math.max(0,total-metaLead)}
   ], Math.max(total,1), "Nenhum lead para este filtro.");
 }
 
@@ -3714,17 +3661,14 @@ function showLead(i,list){
   row("RD Station", badge(l.rd_status));
   row("Meta CAPI",badge(l.meta_status));
   if(l.fbp_source||l.fbc_source) row("Origem fbp/fbc", pretty(l.fbp_source)+" / "+pretty(l.fbc_source));
-  // Quais eventos foram DE FATO disparados pro Meta neste lead. Antes só dava pra
-  // descobrir garimpando a jornada evento por evento.
+  // Indicação derivada do recibo agregado do lote; não é aceite individual por ID.
   var evs=l.meta_events||[];
   if(evs.length){
     row("Eventos disparados", evs.map(function(e){
       return '<span class="pill blue" style="margin:0 4px 4px 0"'+(e.at?' title="'+esc(e.at.slice(11,16))+'"':'')+'>'+esc(e.name)+'</span>';
     }).join(""));
   }else{
-    var semEvento=(l.lead_kind==="baixo_valor"||l.lead_kind==="descarte")
-      ? "nenhum — não qualificado não conta conversão (por regra)"
-      : "nenhum registrado";
+    var semEvento="nenhum recibo agregado confirmado";
     row("Eventos disparados",'<span class="pill wait">'+semEvento+'</span>');
   }
   document.getElementById("modalBody").innerHTML=h;

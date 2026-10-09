@@ -86,12 +86,12 @@ test("recognizes Meta evidence without classifying unrelated CRM deals", () => {
   assert.equal(backend.rdMetaLeadEvidence({ campaign: { name: "Indicação de parceiro" } }), false);
 });
 
-test("maps RD stages to stable Meta funnel events", () => {
-  assert.equal(backend.metaCrmEventName("Não Trabalhado", 0), "Lead");
-  assert.equal(backend.metaCrmEventName("Reunião agendada", 0), "Schedule");
-  assert.equal(backend.metaCrmEventName("Lead qualificado", 0), "QualifiedLead");
-  assert.equal(backend.metaCrmEventName("Etapa personalizada", 0), "Etapa personalizada");
-  assert.equal(backend.metaCrmEventName("Em negociação", 1), "Converted");
+test("suppresses every CRM stage from Meta", () => {
+  assert.equal(backend.metaCrmEventName("Não Trabalhado", 0), "");
+  assert.equal(backend.metaCrmEventName("Reunião agendada", 0), "");
+  assert.equal(backend.metaCrmEventName("Lead qualificado", 0), "");
+  assert.equal(backend.metaCrmEventName("Etapa personalizada", 0), "");
+  assert.equal(backend.metaCrmEventName("Em negociação", 1), "");
 });
 
 test("normalizes timestamps and Brazilian phone numbers", () => {
@@ -102,7 +102,7 @@ test("normalizes timestamps and Brazilian phone numbers", () => {
   assert.equal(backend.normalizeMetaPhone("+55 21 99999-9999"), "5521999999999");
 });
 
-test("sends a CRM event with Meta's required fields and hashed contact data", async () => {
+test("CRM sender is disabled at the policy boundary", async () => {
   capturedRequest = null;
   const result = await backend.sendCrmStageToMeta({
     eventName: "Schedule",
@@ -117,21 +117,8 @@ test("sends a CRM event with Meta's required fields and hashed contact data", as
     META_CRM_SOURCE_NAME: "RD Station CRM",
   });
 
-  assert.deepEqual({ ...result }, { ok: true, status: "ok", events_received: 1 });
-  assert.ok(capturedRequest.url.includes("/3021870508000260/events"));
-  const event = capturedRequest.payload.data[0];
-  assert.equal(event.event_name, "Schedule");
-  assert.equal(event.event_time, 1790769600);
-  assert.equal(event.event_id, "rd:deal-42:Schedule:1790769600");
-  assert.equal(event.action_source, "system_generated");
-  assert.equal(event.user_data.lead_id, "1234567890123456");
-  assert.match(event.user_data.em[0], /^[a-f0-9]{64}$/);
-  assert.match(event.user_data.ph[0], /^[a-f0-9]{64}$/);
-  assert.notEqual(event.user_data.em[0], "pessoa@example.com");
-  assert.deepEqual(
-    JSON.parse(JSON.stringify(event.custom_data)),
-    { lead_event_source: "RD Station CRM", event_source: "crm" }
-  );
+  assert.deepEqual({ ...result }, { ok: true, status: "policy_skip" });
+  assert.equal(capturedRequest, null);
 });
 
 test("does not call Meta without a match key", async () => {
@@ -143,7 +130,20 @@ test("does not call Meta without a match key", async () => {
     META_PIXEL_ID: "3021870508000260",
     META_ACCESS_TOKEN: "test-token",
   });
-  assert.deepEqual({ ...result }, { ok: false, status: "missing_match_key" });
+  assert.deepEqual({ ...result }, { ok: true, status: "policy_skip" });
+  assert.equal(capturedRequest, null);
+});
+
+test("suppresses qualified, won and arbitrary CRM stages at the policy boundary", async () => {
+  capturedRequest = null;
+  for (const [stage, won] of [["MQL qualificado", false], ["Venda ganha", true], ["Análise financeira", false]]) {
+    const eventName = backend.metaCrmEventName(stage, won);
+    assert.equal(eventName, "");
+    const result = await backend.sendCrmStageToMeta({ eventName, email: "qa@example.invalid" }, {
+      META_PIXEL_ID: "3021870508000260", META_ACCESS_TOKEN: "test-token",
+    });
+    assert.deepEqual({ ...result }, { ok: true, status: "policy_skip" });
+  }
   assert.equal(capturedRequest, null);
 });
 
@@ -163,7 +163,7 @@ test("keeps Meta CRM disabled unless the webhook explicitly opts in", async () =
   assert.equal(capturedRequest, null);
 });
 
-test("sends the opted-in CRM event even while the local sales table is unavailable", async () => {
+test("opted-in legacy CRM webhook remains internal when sales table is unavailable", async () => {
   capturedRequest = null;
   const response = await backend.handleRdWebhook(webhookRequest("&meta_crm=1", {
     deal: {
@@ -183,13 +183,11 @@ test("sends the opted-in CRM event even while the local sales table is unavailab
   const result = await response.json();
   assert.equal(result.ok, true);
   assert.equal(result.stored, false);
-  assert.equal(result.meta_crm.status, "ok");
-  assert.equal(result.meta_crm.events_received, 1);
-  assert.equal(capturedRequest.payload.data[0].event_name, "Schedule");
-  assert.equal(capturedRequest.payload.data[0].action_source, "system_generated");
+  assert.equal(result.meta_crm.status, "policy_skip");
+  assert.equal(capturedRequest, null);
 });
 
-test("parses the official RD CRM document payload and loads its contact", async () => {
+test("parses the official RD CRM document payload without external Meta send", async () => {
   capturedRequest = null;
   capturedRdRequest = null;
   rdContactResponse = {
@@ -222,12 +220,9 @@ test("parses the official RD CRM document payload and loads its contact", async 
   const result = await response.json();
   assert.equal(result.parsed.dealId, "rd-deal-42");
   assert.equal(result.parsed.stage, "Reunião Agendada");
-  assert.equal(result.meta_crm.status, "ok");
-  assert.ok(capturedRdRequest.url.includes("/rd-deal-42/contacts"));
-  assert.ok(capturedRdRequest.url.includes("token=rd-api-token"));
-  assert.equal(capturedRequest.payload.data[0].event_name, "Schedule");
-  assert.equal(capturedRequest.payload.data[0].event_id, "11111111-2222-4333-8444-555555555555");
-  assert.match(capturedRequest.payload.data[0].user_data.em[0], /^[a-f0-9]{64}$/);
+  assert.equal(result.meta_crm.status, "policy_skip");
+  assert.equal(capturedRdRequest, null);
+  assert.equal(capturedRequest, null);
 });
 
 test("ignores a non-Meta deal even when the webhook opts in", async () => {

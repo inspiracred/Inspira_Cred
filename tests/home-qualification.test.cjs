@@ -92,7 +92,7 @@ for (const credit of [1, 99999, 100000, 500000]) {
     assert.equal(payload.credit_value, credit);
     assert.equal(payload.utm_source, "teste-local");
     assert.equal(Object.hasOwn(payload, "solucao"), false);
-    assert.equal(JSON.stringify(payload.meta_events), credit < 100000 ? "[]" : '["Lead"]');
+    assert.equal(JSON.stringify(payload.meta_events), '["Lead"]', "Meta conversion must not depend on financial thresholds");
     assert.equal(result.window.location.href, credit < 100000 ? "/obrigado/home-nao-elegivel/" : "/obrigado/home/");
     assert.equal(backend.normalizeLeadKind(payload), kind);
     assert.equal(backend.shouldSendLeadToRD(kind), true);
