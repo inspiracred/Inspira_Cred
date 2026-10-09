@@ -557,11 +557,12 @@ async function sendLeadToRD(event, env, leadId) {
   const cfg = RD_PAGE_CONFIG[event.source];
   if (!cfg || !env.RD_STATION_TOKEN) return; // fonte desconhecida ou token não configurado
 
-  // O client sempre manda event.phone já com "+55" -> replace(/\D/g,"") deixa o "55"
-  // embutido nos dígitos. Removê-lo aqui (se sobrar >11 dígitos começando com 55) evita
-  // duplicar o DDI ao remontar "+55..." abaixo (bug que gerava telefone "+555521999998888").
+  // Contrato RD: telefone internacional e cf_whatsapp_com_ddd nacional.
+  // Remove DDIs 55 excedentes sem confundir o DDD 55 e omite entradas inválidas.
   const rawDigits = (event.phone || "").replace(/\D/g, "");
-  const phoneDigits = rawDigits.length > 11 && rawDigits.startsWith("55") ? rawDigits.slice(2) : rawDigits;
+  let phoneDigits = rawDigits;
+  while (phoneDigits.length > 11 && phoneDigits.startsWith("55")) phoneDigits = phoneDigits.slice(2);
+  if (!/^[0-9]{10,11}$/.test(phoneDigits)) phoneDigits = "";
   const str = (v) => (v != null && v !== "" ? String(v) : undefined);
   // Deriva a faixa de crédito (texto legível) a partir do valor numérico — usada nas
   // páginas que não têm o passo de faixa (landing/home equity) pra alimentar o campo

@@ -556,12 +556,10 @@
 
   function formatPhone(value) {
     var digits = value.replace(/\D/g, "");
-    // Se a pessoa digitou o DDI do Brasil (+55) na frente, remove ANTES de cortar em 11.
-    // Sem isso, o slice(0, 11) mantinha o "55" e empurrava os 2 últimos dígitos do número
-    // pra fora — o lead chegava no RD com o 55 dobrado e faltando os 2 números finais.
-    // Um telefone BR válido (DDD + número) tem no máx. 11 dígitos; só passa disso com DDI.
-    if (digits.length > 11 && digits.slice(0, 2) === "55") digits = digits.slice(2);
-    digits = digits.slice(0, 11);
+    // Remove DDIs 55 excedentes sem confundir o DDD 55 nacional nem cortar o sufixo.
+    var original = digits;
+    while (digits.length > 11 && digits.slice(0, 2) === "55") digits = digits.slice(2);
+    if (digits.length > 11) digits = original; // mantém inválido visível para correção
     if (!digits) return "";
     if (digits.length <= 2) return "(" + digits;
     if (digits.length <= 6) return "(" + digits.slice(0, 2) + ") " + digits.slice(2);
@@ -643,7 +641,7 @@
         setFieldError(field.id, "Informe este campo.");
         okFields = false;
       }
-      if (field.id === "whatsapp" && value.replace(/\D/g, "").length < 10) {
+      if (field.id === "whatsapp" && !/^[0-9]{10,11}$/.test(value.replace(/\D/g, ""))) {
         setFieldError(field.id, "Informe um WhatsApp válido.");
         okFields = false;
       }

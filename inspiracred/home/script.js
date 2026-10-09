@@ -131,10 +131,10 @@
     var celular = document.getElementById("f-celular");
     celular.addEventListener("input", function () {
       var d = celular.value.replace(/\D/g, "");
-      // DDI digitado na frente (+55) sai ANTES do corte em 11 — senão os 2 últimos
-      // dígitos do número caem fora (bug já visto na Home Equity).
-      if (d.length > 11 && d.slice(0, 2) === "55") d = d.slice(2);
-      d = d.slice(0, 11);
+      // Remove DDIs 55 excedentes sem confundir o DDD 55 nacional nem cortar o sufixo.
+      var original = d;
+      while (d.length > 11 && d.slice(0, 2) === "55") d = d.slice(2);
+      if (d.length > 11) d = original; // mantém inválido visível para correção
       if (!d) celular.value = "";
       else if (d.length <= 2) celular.value = "(" + d;
       else if (d.length <= 6) celular.value = "(" + d.slice(0, 2) + ") " + d.slice(2);
@@ -209,7 +209,7 @@
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { setError("email", "E-mail inválido."); ok = false; }
       var cel = data.celular.replace(/\D/g, "");
       if (!cel) { setError("celular", "Informe seu celular."); ok = false; }
-      else if (cel.length < 10) { setError("celular", "Número inválido. Use DDD + número."); ok = false; }
+      else if (!/^[0-9]{10,11}$/.test(cel)) { setError("celular", "Número inválido. Use DDD + número."); ok = false; }
       if (!data.estado) { setError("estado", "Selecione seu estado."); ok = false; }
       if (!data.cidade) { setError("cidade", "Informe sua cidade."); ok = false; }
       var credito = parseMoney(data.valor_credito);

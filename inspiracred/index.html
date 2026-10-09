@@ -546,8 +546,10 @@
           var phone = document.getElementById("contact-phone");
           phone.addEventListener("input", function () {
             var d = digits(phone.value);
-            if (d.length > 11 && d.slice(0, 2) === "55") d = d.slice(2);
-            d = d.slice(0, 11);
+            // Remove DDIs 55 excedentes sem confundir o DDD 55 nacional nem cortar o sufixo.
+            var original = d;
+            while (d.length > 11 && d.slice(0, 2) === "55") d = d.slice(2);
+            if (d.length > 11) d = original; // mantém inválido visível para correção
             if (!d) phone.value = "";
             else if (d.length <= 2) phone.value = "(" + d;
             else if (d.length <= 6) phone.value = "(" + d.slice(0, 2) + ") " + d.slice(2);
@@ -596,7 +598,7 @@
           function validate(data) {
             var ok = true;
             if (data.name.length < 3) { setError("name", "Informe seu nome completo."); ok = false; }
-            if (digits(data.phone).length < 10) { setError("phone", "Informe um celular com DDD."); ok = false; }
+            if (!/^[0-9]{10,11}$/.test(digits(data.phone))) { setError("phone", "Informe um celular com DDD."); ok = false; }
             if (!data.propertyType) { setError("property_type", "Selecione o tipo de imóvel."); ok = false; }
             if (data.propertyValue <= 0) { setError("property_value", "Informe o valor do imóvel."); ok = false; }
             if (data.creditValue <= 0) { setError("credit_value", "Informe o valor desejado."); ok = false; }
