@@ -1,0 +1,302 @@
+/* InspiraCred — Home institucional
+   Header (fundo ao rolar, menu mobile, link ativo), formulário (máscaras, validação,
+   cidades do IBGE, envio do lead) e animações de entrada. O lead vai pelo mesmo
+   caminho das outras páginas: window.inspiraTrack (assets/js/track.js) -> D1 -> RD
+   Station + Meta CAPI (functions/analytics/_app.js, source "home_institucional"). */
+(function () {
+  "use strict";
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var PAGE_SOURCE = "home_institucional";
+
+  /* Envio do lead que NÃO depende do track.js. Com ele carregado, segue o caminho
+     normal (Pixel + servidor). Sem ele (rede instável, erro de script), manda direto
+     pro /analytics/track: o servidor grava no D1 e dispara RD + CAPI do mesmo jeito.
+     Mesma função nas 4 páginas com formulário — nenhum lead depende do script de rastreio. */
+  function enviarLead(payload) {
+    if (window.inspiraTrack && typeof window.inspiraTrack.lead === "function") {
+      try { window.inspiraTrack.lead(payload); return; } catch (e) {}
+    }
+    var body = { type: "lead", url: location.href, page_name: window.IC_PAGE || payload.source || "other" };
+    for (var k in payload) if (Object.prototype.hasOwnProperty.call(payload, k)) body[k] = payload[k];
+    try { body.session_id = localStorage.getItem("ic_sid"); } catch (e) {}
+    body.meta_events = [{ name: "Lead", event_id: "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12) }];
+    body.event_id = body.meta_events[0].event_id;
+    try {
+      var q = new URLSearchParams(location.search);
+      ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "meta_campaign_id", "meta_adset_id", "meta_ad_id"].forEach(function (u) { if (body[u] == null && q.get(u)) body[u] = q.get(u); });
+    } catch (e) {}
+    var json = JSON.stringify(body);
+    try {
+      if (navigator.sendBeacon && navigator.sendBeacon("https://nova.inspiracred.com.br/analytics/track", new Blob([json], { type: "text/plain;charset=UTF-8" }))) return;
+    } catch (e) {}
+    try { fetch("https://nova.inspiracred.com.br/analytics/track", { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: json, keepalive: true }); } catch (e) {}
+  }
+
+  /* ============================================================
+     HEADER — fundo ao rolar, menu mobile e link da seção ativa
+     ============================================================ */
+  var header = document.getElementById("site-header");
+  var nav = document.getElementById("main-nav");
+  var toggle = header.querySelector(".nav-toggle");
+
+  function onScroll() { header.classList.toggle("is-scrolled", (window.scrollY || window.pageYOffset) > 24); }
+  window.addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+
+  function setMenu(open) {
+    header.classList.toggle("nav-open", open);
+    toggle.setAttribute("aria-expanded", String(open));
+    toggle.setAttribute("aria-label", open ? "Fechar menu" : "Abrir menu");
+  }
+  toggle.addEventListener("click", function () { setMenu(!header.classList.contains("nav-open")); });
+  nav.addEventListener("click", function (e) { if (e.target.closest("a")) setMenu(false); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && header.classList.contains("nav-open")) { setMenu(false); toggle.focus(); }
+  });
+  document.addEventListener("click", function (e) {
+    if (header.classList.contains("nav-open") && !header.contains(e.target)) setMenu(false);
+  });
+  var desktopMq = window.matchMedia("(min-width: 1024px)");
+  var onMq = function (m) { if (m.matches) setMenu(false); };
+  if (desktopMq.addEventListener) desktopMq.addEventListener("change", onMq);
+  else if (desktopMq.addListener) desktopMq.addListener(onMq);
+
+  // Link ativo: a seção que cruza o meio da tela acende o item do menu. Seções fora do
+  // menu (primeira dobra, formulário) apagam todos.
+  var navLinks = Array.prototype.slice.call(nav.querySelectorAll("a[data-nav]"));
+  if ("IntersectionObserver" in window) {
+    var spy = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        var id = en.target.id || "";
+        navLinks.forEach(function (a) {
+          var on = a.getAttribute("data-nav") === id;
+          a.classList.toggle("is-active", on);
+          if (on) a.setAttribute("aria-current", "true");
+          else a.removeAttribute("aria-current");
+        });
+      });
+    }, { rootMargin: "-45% 0px -50% 0px" });
+    document.querySelectorAll("main > section").forEach(function (s) { spy.observe(s); });
+  }
+
+  /* ============================================================
+     FORMULÁRIO — máscaras, cidades, validação e envio
+     ============================================================ */
+  var form = document.getElementById("home-lead-form");
+  if (form) {
+    var formMessage = document.getElementById("form-message");
+    var submitBtn = form.querySelector("button[type='submit']");
+    var MIN_CREDITO = 100000;
+    function setError(name, msg) {
+      var el = form.querySelector('[data-error="' + name + '"]');
+      var input = form.querySelector('[name="' + name + '"]');
+      if (el) { el.textContent = msg; el.classList.add("is-visible"); }
+      if (input) { input.classList.add("is-invalid"); input.setAttribute("aria-invalid", "true"); }
+    }
+    function clearError(name) {
+      var el = form.querySelector('[data-error="' + name + '"]');
+      var input = form.querySelector('[name="' + name + '"]');
+      if (el) { el.textContent = ""; el.classList.remove("is-visible"); }
+      if (input) { input.classList.remove("is-invalid"); input.removeAttribute("aria-invalid"); }
+    }
+
+    // Valor INTEIRO em reais (mesma máscara da Home Equity): dígitos = reais, ",00" fixo.
+    function formatMoney(value) {
+      var digits = value.replace(/,\d*$/, "").replace(/\D/g, "");
+      if (!digits) return "";
+      return "R$ " + Number(digits).toLocaleString("pt-BR") + ",00";
+    }
+    function parseMoney(value) {
+      var digits = (value || "").replace(/\D/g, "");
+      return digits ? Number(digits) / 100 : 0;
+    }
+    form.querySelectorAll(".money").forEach(function (input) {
+      input.addEventListener("input", function () {
+        input.value = formatMoney(input.value);
+        if (input.value) { var p = input.value.length - 3; try { input.setSelectionRange(p, p); } catch (e) {} }
+      });
+    });
+
+    var celular = document.getElementById("f-celular");
+    celular.addEventListener("input", function () {
+      var d = celular.value.replace(/\D/g, "");
+      // Remove somente DDIs excedentes; nunca corta os dígitos finais.
+      var original = d;
+      while (d.length > 11 && d.slice(0, 2) === "55") d = d.slice(2);
+      if (d.length > 11) d = original; // inválido permanece visível para correção
+      if (!d) celular.value = "";
+      else if (d.length <= 2) celular.value = "(" + d;
+      else if (d.length <= 6) celular.value = "(" + d.slice(0, 2) + ") " + d.slice(2);
+      else if (d.length <= 10) celular.value = "(" + d.slice(0, 2) + ") " + d.slice(2, 6) + "-" + d.slice(6);
+      else celular.value = "(" + d.slice(0, 2) + ") " + d.slice(2, 7) + "-" + d.slice(7);
+    });
+
+    form.querySelectorAll("input, select").forEach(function (el) {
+      var ev = el.tagName === "SELECT" ? "change" : "input";
+      el.addEventListener(ev, function () {
+        if (el.tagName === "SELECT") el.classList.toggle("filled", !!el.value);
+        clearError(el.name);
+      });
+    });
+
+    // Cidades do estado escolhido (API pública do IBGE). É só SUGESTÃO no <datalist>:
+    // a pessoa pode digitar livre, e se a API cair o formulário segue funcionando.
+    var ufSelect = document.getElementById("f-estado");
+    var cityList = document.getElementById("cidades-list");
+    var cityCache = {};
+    function fillCities(names) {
+      var frag = document.createDocumentFragment();
+      names.forEach(function (n) { var o = document.createElement("option"); o.value = n; frag.appendChild(o); });
+      cityList.innerHTML = "";
+      cityList.appendChild(frag);
+    }
+    ufSelect.addEventListener("change", function () {
+      var uf = ufSelect.value;
+      cityList.innerHTML = "";
+      if (!uf) return;
+      if (cityCache[uf]) { fillCities(cityCache[uf]); return; }
+      if (!window.fetch) return;
+      fetch("https://servicodados.ibge.gov.br/api/v1/localidades/estados/" + uf + "/municipios?orderBy=nome")
+        .then(function (r) { return r.ok ? r.json() : []; })
+        .then(function (list) {
+          var names = (list || []).map(function (m) { return m && m.nome; }).filter(Boolean);
+          cityCache[uf] = names;
+          if (ufSelect.value === uf) fillCities(names);
+        })
+        .catch(function () {});
+    });
+
+    // "Simulação iniciada": 1x, no primeiro toque em qualquer campo (mesmo evento das
+    // outras páginas -> InitiateCheckout no Meta), pro funil existir no dashboard.
+    var simStarted = false;
+    function markSimStart() {
+      if (simStarted) return;
+      simStarted = true;
+      try { if (window.inspiraTrack) window.inspiraTrack.event("simulation_start", { source: PAGE_SOURCE }); } catch (e) {}
+    }
+    form.addEventListener("input", markSimStart, true);
+    form.addEventListener("change", markSimStart, true);
+
+    function getUtmParams() {
+      var params = new URLSearchParams(window.location.search);
+      return {
+        utm_source: params.get("utm_source") || null,
+        utm_medium: params.get("utm_medium") || null,
+        utm_campaign: params.get("utm_campaign") || null,
+        utm_content: params.get("utm_content") || null,
+        utm_term: params.get("utm_term") || null,
+        meta_campaign_id: params.get("meta_campaign_id") || null,
+        meta_adset_id: params.get("meta_adset_id") || null,
+        meta_ad_id: params.get("meta_ad_id") || null
+      };
+    }
+
+    function validate(data) {
+      var ok = true;
+      if (!data.nome) { setError("nome", "Informe seu nome completo."); ok = false; }
+      if (!data.email) { setError("email", "Informe seu e-mail."); ok = false; }
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { setError("email", "E-mail inválido."); ok = false; }
+      var cel = data.celular.replace(/\D/g, "");
+      if (!cel) { setError("celular", "Informe seu celular."); ok = false; }
+      else if (!/^[0-9]{10,11}$/.test(cel)) { setError("celular", "Número inválido. Use DDD + número."); ok = false; }
+      if (!data.estado) { setError("estado", "Selecione seu estado."); ok = false; }
+      if (!data.cidade) { setError("cidade", "Informe sua cidade."); ok = false; }
+      var credito = parseMoney(data.valor_credito);
+      if (!credito) { setError("valor_credito", "Informe o valor do crédito."); ok = false; }
+      return ok;
+    }
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (submitBtn.disabled) return;
+      formMessage.textContent = "";
+      formMessage.classList.remove("is-visible", "is-error");
+      var data = {
+        nome: document.getElementById("f-nome").value.trim(),
+        email: document.getElementById("f-email").value.trim(),
+        celular: celular.value.trim(),
+        estado: ufSelect.value,
+        cidade: document.getElementById("f-cidade").value.trim(),
+        valor_credito: document.getElementById("f-valor").value.trim()
+      };
+      if (!validate(data)) {
+        var firstInvalid = form.querySelector(".is-invalid");
+        if (firstInvalid) firstInvalid.focus();
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Enviando...";
+      var credito = parseMoney(data.valor_credito);
+      var baixoValor = credito < MIN_CREDITO;
+      var leadKind = baixoValor ? "baixo_valor" : "institucional";
+
+      try {
+          // Mantém a régua própria da Home: abaixo de R$ 100 mil fica salvo no RD,
+          // mas não conta conversão no Meta. Aqui não se coleta valor de imóvel.
+          enviarLead(Object.assign({
+            name: data.nome,
+            email: data.email,
+            phone: "+55" + data.celular.replace(/\D/g, ""),
+            city: data.cidade,
+            state: data.estado,
+            credit_value: credito,
+            source: PAGE_SOURCE,
+            lead_kind: leadKind,
+            meta_events: ["Lead"]
+          }, getUtmParams()));
+      } catch (err) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Enviar";
+        formMessage.textContent = "Não foi possível enviar agora. Tente novamente em instantes.";
+        formMessage.classList.add("is-visible", "is-error");
+        return;
+      }
+      window.location.href = baixoValor
+        ? "https://nova.inspiracred.com.br/obrigado/home-nao-elegivel/"
+        : "https://nova.inspiracred.com.br/obrigado/home/";
+    });
+  }
+
+  /* ============================================================
+     REVEAL + STAGGER — animações de entrada ao rolar
+     ============================================================ */
+  document.querySelectorAll("[data-stagger]").forEach(function (group) {
+    Array.prototype.forEach.call(group.children, function (child, i) { child.style.setProperty("--i", i); });
+  });
+  var revealEls = document.querySelectorAll("[data-reveal], [data-stagger]");
+  if (reduceMotion || !("IntersectionObserver" in window)) {
+    revealEls.forEach(function (el) { el.classList.add("is-visible"); });
+  } else {
+    var revealObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) { entry.target.classList.add("is-visible"); revealObserver.unobserve(entry.target); }
+      });
+    }, { threshold: 0.12, rootMargin: "0px 0px -6% 0px" });
+    revealEls.forEach(function (el) { revealObserver.observe(el); });
+  }
+
+  /* ============================================================
+     FAQ — acordeão (um aberto por vez)
+     ============================================================ */
+  document.querySelectorAll(".faq-q").forEach(function (q) {
+    q.addEventListener("click", function () {
+      var item = q.closest(".faq-item");
+      var isOpen = item.classList.contains("open");
+      document.querySelectorAll(".faq-item.open").forEach(function (openItem) {
+        openItem.classList.remove("open");
+        openItem.querySelector(".faq-a").style.maxHeight = null;
+        openItem.querySelector(".faq-q").setAttribute("aria-expanded", "false");
+      });
+      if (!isOpen) {
+        var answer = item.querySelector(".faq-a");
+        item.classList.add("open");
+        answer.style.maxHeight = answer.scrollHeight + "px";
+        q.setAttribute("aria-expanded", "true");
+      }
+    });
+  });
+
+  window.addEventListener("load", function () { document.body.classList.remove("loading"); });
+})();
