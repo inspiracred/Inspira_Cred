@@ -30,9 +30,10 @@ test("assets, tracking e sucesso ficam explícitos sem alterar a raiz de nova", 
   assert.doesNotMatch(script, /fetch\("\/analytics\/track"/);
 });
 
-test("rewrite Hostinger atua somente na raiz dos hosts oficiais", () => {
-  assert.match(rewrite, /\^\(\?:www\\\.\)\?inspiracred\\\.com\\\.br\$/);
+test("rewrite Hostinger atua somente na raiz do apex e preserva www", () => {
+  assert.match(rewrite, /\^inspiracred\\\.com\\\.br\$/);
   assert.match(rewrite, /RewriteRule \^\$ \/_institucional\/index\.html \[L\]/);
+  assert.doesNotMatch(rewrite, /www\\\.|\(\?:www/);
   assert.doesNotMatch(rewrite, /Redirect|RewriteRule \^\.\*/);
   assert.doesNotMatch(rewrite, /MX|TXT|nameserver/i);
 });

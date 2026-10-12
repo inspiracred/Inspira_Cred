@@ -12,6 +12,9 @@ Pacote isolado para servir a home institucional somente na raiz de
    `# BEGIN WordPress`.
 5. Limpar somente o cache web/CDN do domínio e conferir a raiz em HTTPS.
 
+O snippet não captura `www`; o redirect atual de `www.inspiracred.com.br` para
+o apex deve permanecer sob a configuração já existente da Hostinger.
+
 Os assets visuais, o tracking e as páginas de sucesso usam URLs absolutas de
 `nova.inspiracred.com.br`; por isso a raiz do projeto Pages continua histórica e
 `/home/` continua sendo a fonte aprovada da home.
