@@ -6,7 +6,8 @@ const vm = require("node:vm");
 const root = path.resolve(__dirname, "../inspiracred");
 const read = file => fs.readFileSync(path.join(root, file), "utf8");
 const masks = [
-  ["raiz", "index.html", "phone"],
+  // A raiz e /home usam o mesmo script da home institucional.
+  ["raiz", "home/script.js", "celular"],
   ["home", "home/script.js", "celular"],
   ["homeequity", "homeequity/script.js", "celular"],
 ].map(([name, file, field]) => {
