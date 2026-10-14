@@ -52,6 +52,13 @@ export async function onRequest(context) {
     return handleRdWebhook(request, env, context);
   }
 
+  // Webhook dedicado a negociações recém-criadas. Nasce em observação passiva:
+  // só anota no CRM quando todos os IDs reais estiverem configurados e o opt-in
+  // RD_DEAL_NOTES_ENABLED estiver explicitamente ligado.
+  if (sub === "/rd-deal-created" && request.method === "POST") {
+    return handleRdDealCreated(request, env);
+  }
+
   // Login próprio (tela nossa) — o POST tem que rodar ANTES do guard de autenticação.
   if (sub === "/login" && request.method === "POST") return handleLogin(request, env);
   if (sub === "/logout") return handleLogout();
@@ -1870,6 +1877,161 @@ async function handleRdWebhook(request, env, context) {
     meta_crm: metaCrm,
     parsed: { dealId, dealName, stage, value, won, matched: null, metaLeadId: !!metaLeadId },
   });
+}
+
+/* ---- WEBHOOK RD: negociação criada -> observação/anotação exata ----
+ * Isolado do webhook legado de faturamento. Não guarda payload bruto nem PII.
+ * A implantação inicial é passiva; a escrita no CRM exige opt-in e IDs reais.
+ */
+const RD_DEAL_RULE_VERSION = "site-institucional-v1";
+
+function normalizeRdRuleValue(value) {
+  return String(value == null ? "" : value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function scalarRdFieldValue(value) {
+  if (Array.isArray(value)) return value.length === 1 ? String(value[0] ?? "") : "";
+  if (value == null || typeof value === "object") return "";
+  return String(value);
+}
+
+function rdCustomFieldEntries(document) {
+  const raw = document && (document.deal_custom_fields || document.custom_fields);
+  if (Array.isArray(raw)) {
+    return raw.map((item) => {
+      const field = item && (item.custom_field || item.field) || {};
+      return {
+        id: String(item && (item.custom_field_id || item.field_id) || field.id || field._id || ""),
+        label: String(field.label || field.name || item && (item.label || item.name) || ""),
+        value: scalarRdFieldValue(item && (item.value ?? item.valor ?? item.content)),
+      };
+    });
+  }
+  if (raw && typeof raw === "object") {
+    return Object.entries(raw).map(([key, value]) => ({ id: String(key), label: "", value: scalarRdFieldValue(value) }));
+  }
+  return [];
+}
+
+function rdOriginField(document, configuredId) {
+  const entries = rdCustomFieldEntries(document);
+  if (configuredId) {
+    const byId = entries.filter((entry) => entry.id === String(configuredId));
+    return byId.length === 1 ? byId[0] : null;
+  }
+  const byLabel = entries.filter((entry) => normalizeRdRuleValue(entry.label) === "formulario de origem");
+  return byLabel.length === 1 ? byLabel[0] : null;
+}
+
+function rdDealIdentity(document) {
+  const pipeline = document && (document.deal_pipeline || document.pipeline) || {};
+  const stage = document && (document.deal_stage || document.stage) || {};
+  return {
+    dealId: String(document && (document.id || document._id) || ""),
+    pipelineId: String(document && document.deal_pipeline_id || pipeline.id || pipeline._id || stage.deal_pipeline_id || ""),
+    stageId: String(document && document.deal_stage_id || stage.id || stage._id || ""),
+  };
+}
+
+function rdDealActivationConfig(env) {
+  const values = {
+    originFieldId: String(env.RD_ORIGIN_FIELD_ID || ""),
+    originExpectedValue: String(env.RD_ORIGIN_EXPECTED_VALUE || ""),
+    pipelineId: String(env.RD_DEAL_PIPELINE_ID || ""),
+    stageId: String(env.RD_DEAL_STAGE_ID || ""),
+    userId: String(env.RD_CRM_USER_ID || ""),
+  };
+  return { ...values, complete: Object.values(values).every(Boolean) };
+}
+
+async function createRdDealNote(dealId, userId, text, env) {
+  if (!env.RD_CRM_API_TOKEN) return { ok: false, status: "missing_crm_token" };
+  try {
+    const response = await fetch(`https://crm.rdstation.com/api/v1/activities?token=${encodeURIComponent(env.RD_CRM_API_TOKEN)}`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ activity: { user_id: userId, deal_id: dealId, text } }),
+    });
+    return response.ok
+      ? { ok: true, status: "annotated" }
+      : { ok: false, status: `crm_http_${response.status}` };
+  } catch (e) {
+    return { ok: false, status: "crm_network_error" };
+  }
+}
+
+async function handleRdDealCreated(request, env) {
+  const suppliedKey = request.headers.get("X-Inspira-RD-Webhook") || "";
+  if (!env.RD_DEAL_WEBHOOK_KEY) return json({ ok: false, error: "webhook não configurado" }, 503);
+  if (!safeEqual(suppliedKey, env.RD_DEAL_WEBHOOK_KEY)) return json({ ok: false, error: "não autorizado" }, 401);
+
+  let body;
+  try { body = await request.json(); } catch (e) {
+    return json({ ok: false, error: "JSON inválido" }, 400);
+  }
+  if (!body || body.event_name !== "crm_deal_created") {
+    return json({ ok: true, ignored: true, reason: "event_not_supported" });
+  }
+
+  const transactionUuid = String(body.transaction_uuid || "");
+  const document = body.document && typeof body.document === "object" ? body.document : {};
+  const identity = rdDealIdentity(document);
+  if (!transactionUuid || !identity.dealId) {
+    return json({ ok: false, error: "evento sem transaction_uuid ou document.id" }, 422);
+  }
+
+  const config = rdDealActivationConfig(env);
+  const origin = rdOriginField(document, config.originFieldId);
+  const expectedOrigin = normalizeRdRuleValue(config.originExpectedValue || "Site Institucional");
+  const originMatches = !!origin && normalizeRdRuleValue(origin.value) === expectedOrigin;
+  const passiveCandidate = originMatches && !!origin.id;
+  const active = env.RD_DEAL_NOTES_ENABLED === "true";
+  const exactMatch = active && config.complete && originMatches && origin.id === config.originFieldId
+    && identity.pipelineId === config.pipelineId && identity.stageId === config.stageId;
+  let actionStatus = passiveCandidate ? "observed_candidate" : "observed_filtered";
+  let errorCode = origin ? null : "origin_field_not_found_or_ambiguous";
+
+  try {
+    const inserted = await env.DB.prepare(
+      `INSERT OR IGNORE INTO rd_deal_events
+       (transaction_uuid, deal_id, event_name, origin_field_id, origin_field_label, origin_value,
+        pipeline_id, stage_id, eligible, action_status, rule_version, error_code)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(
+      transactionUuid, identity.dealId, body.event_name,
+      origin && origin.id || null, origin && origin.label || null, origin && origin.value || null,
+      identity.pipelineId || null, identity.stageId || null, exactMatch ? 1 : 0,
+      actionStatus, RD_DEAL_RULE_VERSION, errorCode
+    ).run();
+    if (!inserted || !inserted.meta || inserted.meta.changes === 0) {
+      return json({ ok: true, dedup: true, deal_id: identity.dealId });
+    }
+  } catch (e) {
+    return json({ ok: false, stored: false, error: "rd_deal_events indisponível" }, 503);
+  }
+
+  if (!active) {
+    return json({ ok: true, stored: true, passive: true, candidate: passiveCandidate, deal_id: identity.dealId }, 202);
+  }
+  if (!config.complete || !exactMatch) {
+    actionStatus = !config.complete ? "skipped_config_incomplete" : "skipped_rule_mismatch";
+    errorCode = !config.complete ? "activation_config_incomplete" : "exact_rule_mismatch";
+    await env.DB.prepare(`UPDATE rd_deal_events SET action_status=?, error_code=? WHERE transaction_uuid=?`)
+      .bind(actionStatus, errorCode, transactionUuid).run();
+    return json({ ok: true, stored: true, passive: false, annotated: false, reason: errorCode, deal_id: identity.dealId });
+  }
+
+  const note = "Origem confirmada automaticamente: Site Institucional. O valor histórico do imóvel foi preservado; esta anotação apenas registra a origem da negociação.";
+  const result = await createRdDealNote(identity.dealId, config.userId, note, env);
+  await env.DB.prepare(
+    `UPDATE rd_deal_events SET action_status=?, error_code=?, annotated_at=CASE WHEN ?='annotated' THEN CURRENT_TIMESTAMP ELSE annotated_at END
+     WHERE transaction_uuid=?`
+  ).bind(result.status, result.ok ? null : result.status, result.status, transactionUuid).run();
+  return json({ ok: result.ok, stored: true, passive: false, annotated: result.ok, deal_id: identity.dealId }, result.ok ? 200 : 502);
 }
 
 /* Leitura do faturamento pro dashboard (atrás do Basic Auth como o resto da API). */
