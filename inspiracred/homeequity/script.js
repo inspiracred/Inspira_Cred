@@ -53,6 +53,9 @@
       var digits = value.replace(/\D/g, "");
       return digits ? Number(digits) / 100 : 0;
     }
+    function isRuralProperty(value) {
+      return String(value || "").trim().toLowerCase() === "rural";
+    }
     document.querySelectorAll(".money").forEach(function (input) {
       input.addEventListener("input", function () {
         input.value = formatMoney(input.value);
@@ -247,6 +250,7 @@
 
       if (!validate(data)) return;
 
+      var ruralProperty = data.tipo_bem !== "Automóvel" && isRuralProperty(data.tipo_imovel);
       submitting = true;
       var submitLabel = submitBtn.textContent;
       submitBtn.disabled = true;
@@ -269,23 +273,35 @@
           var isLead = isAuto || (!isLowValue && creditValue >= MIN_RD_EMP);
           var isMql = !isAuto && isLead && creditValue >= MQL_EMP && propertyValue >= MQL_IMOVEL;
           var leadKind = isLead ? (isAuto ? "auto" : (isMql ? "home_equity_mql" : "home_equity")) : "baixo_valor";
-          accepted = await enviarLead(Object.assign({
-            name: data.nome,
-            phone: "+55" + data.celular.replace(/\D/g, ""),
-            email: data.email || null,
-            property_type: isAuto ? null : data.tipo_imovel.toLowerCase(),
-            property_value: propertyValue,
-            credit_value: creditValue,
-            situacao_imovel: data.situacao_imovel || null, // "Quitado"/"Financiado" -> normalizado p/ Sim/Não no RD cf_imovel_quitado (Negociação "Imóvel Quitado?")
-            saldo_devedor: data.situacao_imovel === "Financiado" ? saldoValue : null,
-            source: "home_equity_lp",
-            lead_kind: leadKind,
-            meta_events: ["Lead"],
-            possui_imovel: isAuto ? "Não" : "Sim",
-            possui_automovel: isAuto ? "Sim" : "Não",
-            automovel_quitado: isAuto ? data.situacao_imovel || null : null,
-            valor_automovel: isAuto ? propertyValue : null
-          }, getUtmParams()));
+          if (ruralProperty) {
+            accepted = true;
+            try {
+              if (window.inspiraTrack && typeof window.inspiraTrack.event === "function") {
+                window.inspiraTrack.event("simulation_discard", {
+                  source: "home_equity_lp",
+                  reason: "rural_property"
+                });
+              }
+            } catch (e) {}
+          } else {
+            accepted = await enviarLead(Object.assign({
+              name: data.nome,
+              phone: "+55" + data.celular.replace(/\D/g, ""),
+              email: data.email || null,
+              property_type: isAuto ? null : data.tipo_imovel.toLowerCase(),
+              property_value: propertyValue,
+              credit_value: creditValue,
+              situacao_imovel: data.situacao_imovel || null, // "Quitado"/"Financiado" -> normalizado p/ Sim/Não no RD cf_imovel_quitado (Negociação "Imóvel Quitado?")
+              saldo_devedor: data.situacao_imovel === "Financiado" ? saldoValue : null,
+              source: "home_equity_lp",
+              lead_kind: leadKind,
+              meta_events: ["Lead"],
+              possui_imovel: isAuto ? "Não" : "Sim",
+              possui_automovel: isAuto ? "Sim" : "Não",
+              automovel_quitado: isAuto ? data.situacao_imovel || null : null,
+              valor_automovel: isAuto ? propertyValue : null
+            }, getUtmParams()));
+          }
         }
       } catch (e) {}
 
@@ -302,6 +318,12 @@
         return;
       }
       submitted = true;
+      if (ruralProperty) {
+        setTimeout(function () {
+          window.location.href = "/obrigado/nao-elegivel/";
+        }, 300);
+        return;
+      }
       try {
         if (window.inspiraTrack && typeof window.inspiraTrack.event === "function") {
           window.inspiraTrack.event("simulation_complete", { source: "home_equity_lp" });

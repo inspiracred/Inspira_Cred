@@ -266,6 +266,12 @@ async function handleTrack(request, env, cors, context) {
           event.success === false ? 0 : 1, event.completion_time_ms || null, event.page_name || "other").run();
         break;
       case "lead": {
+        // Imóvel rural é descarte comercial: não grava em `leads`, não envia ao RD e
+        // não dispara Lead na Meta. A proteção server-side cobre clientes antigos ou
+        // manipulados que ainda tentem enviar o payload como lead.
+        if (isRuralPropertyType(event.property_type)) {
+          return json({ success: true, disqualified: "rural_property" }, 200, cors);
+        }
         const leadCookies = parseCookies(request.headers.get("Cookie") || "");
         const leadUA = request.headers.get("User-Agent") || "";
 
@@ -471,6 +477,15 @@ const LEAD_KIND_LABEL = {
   descarte: "Banco de dados — não qualificado",
   institucional: "Lead site institucional",
 };
+
+function isRuralPropertyType(value) {
+  const normalized = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+  return normalized === "rural" || normalized === "imovel rural";
+}
 
 function normalizeLeadKind(event) {
   const current = event.lead_kind || "";

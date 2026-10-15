@@ -63,6 +63,22 @@ test("browser queues one non-selected Lead for CAPI without calling Meta Pixel",
   assert.equal(lead.credit_value, 900000, "financial qualification remains internal");
 });
 
+test("browser converts rural payload into a non-conversion discard event", async () => {
+  const h = trackerHarness();
+  h.window.inspiraTrack.lead({
+    source: "home_equity_lp",
+    property_type: "Rural",
+    name: "Não deve sair",
+    phone: "+5521999999999",
+  });
+  const payloads = await Promise.all(h.beacons.map(beaconPayload));
+  assert.equal(payloads.some((payload) => payload.type === "lead"), false);
+  const discard = payloads.find((payload) => payload.event_name === "simulation_discard");
+  assert.ok(discard);
+  assert.equal(discard.properties.reason, "rural_property");
+  assert.equal(JSON.stringify(discard).includes("Não deve sair"), false);
+});
+
 test("funnel events keep internal properties and queue only a CAPI marker", async () => {
   const h = trackerHarness();
   h.window.inspiraTrack.event("simulation_complete", { source: "home_equity_lp", credit_value: 900000 });
@@ -108,7 +124,7 @@ function serverHarness() {
     },
   });
   const executable = serverSource.replace("export async function onRequest", "async function onRequest");
-  vm.runInContext(`${executable};globalThis.__policy={normalizeLeadMetaEvents,normalizeFunnelMetaEvent,sanitizeMetaSourceUrl,sendLeadToMeta,sendCustomEventToMeta};`, context);
+  vm.runInContext(`${executable};globalThis.__policy={isRuralPropertyType,normalizeLeadMetaEvents,normalizeFunnelMetaEvent,sanitizeMetaSourceUrl,sendLeadToMeta,sendCustomEventToMeta};`, context);
   const env = {
     META_PIXEL_ID: "3021870508000260", META_ACCESS_TOKEN: "test-secret",
     DB: { prepare(sql) { let params = []; return { bind(...values) { params = values; return this; }, async run() { writes.push({ sql, params }); } }; } },
@@ -139,6 +155,14 @@ test("server rewrites hostile or legacy lead markers to exactly Lead", async () 
   assert.deepEqual(sent[0].custom_data, {});
   assert.equal(sent[0].event_source_url, "https://nova.inspiracred.com.br/");
   assert.doesNotMatch(JSON.stringify(sent), /900000|home_equity_mql|LeadQualificado|DocumentacaoIrregular/);
+});
+
+test("server recognizes rural property variants for the hard stop", () => {
+  const h = serverHarness();
+  assert.equal(h.api.isRuralPropertyType("Rural"), true);
+  assert.equal(h.api.isRuralPropertyType("imóvel rural"), true);
+  assert.equal(h.api.isRuralPropertyType("Residencial"), false);
+  assert.match(serverSource, /if \(isRuralPropertyType\(event\.property_type\)\)/);
 });
 
 test("server allows only the two truthful funnel mappings", async () => {

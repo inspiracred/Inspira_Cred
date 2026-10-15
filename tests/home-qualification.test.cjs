@@ -30,7 +30,8 @@ function submit(value, tracking = "ok", overrides = {}) {
   const fields = {
     nome: ["f-nome", "Teste Local"], email: ["f-email", "teste@example.com"],
     celular: ["f-celular", "(21) 99999-9999"], estado: ["f-estado", "RJ"],
-    cidade: ["f-cidade", "Niteroi"], valor_credito: ["f-valor", value],
+    tipo_imovel: ["f-tipo-imovel", "Residencial"], cidade: ["f-cidade", "Niteroi"],
+    valor_credito: ["f-valor", value],
   };
   const ids = {};
   const inputs = {};
@@ -38,7 +39,7 @@ function submit(value, tracking = "ok", overrides = {}) {
   for (const [name, [id, initial]] of Object.entries(fields)) {
     const el = element(overrides[name] ?? initial);
     el.name = name;
-    if (name === "estado") el.tagName = "SELECT";
+    if (name === "estado" || name === "tipo_imovel") el.tagName = "SELECT";
     ids[id] = inputs[name] = el;
     errors[name] = element();
   }
@@ -124,6 +125,12 @@ for (const state of ["missing", "throw"]) {
     assert.ok(r.message.classList.contains("is-visible"));
   });
 }
+test("home descarta imóvel rural sem gerar lead", () => {
+  const r = submit("R$ 500.000,00", "ok", { tipo_imovel: "Rural" });
+  assert.equal(r.leads.length, 0);
+  assert.deepEqual(r.events.map(([name]) => name), ["simulation_discard"]);
+  assert.equal(r.window.location.href, "/obrigado/home-nao-elegivel/");
+});
 test("home removes solution field and includes the two requested services", () => {
   const html = fs.readFileSync(path.join(root, "home/index.html"), "utf8");
   assert.doesNotMatch(html, /id="f-solucao"|name="solucao"|Tipo de solução desejada/);
@@ -131,6 +138,8 @@ test("home removes solution field and includes the two requested services", () =
   assert.match(html, /id="sol-construcao"/);
   assert.match(html, /id="home-wa-condominios"/);
   assert.match(html, /id="home-wa-construcao"/);
+  assert.match(html, /name="tipo_imovel"/);
+  assert.match(html, /<option value="Rural">Rural<\/option>/);
 });
 test("home reuses the documented RD identifier that creates a negotiation", () => {
   assert.match(server, /home_institucional:\s*\{\s*identificador:\s*"landing-nova-raiz"/);

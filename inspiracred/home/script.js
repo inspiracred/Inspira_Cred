@@ -111,6 +111,9 @@
       var digits = (value || "").replace(/\D/g, "");
       return digits ? Number(digits) / 100 : 0;
     }
+    function isRuralProperty(value) {
+      return String(value || "").trim().toLowerCase() === "rural";
+    }
     form.querySelectorAll(".money").forEach(function (input) {
       input.addEventListener("input", function () {
         input.value = formatMoney(input.value);
@@ -200,6 +203,7 @@
       var cel = data.celular.replace(/\D/g, "");
       if (!cel) { setError("celular", "Informe seu celular."); ok = false; }
       else if (!/^[0-9]{10,11}$/.test(cel)) { setError("celular", "Número inválido. Use DDD + número."); ok = false; }
+      if (!data.tipo_imovel) { setError("tipo_imovel", "Selecione o tipo de imóvel."); ok = false; }
       if (!data.estado) { setError("estado", "Selecione seu estado."); ok = false; }
       if (!data.cidade) { setError("cidade", "Informe sua cidade."); ok = false; }
       var credito = parseMoney(data.valor_credito);
@@ -216,6 +220,7 @@
         nome: document.getElementById("f-nome").value.trim(),
         email: document.getElementById("f-email").value.trim(),
         celular: celular.value.trim(),
+        tipo_imovel: document.getElementById("f-tipo-imovel").value,
         estado: ufSelect.value,
         cidade: document.getElementById("f-cidade").value.trim(),
         valor_credito: document.getElementById("f-valor").value.trim()
@@ -232,6 +237,19 @@
       var baixoValor = credito < MIN_CREDITO;
       var leadKind = baixoValor ? "baixo_valor" : "institucional";
 
+      if (isRuralProperty(data.tipo_imovel)) {
+        try {
+          if (window.inspiraTrack && typeof window.inspiraTrack.event === "function") {
+            window.inspiraTrack.event("simulation_discard", {
+              source: PAGE_SOURCE,
+              reason: "rural_property"
+            });
+          }
+        } catch (err) {}
+        window.location.href = "/obrigado/home-nao-elegivel/";
+        return;
+      }
+
       try {
           // Mantém a régua própria da Home: abaixo de R$ 100 mil fica salvo no RD,
           // mas não conta conversão no Meta. Aqui não se coleta valor de imóvel.
@@ -241,6 +259,7 @@
             phone: "+55" + data.celular.replace(/\D/g, ""),
             city: data.cidade,
             state: data.estado,
+            property_type: data.tipo_imovel.toLowerCase(),
             credit_value: credito,
             source: PAGE_SOURCE,
             lead_kind: leadKind,

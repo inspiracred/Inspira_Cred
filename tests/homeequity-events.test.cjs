@@ -74,6 +74,17 @@ test("low-value submission remains internally classified and still uses Lead act
   assert.deepEqual(Array.from(r.leads[0].meta_events), ["Lead"]);
 });
 
+test("rural property is discarded without lead or completion conversion", async () => {
+  const r = setup("tracker", { "f-tipo": "Rural" });
+  await r.submit();
+  assert.equal(r.leads.length, 0);
+  assert.deepEqual(r.events.map((event) => event.name), ["simulation_discard"]);
+  assert.equal(r.events[0].props.reason, "rural_property");
+  assert.equal(r.timers.length, 1);
+  r.timers[0]();
+  assert.equal(r.window.location.href, "/obrigado/nao-elegivel/");
+});
+
 test("failed fallback handoff remains retryable and never completes", async () => {
   const r = setup("reject");
   await r.submit();

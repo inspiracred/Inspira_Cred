@@ -258,6 +258,16 @@
     },
     lead: function (data) {
       data = data || {};
+      if (String(data.property_type || "").trim().toLowerCase() === "rural") {
+        return send(withUtm({
+          type: "event",
+          event_name: "simulation_discard",
+          properties: {
+            source: data.source || window.IC_PAGE || "other",
+            reason: "rural_property"
+          }
+        }));
+      }
       // Conversão honesta e não selecionada: todo envio válido gera exatamente Lead.
       // MQL, faixas, dívida e documentação permanecem internos, nunca são codificados
       // em nomes alternativos nem em parâmetros enviados à Meta.

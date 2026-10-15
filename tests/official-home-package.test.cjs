@@ -13,6 +13,8 @@ test("pacote oficial publica a home aprovada com canonical do apex", () => {
   assert.match(html, /<link rel="canonical" href="https:\/\/inspiracred\.com\.br\/" \/>/);
   assert.match(html, /<meta name="robots" content="index,follow" \/>/);
   assert.match(html, /id="home-lead-form"/);
+  assert.match(html, /name="tipo_imovel"/);
+  assert.match(html, /<option value="Rural">Rural<\/option>/);
   assert.match(html, /window\.IC_PAGE = "home_institucional"/);
   assert.doesNotMatch(html, /content="noindex"/);
 });
@@ -34,6 +36,8 @@ test("assets, tracking e sucesso ficam explícitos sem alterar a raiz de nova", 
   assert.match(script, /https:\/\/nova\.inspiracred\.com\.br\/obrigado\/home-nao-elegivel\//);
   assert.doesNotMatch(script, /sendBeacon\("\/analytics\/track"/);
   assert.doesNotMatch(script, /fetch\("\/analytics\/track"/);
+  assert.match(script, /simulation_discard/);
+  assert.match(script, /rural_property/);
 });
 
 test("rewrite Hostinger atua somente na raiz do apex e preserva www", () => {
