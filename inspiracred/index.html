@@ -423,7 +423,7 @@
         "use strict";
 
         /* Envio do lead que NÃO depende do track.js. Com ele carregado, segue o caminho
-           normal (Pixel + servidor). Sem ele (rede instável, erro de script), manda direto
+           normal (CAPI server-side). Sem ele (rede instável, erro de script), manda direto
            pro /analytics/track: o servidor grava no D1 e dispara RD + CAPI do mesmo jeito.
            Mesma função nas 4 páginas com formulário — nenhum lead depende do script de rastreio. */
         function enviarLead(payload) {

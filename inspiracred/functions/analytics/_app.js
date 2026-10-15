@@ -709,13 +709,14 @@ async function sendLeadToRD(event, env, leadId) {
   }
 }
 
-/* ---- META CAPI (server-side; dedup por event_id com o Pixel do navegador) ----
+/* ---- META CAPI (server-side, sem Pixel no navegador) ----
  * DORME até os secrets META_PIXEL_ID + META_ACCESS_TOKEN existirem no Pages —
- * sem eles, retorna cedo e nada é enviado (seguro pra deixar no ar já).
- * PII (email/telefone/nome) vai SHA-256 (Advanced Matching do Meta). fbp/fbc
- * vêm do cookie do Pixel (mesma origem, lidos no case "lead"). Usa o MESMO
- * event_id que o Pixel do navegador mandou → Meta deduplica. Grava o resultado
- * em leads.meta_status (visível na ficha do lead / CSV do dashboard).
+ * sem eles, retorna cedo e nada é enviado. PII (email/telefone/nome) vai em
+ * SHA-256 (Advanced Matching). fbp/fbc são resolvidos pela cadeia body -> cookie
+ * first-party de edge -> sessão D1. Cada conversão recebe event_id próprio para
+ * idempotência no destino, embora não exista uma cópia client-side para deduplicar.
+ * O modo CAPI-only é deliberado para o dataset financeiro da InspiraCred.
+ * O resultado agregado fica em leads.meta_status e meta_capi_batches.
  * Opcional: META_TEST_EVENT_CODE p/ validar na aba "Testar eventos" do Meta.
  */
 async function sha256Hex(value) {
