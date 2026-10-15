@@ -59,6 +59,12 @@ export async function onRequest(context) {
     return handleRdDealCreated(request, env);
   }
 
+  // Bootstrap one-shot: usa o token CRM já protegido no Pages para registrar o
+  // webhook v1. Remover este endpoint depois do cadastro confirmado.
+  if (sub === "/rd-deal-created-setup" && request.method === "POST") {
+    return handleRdDealWebhookSetup(request, env);
+  }
+
   // Login próprio (tela nossa) — o POST tem que rodar ANTES do guard de autenticação.
   if (sub === "/login" && request.method === "POST") return handleLogin(request, env);
   if (sub === "/logout") return handleLogout();
@@ -1964,8 +1970,43 @@ async function createRdDealNote(dealId, userId, text, env) {
   }
 }
 
+function rdDealWebhookKey(request) {
+  const header = request.headers.get("X-Inspira-RD-Webhook") || "";
+  const query = request.url ? new URL(request.url).searchParams.get("key") || "" : "";
+  return header || query;
+}
+
+async function handleRdDealWebhookSetup(request, env) {
+  const suppliedKey = rdDealWebhookKey(request);
+  if (!env.RD_DEAL_WEBHOOK_KEY) return json({ ok: false, error: "webhook não configurado" }, 503);
+  if (!safeEqual(suppliedKey, env.RD_DEAL_WEBHOOK_KEY)) return json({ ok: false, error: "não autorizado" }, 401);
+  if (!env.RD_CRM_API_TOKEN) return json({ ok: false, error: "token CRM não configurado" }, 503);
+
+  const publicUrl = "https://nova.inspiracred.com.br/analytics/rd-deal-created?key=" + encodeURIComponent(env.RD_DEAL_WEBHOOK_KEY);
+  const api = "https://crm.rdstation.com/api/v1/webhooks?token=" + encodeURIComponent(env.RD_CRM_API_TOKEN);
+  try {
+    const listed = await fetch(api, { headers: { Accept: "application/json" } });
+    if (listed.ok) {
+      const payload = await listed.json();
+      const hooks = Array.isArray(payload) ? payload : (payload.webhooks || payload.data || []);
+      if (Array.isArray(hooks) && hooks.some((hook) => hook && hook.url === publicUrl && hook.event_type === "crm_deal_created")) {
+        return json({ ok: true, registered: true, existing: true, event_type: "crm_deal_created" });
+      }
+    }
+    const created = await fetch(api, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ event_type: "crm_deal_created", http_method: "POST", url: publicUrl }),
+    });
+    if (!created.ok) return json({ ok: false, registered: false, error: `crm_http_${created.status}` }, 502);
+    return json({ ok: true, registered: true, existing: false, event_type: "crm_deal_created" });
+  } catch (e) {
+    return json({ ok: false, registered: false, error: "crm_network_error" }, 502);
+  }
+}
+
 async function handleRdDealCreated(request, env) {
-  const suppliedKey = request.headers.get("X-Inspira-RD-Webhook") || "";
+  const suppliedKey = rdDealWebhookKey(request);
   if (!env.RD_DEAL_WEBHOOK_KEY) return json({ ok: false, error: "webhook não configurado" }, 503);
   if (!safeEqual(suppliedKey, env.RD_DEAL_WEBHOOK_KEY)) return json({ ok: false, error: "não autorizado" }, 401);
 
