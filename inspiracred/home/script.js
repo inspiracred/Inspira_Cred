@@ -19,8 +19,7 @@
     var body = { type: "lead", url: location.href, page_name: window.IC_PAGE || payload.source || "other" };
     for (var k in payload) if (Object.prototype.hasOwnProperty.call(payload, k)) body[k] = payload[k];
     try { body.session_id = localStorage.getItem("ic_sid"); } catch (e) {}
-    body.meta_events = [{ name: "Lead", event_id: "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12) }];
-    body.event_id = body.meta_events[0].event_id;
+    body.event_id = "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12);
     try {
       var q = new URLSearchParams(location.search);
       ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "meta_campaign_id", "meta_adset_id", "meta_ad_id"].forEach(function (u) { if (body[u] == null && q.get(u)) body[u] = q.get(u); });
@@ -235,9 +234,10 @@
       submitBtn.textContent = "Enviando...";
       var credito = parseMoney(data.valor_credito);
       var baixoValor = credito < MIN_CREDITO;
-      var leadKind = baixoValor ? "baixo_valor" : "institucional";
+      var ruralProperty = isRuralProperty(data.tipo_imovel);
+      var leadKind = ruralProperty ? "rural" : (baixoValor ? "baixo_valor" : "institucional");
 
-      if (isRuralProperty(data.tipo_imovel)) {
+      if (ruralProperty) {
         try {
           if (window.inspiraTrack && typeof window.inspiraTrack.event === "function") {
             window.inspiraTrack.event("simulation_discard", {
@@ -246,8 +246,6 @@
             });
           }
         } catch (err) {}
-        window.location.href = "/obrigado/home-nao-elegivel/";
-        return;
       }
 
       try {
@@ -262,8 +260,7 @@
             property_type: data.tipo_imovel.toLowerCase(),
             credit_value: credito,
             source: PAGE_SOURCE,
-            lead_kind: leadKind,
-            meta_events: ["Lead"]
+            lead_kind: leadKind
           }, getUtmParams()));
       } catch (err) {
         submitBtn.disabled = false;
@@ -272,7 +269,7 @@
         formMessage.classList.add("is-visible", "is-error");
         return;
       }
-      window.location.href = baixoValor ? "/obrigado/home-nao-elegivel/" : "/obrigado/home/";
+      window.location.href = ruralProperty || baixoValor ? "/obrigado/home-nao-elegivel/" : "/obrigado/home/";
     });
   }
 

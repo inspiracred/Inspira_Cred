@@ -17,7 +17,7 @@ test("all three requested forms expose Rural", () => {
   }
 });
 
-test("landing and Home Equity route rural to discard instead of lead", () => {
+test("landing and Home Equity preserve rural leads for D1/RD", () => {
   const landing = read("inspiracred/index.html");
   const homeEquity = read("inspiracred/homeequity/script.js");
   for (const source of [landing, homeEquity]) {
@@ -25,15 +25,16 @@ test("landing and Home Equity route rural to discard instead of lead", () => {
     assert.match(source, /rural_property/);
     assert.match(source, /obrigado\/nao-elegivel/);
   }
-  assert.match(landing, /if \(!ruralProperty\) \{[\s\S]*?enviarLead\(/);
-  assert.match(homeEquity, /if \(ruralProperty\) \{[\s\S]*?simulation_discard[\s\S]*?\} else \{[\s\S]*?enviarLead\(/);
+  assert.match(landing, /var kind = ruralProperty \? "rural"/);
+  assert.ok(landing.indexOf("enviarLead({") < landing.indexOf('window.inspiraTrack.event("simulation_discard"'));
+  assert.match(homeEquity, /lead_kind: ruralProperty \? "rural" : leadKind/);
+  assert.ok(homeEquity.indexOf("accepted = await enviarLead") < homeEquity.indexOf('window.inspiraTrack.event("simulation_discard"'));
 });
 
-test("official home package discards rural before its lead handoff", () => {
+test("official home package sends rural to D1/RD before redirecting as not eligible", () => {
   const script = read("hosting/official-home/script.js");
-  const ruralBlock = script.match(/if \(isRuralProperty\(data\.tipo_imovel\)\) \{[\s\S]*?return;\s*\}/);
-  assert.ok(ruralBlock);
-  assert.match(ruralBlock[0], /simulation_discard/);
-  assert.doesNotMatch(ruralBlock[0], /enviarLead\(/);
-  assert.ok(script.indexOf(ruralBlock[0]) < script.indexOf("enviarLead(Object.assign"));
+  assert.match(script, /var leadKind = ruralProperty \? "rural"/);
+  assert.match(script, /enviarLead\(Object\.assign\(/);
+  assert.match(script, /window\.location\.href = ruralProperty \|\| baixoValor/);
+  assert.ok(script.indexOf('window.inspiraTrack.event("simulation_discard"') < script.indexOf("enviarLead(Object.assign"));
 });

@@ -22,8 +22,7 @@
     var body = { type: "lead", url: location.href, page_name: window.IC_PAGE || payload.source || "other" };
     for (var k in payload) if (Object.prototype.hasOwnProperty.call(payload, k)) body[k] = payload[k];
     try { body.session_id = localStorage.getItem("ic_sid"); } catch (e) {}
-    body.meta_events = [{ name: "Lead", event_id: "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12) }];
-    body.event_id = body.meta_events[0].event_id;
+    body.event_id = "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12);
     try {
       var q = new URLSearchParams(location.search);
       ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "meta_campaign_id", "meta_adset_id", "meta_ad_id"].forEach(function (u) { if (body[u] == null && q.get(u)) body[u] = q.get(u); });
@@ -786,7 +785,6 @@
       valor_automovel: isAutoBranch ? assetValue : null,
       faixa_emprestimo: isAutoBranch ? labelFor("faixa_emprestimo_auto", answers.faixa_emprestimo_auto) : null,
       city: answers.cidade || null,
-      meta_events: ["Lead"],
     };
 
     // O LEAD sai primeiro e sem depender do track.js nem do evento de funil abaixo

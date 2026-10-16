@@ -39,11 +39,12 @@ CAPI porque o dataset financeiro opera com restrições de compartilhamento de d
 elimina a deduplicação Pixel/CAPI, mas mantém o princípio principal da referência: a
 conversão server-side não depende do JavaScript do Pixel nem de bloqueadores.
 
-### Eventos permitidos
+### Eventos de lead
 
-Somente eventos padrão e não seletivos chegam à Meta: `Lead`, `InitiateCheckout` e
-`SubmitApplication`. Qualificação financeira, valores, dívida, documentação e motivo de
-descarte ficam no D1/RD e nunca em `custom_data`.
+A classificação é recalculada no servidor e escolhe exatamente um resultado: nenhum
+evento para rural/desqualificado, `Lead` para a faixa mínima ou `MQL` para a faixa
+superior. Valores, faixas, dívida, documentação e motivo da classificação ficam no
+D1/RD e nunca em `custom_data`.
 
 ### GA4 e Google Ads
 
@@ -53,6 +54,6 @@ ativação posterior.
 
 ## Regra rural
 
-`property_type = rural` é descarte, não conversão. A proteção existe no formulário, no
-coletor compartilhado e no servidor. Portanto um cliente antigo ou payload manipulado não
-consegue transformar imóvel rural em `Lead`, nem enviá-lo ao RD Station.
+`property_type = rural` é preservado como classificação própria. O contato e seus dados
+seguem para o D1 e o RD Station, mas não geram evento na Meta. A proteção server-side
+impede que um cliente antigo ou payload manipulado transforme rural em `Lead` ou `MQL`.

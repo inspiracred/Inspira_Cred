@@ -433,8 +433,7 @@
           var body = { type: "lead", url: location.href, page_name: window.IC_PAGE || payload.source || "other" };
           for (var k in payload) if (Object.prototype.hasOwnProperty.call(payload, k)) body[k] = payload[k];
           try { body.session_id = localStorage.getItem("ic_sid"); } catch (e) {}
-          body.meta_events = [{ name: "Lead", event_id: "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12) }];
-          body.event_id = body.meta_events[0].event_id;
+          body.event_id = "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12);
           try {
             var q = new URLSearchParams(location.search);
             ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "meta_campaign_id", "meta_adset_id", "meta_ad_id"].forEach(function (u) { if (body[u] == null && q.get(u)) body[u] = q.get(u); });
@@ -624,7 +623,7 @@
             var installment = payment(principal);
             var financingRatio = data.propertyValue ? data.debtBalance / data.propertyValue : 0;
             var ruralProperty = isRuralProperty(data.propertyType);
-            var kind = ruralProperty ? "descarte" : classify(data.propertyValue, data.creditValue);
+            var kind = ruralProperty ? "rural" : classify(data.propertyValue, data.creditValue);
             var phoneDigits = digits(data.phone);
 
             document.getElementById("result-limit").textContent = displayMoney(availableLimit || maxCredit);
@@ -636,11 +635,10 @@
                 ? "O valor desejado passa do limite estimado. A equipe vai avaliar alternativas com você pelo WhatsApp."
                 : "Taxa de referência a partir de 1,09% a.m. em até 240 meses. Condições sujeitas à análise.";
 
-            // Leads elegíveis saem primeiro e sem depender do track.js nem do evento de funil abaixo.
-            // Imóvel rural é encerrado como descarte e nunca entra neste envio.
-            if (!ruralProperty) {
-              try {
-                enviarLead({
+            // Todo contato válido segue completo ao D1/RD. A função do servidor decide
+            // se a Meta recebe nenhum evento, Lead ou MQL.
+            try {
+              enviarLead({
                   source: "landing_page",
                   form_type: "home_equity_simulator",
                   lead_kind: kind,
@@ -656,11 +654,10 @@
                   saldo_devedor: data.financed ? data.debtBalance : null,
                   financing_ratio: Number(financingRatio.toFixed(2)),
                   estimated_limit: availableLimit || maxCredit,
-                  estimated_installment: Math.round(installment || 0),
-                  meta_events: ["Lead"]
+                  estimated_installment: Math.round(installment || 0)
                 });
-              } catch (e) {}
-            } else {
+            } catch (e) {}
+            if (ruralProperty) {
               try {
                 if (window.inspiraTrack) {
                   window.inspiraTrack.event("simulation_discard", {
@@ -689,7 +686,7 @@
               submitBtn.textContent = "Enviando…";
             }
             setTimeout(function () {
-              window.location.href = kind === "baixo_valor" || kind === "descarte"
+              window.location.href = kind === "baixo_valor" || kind === "descarte" || kind === "rural"
                 ? "/obrigado/nao-elegivel/"
                 : "/obrigado/simulacao/";
             }, 900);

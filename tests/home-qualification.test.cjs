@@ -6,7 +6,7 @@ const vm = require("node:vm");
 const root = path.resolve(__dirname, "../inspiracred");
 const client = fs.readFileSync(path.join(root, "home/script.js"), "utf8");
 const server = fs.readFileSync(path.join(root, "functions/analytics/_app.js"), "utf8");
-const normalizeCode = server.slice(server.indexOf("function normalizeLeadKind("), server.indexOf("async function markLeadStatus("));
+const normalizeCode = server.slice(server.indexOf("function isRuralPropertyType("), server.indexOf("async function markLeadStatus("));
 const backend = vm.createContext({});
 vm.runInContext(normalizeCode, backend);
 
@@ -93,7 +93,7 @@ for (const credit of [1, 99999, 100000, 500000]) {
     assert.equal(payload.credit_value, credit);
     assert.equal(payload.utm_source, "teste-local");
     assert.equal(Object.hasOwn(payload, "solucao"), false);
-    assert.equal(JSON.stringify(payload.meta_events), '["Lead"]', "Meta conversion must not depend on financial thresholds");
+    assert.equal(Object.hasOwn(payload, "meta_events"), false, "server owns Meta routing");
     assert.equal(result.window.location.href, credit < 100000 ? "/obrigado/home-nao-elegivel/" : "/obrigado/home/");
     assert.equal(backend.normalizeLeadKind(payload), kind);
     assert.equal(backend.shouldSendLeadToRD(kind), true);
@@ -125,9 +125,13 @@ for (const state of ["missing", "throw"]) {
     assert.ok(r.message.classList.contains("is-visible"));
   });
 }
-test("home descarta imóvel rural sem gerar lead", () => {
+test("home preserva imóvel rural no D1/RD sem selecionar evento Meta", () => {
   const r = submit("R$ 500.000,00", "ok", { tipo_imovel: "Rural" });
-  assert.equal(r.leads.length, 0);
+  assert.equal(r.leads.length, 1);
+  assert.equal(r.leads[0].lead_kind, "rural");
+  assert.equal(backend.normalizeLeadKind(r.leads[0]), "rural");
+  assert.equal(backend.shouldSendLeadToRD("rural"), true);
+  assert.deepEqual(Array.from(backend.normalizeLeadMetaEvents(r.leads[0])), []);
   assert.deepEqual(r.events.map(([name]) => name), ["simulation_discard"]);
   assert.equal(r.window.location.href, "/obrigado/home-nao-elegivel/");
 });
@@ -153,6 +157,9 @@ test("existing home equity thresholds remain unchanged", () => {
     [199999, 1000000, "baixo_valor"], [200000, 399999, "baixo_valor"],
     [200000, 400000, "home_equity"], [500000, 1000000, "home_equity_mql"],
   ]) assert.equal(backend.normalizeLeadKind({ source: "home_equity_lp", credit_value, property_value }), expected);
+  assert.equal(backend.metaEventNameForLeadKind("home_equity"), "Lead");
+  assert.equal(backend.metaEventNameForLeadKind("home_equity_mql"), "MQL");
+  assert.equal(backend.metaEventNameForLeadKind("baixo_valor"), "");
   assert.equal(backend.normalizeLeadKind({ source: "home_equity_form", lead_kind: "auto" }), "auto");
   assert.equal(backend.normalizeLeadKind({ source: "home_equity_form", lead_kind: "descarte" }), "descarte");
 });

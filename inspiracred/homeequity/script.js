@@ -16,8 +16,7 @@
     var body = { type: "lead", url: location.href, page_name: window.IC_PAGE || payload.source || "other" };
     for (var k in payload) if (Object.prototype.hasOwnProperty.call(payload, k)) body[k] = payload[k];
     try { body.session_id = localStorage.getItem("ic_sid"); } catch (e) {}
-    body.meta_events = [{ name: "Lead", event_id: "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12) }];
-    body.event_id = body.meta_events[0].event_id;
+    body.event_id = "e_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 12);
     try {
       var q = new URLSearchParams(location.search);
       ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "meta_campaign_id", "meta_adset_id", "meta_ad_id"].forEach(function (u) { if (body[u] == null && q.get(u)) body[u] = q.get(u); });
@@ -261,7 +260,7 @@
       var accepted = false;
       try {
         { // sem "if (window.inspiraTrack)": o enviarLead tem envio de reserva se o track.js faltar
-          // A regra comercial permanece interna no RD/D1 e não seleciona o Lead da Meta.
+          // A regra comercial fica completa no RD/D1 e o servidor seleciona o evento Meta.
           // Imóvel precisa ter no mínimo R$400 mil. A partir de R$500 mil de crédito +
           // imóvel de R$1M vira MQL interno. Automóvel quitado vai ao RD como auto.
           // Bem financiado não desqualifica, e não cria marcador na Meta.
@@ -273,8 +272,23 @@
           var isLead = isAuto || (!isLowValue && creditValue >= MIN_RD_EMP);
           var isMql = !isAuto && isLead && creditValue >= MQL_EMP && propertyValue >= MQL_IMOVEL;
           var leadKind = isLead ? (isAuto ? "auto" : (isMql ? "home_equity_mql" : "home_equity")) : "baixo_valor";
+          accepted = await enviarLead(Object.assign({
+            name: data.nome,
+            phone: "+55" + data.celular.replace(/\D/g, ""),
+            email: data.email || null,
+            property_type: isAuto ? null : data.tipo_imovel.toLowerCase(),
+            property_value: propertyValue,
+            credit_value: creditValue,
+            situacao_imovel: data.situacao_imovel || null,
+            saldo_devedor: data.situacao_imovel === "Financiado" ? saldoValue : null,
+            source: "home_equity_lp",
+            lead_kind: ruralProperty ? "rural" : leadKind,
+            possui_imovel: isAuto ? "Não" : "Sim",
+            possui_automovel: isAuto ? "Sim" : "Não",
+            automovel_quitado: isAuto ? data.situacao_imovel || null : null,
+            valor_automovel: isAuto ? propertyValue : null
+          }, getUtmParams()));
           if (ruralProperty) {
-            accepted = true;
             try {
               if (window.inspiraTrack && typeof window.inspiraTrack.event === "function") {
                 window.inspiraTrack.event("simulation_discard", {
@@ -283,24 +297,6 @@
                 });
               }
             } catch (e) {}
-          } else {
-            accepted = await enviarLead(Object.assign({
-              name: data.nome,
-              phone: "+55" + data.celular.replace(/\D/g, ""),
-              email: data.email || null,
-              property_type: isAuto ? null : data.tipo_imovel.toLowerCase(),
-              property_value: propertyValue,
-              credit_value: creditValue,
-              situacao_imovel: data.situacao_imovel || null, // "Quitado"/"Financiado" -> normalizado p/ Sim/Não no RD cf_imovel_quitado (Negociação "Imóvel Quitado?")
-              saldo_devedor: data.situacao_imovel === "Financiado" ? saldoValue : null,
-              source: "home_equity_lp",
-              lead_kind: leadKind,
-              meta_events: ["Lead"],
-              possui_imovel: isAuto ? "Não" : "Sim",
-              possui_automovel: isAuto ? "Sim" : "Não",
-              automovel_quitado: isAuto ? data.situacao_imovel || null : null,
-              valor_automovel: isAuto ? propertyValue : null
-            }, getUtmParams()));
           }
         }
       } catch (e) {}

@@ -57,27 +57,29 @@ function setup(transport = "tracker", overrides = {}) {
   return { ids, button, events, leads, requests, timers, window, submit: () => ids["lead-form"].emit("submit") };
 }
 
-test("valid submission keeps internal MQL but sends non-selected Lead", async () => {
+test("valid submission preserves MQL data and leaves Meta routing to the server", async () => {
   const r = setup();
   await Promise.all([r.submit(), r.submit()]);
   assert.equal(r.leads.length, 1);
   assert.equal(r.leads[0].lead_kind, "home_equity_mql");
-  assert.deepEqual(Array.from(r.leads[0].meta_events), ["Lead"]);
+  assert.equal(Object.hasOwn(r.leads[0], "meta_events"), false);
   assert.equal(JSON.stringify(r.events), '[{"name":"simulation_complete","props":{"source":"home_equity_lp"}}]');
   assert.equal(r.timers.length, 1);
 });
 
-test("low-value submission remains internally classified and still uses Lead action", async () => {
+test("low-value submission remains classified without a client-selected event", async () => {
   const r = setup("tracker", { "f-valor-emp": "R$ 199.999,00" });
   await r.submit();
   assert.equal(r.leads[0].lead_kind, "baixo_valor");
-  assert.deepEqual(Array.from(r.leads[0].meta_events), ["Lead"]);
+  assert.equal(Object.hasOwn(r.leads[0], "meta_events"), false);
 });
 
-test("rural property is discarded without lead or completion conversion", async () => {
+test("rural property is saved for D1/RD without completion conversion", async () => {
   const r = setup("tracker", { "f-tipo": "Rural" });
   await r.submit();
-  assert.equal(r.leads.length, 0);
+  assert.equal(r.leads.length, 1);
+  assert.equal(r.leads[0].lead_kind, "rural");
+  assert.equal(r.leads[0].property_type, "rural");
   assert.deepEqual(r.events.map((event) => event.name), ["simulation_discard"]);
   assert.equal(r.events[0].props.reason, "rural_property");
   assert.equal(r.timers.length, 1);
@@ -95,10 +97,10 @@ test("failed fallback handoff remains retryable and never completes", async () =
   assert.ok(r.ids["form-message"].classList.contains("is-visible"));
 });
 
-test("fallback payload also contains only Lead", async () => {
+test("fallback payload also leaves the Meta event to the server", async () => {
   const r = setup("missing-beacon");
   await r.submit();
   const payload = JSON.parse(await r.requests[0].blob.text());
-  assert.deepEqual(payload.meta_events.map((event) => event.name), ["Lead"]);
+  assert.equal(Object.hasOwn(payload, "meta_events"), false);
   assert.equal(payload.lead_kind, "home_equity_mql");
 });

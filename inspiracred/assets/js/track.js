@@ -258,24 +258,10 @@
     },
     lead: function (data) {
       data = data || {};
-      if (String(data.property_type || "").trim().toLowerCase() === "rural") {
-        return send(withUtm({
-          type: "event",
-          event_name: "simulation_discard",
-          properties: {
-            source: data.source || window.IC_PAGE || "other",
-            reason: "rural_property"
-          }
-        }));
-      }
-      // Conversão honesta e não selecionada: todo envio válido gera exatamente Lead.
-      // MQL, faixas, dívida e documentação permanecem internos, nunca são codificados
-      // em nomes alternativos nem em parâmetros enviados à Meta.
-      var metaEvents = [{ name: "Lead", event_id: uuid() }];
-      // Payload pro servidor: carrega os eventos (nome+id) + fbclid/gclid + url pra CAPI/atribuição.
-      // Mantém event_id "solto" (1º evento) pra compatibilidade com a coluna leads.event_id —
-      // null quando não há nenhum evento de Meta (metaEvents vazio não quebra mais aqui).
-      var p = { type: "lead", meta_events: metaEvents, event_id: metaEvents[0].event_id, url: metaSourceUrl() };
+      // O navegador entrega os dados completos ao nosso endpoint. O servidor recalcula a
+      // classificação e decide entre nenhum evento, Lead ou MQL; nomes enviados pelo
+      // cliente nunca controlam a CAPI.
+      var p = { type: "lead", event_id: uuid(), url: metaSourceUrl() };
       p.fbclid = rawParam("fbclid") || null;
       p.gclid = rawParam("gclid") || null;
       // _fbp/_fbc lidos pelo navegador (Pixel ou cookie de edge). O servidor usa como

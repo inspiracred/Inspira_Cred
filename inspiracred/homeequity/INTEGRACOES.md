@@ -15,8 +15,8 @@ para um funil de crédito. A descrição completa e as diferenças deliberadas e
    encaminha o lead ao RD Station e à Meta CAPI em tarefas independentes.
 4. Nome, e-mail e telefone só chegam à Meta após normalização e SHA-256. Os campos de
    qualificação financeira permanecem internos e no RD.
-5. Imóvel rural é encerrado como `simulation_discard`: não entra em `leads`, não vai ao
-   RD e não dispara o evento Meta `Lead`.
+5. Imóvel rural entra completo em `leads` e segue ao RD com classificação própria, mas
+   não dispara evento na Meta.
 
 ## Meta
 
@@ -27,7 +27,9 @@ um `event_id` UUID único para idempotência no destino.
 
 Eventos externos permitidos:
 
-- `Lead` para todo envio válido e não rural;
+- nenhum evento para imóvel rural ou lead desqualificado;
+- `Lead` para a faixa mínima;
+- `MQL` para a faixa superior, no lugar de `Lead`;
 - `InitiateCheckout` para início da simulação;
 - `SubmitApplication` para conclusão da simulação.
 
