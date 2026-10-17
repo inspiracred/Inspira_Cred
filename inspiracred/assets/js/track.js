@@ -5,7 +5,7 @@
  *   <script>window.IC_PAGE="landing_page";</script>
  *   <script src="assets/js/track.js" defer></script>
  *
- * META: PageView e Lead são encaminhados apenas pelo servidor (CAPI). A restrição
+ * META: PageView, Lead e QualifiedLead são encaminhados apenas pelo servidor (CAPI). A restrição
  * básica aplicada pela Meta a este dataset proíbe parâmetros personalizados e
  * conteúdo de URL após o domínio; por isso este arquivo não carrega nem chama o
  * Pixel no navegador. A qualificação financeira permanece só no tracking interno.
@@ -244,7 +244,7 @@
     lead: function (data) {
       data = data || {};
       // O navegador entrega os dados completos ao nosso endpoint. O servidor grava a
-      // classificação no D1/RD, mas envia à Meta apenas Lead para a submissão válida;
+      // classificação no D1/RD, mas envia à Meta Lead e QualifiedLead para a submissão válida;
       // nomes enviados pelo cliente nunca controlam a CAPI.
       var p = { type: "lead", event_id: uuid(), url: metaSourceUrl() };
       p.fbclid = rawParam("fbclid") || null;

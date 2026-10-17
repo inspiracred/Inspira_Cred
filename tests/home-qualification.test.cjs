@@ -131,7 +131,7 @@ test("home preserva imóvel rural no D1/RD sem selecionar evento Meta", () => {
   assert.equal(r.leads[0].lead_kind, "rural");
   assert.equal(backend.normalizeLeadKind(r.leads[0]), "rural");
   assert.equal(backend.shouldSendLeadToRD("rural"), true);
-  assert.deepEqual(Array.from(backend.normalizeLeadMetaEvents(r.leads[0]), (item) => item.name), ["Lead"]);
+  assert.deepEqual(Array.from(backend.normalizeLeadMetaEvents(r.leads[0]), (item) => item.name), ["Lead", "QualifiedLead"]);
   assert.deepEqual(r.events.map(([name]) => name), ["simulation_discard"]);
   assert.equal(r.window.location.href, "/obrigado/home-nao-elegivel/");
 });
@@ -159,10 +159,10 @@ test("existing home equity thresholds remain unchanged", () => {
     [499999, 1000000, "home_equity"], [500000, 999999, "home_equity"],
     [500000, 1000000, "home_equity_mql"],
   ]) assert.equal(backend.normalizeLeadKind({ source: "home_equity_lp", credit_value, property_value }), expected);
-  assert.equal(backend.metaEventNameForLeadKind("home_equity"), "Lead");
-  assert.equal(backend.metaEventNameForLeadKind("home_equity_mql"), "Lead");
-  assert.deepEqual(Array.from(backend.metaEventNamesForLeadKind("home_equity_mql")), ["Lead"]);
-  assert.equal(backend.metaEventNameForLeadKind("baixo_valor"), "Lead");
+  assert.equal(backend.metaEventNameForLeadKind("home_equity"), "QualifiedLead");
+  assert.equal(backend.metaEventNameForLeadKind("home_equity_mql"), "QualifiedLead");
+  assert.deepEqual(Array.from(backend.metaEventNamesForLeadKind("home_equity_mql")), ["Lead", "QualifiedLead"]);
+  assert.equal(backend.metaEventNameForLeadKind("baixo_valor"), "QualifiedLead");
   assert.equal(backend.normalizeLeadKind({ source: "home_equity_form", lead_kind: "auto" }), "auto");
   assert.equal(backend.normalizeLeadKind({ source: "home_equity_form", lead_kind: "descarte" }), "descarte");
 });
