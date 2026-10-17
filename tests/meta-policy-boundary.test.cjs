@@ -181,6 +181,8 @@ test("server maps the financial bands to none, Lead, or Lead and MQL", () => {
     [{ property_type: "rural", credit_value: 900000, property_value: 2000000 }, "rural", []],
     [{ credit_value: 199999, property_value: 1000000 }, "baixo_valor", []],
     [{ credit_value: 200000, property_value: 400000 }, "home_equity", ["Lead"]],
+    [{ credit_value: 499999, property_value: 1000000 }, "home_equity", ["Lead"]],
+    [{ credit_value: 500000, property_value: 999999 }, "home_equity", ["Lead"]],
     [{ credit_value: 500000, property_value: 1000000 }, "home_equity_mql", ["Lead", "MQL"]],
     [{ lead_kind: "descarte" }, "descarte", []],
   ];
