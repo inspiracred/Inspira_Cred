@@ -310,7 +310,8 @@ async function handleTrack(request, env, cors, context) {
         event.lead_kind = normalizeLeadKind(event);
         // O servidor é a fronteira autoritativa: clientes antigos ou manipulados não
         // escolhem o evento Meta. A classificação completa fica no D1/RD; para a Meta
-        // sai no máximo um nome permitido, sem valores, faixas ou motivo.
+        // saem apenas os nomes permitidos (Lead e, na faixa superior, também MQL),
+        // sem valores, faixas ou motivo.
         event.meta_events = normalizeLeadMetaEvents(event);
         event.event_id = event.meta_events.length ? event.meta_events[0].event_id : null;
 
