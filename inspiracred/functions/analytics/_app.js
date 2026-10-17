@@ -311,7 +311,7 @@ async function handleTrack(request, env, cors, context) {
         event.lead_kind = normalizeLeadKind(event);
         // O servidor é a fronteira autoritativa: clientes antigos ou manipulados não
         // escolhem o evento Meta. A classificação completa fica no D1/RD; para a Meta
-        // saem Lead e QualifiedLead, por ter havido submissão válida, sem usar valor,
+        // saem Lead e LeadQualificado, por ter havido submissão válida, sem usar valor,
         // faixa, tipo do imóvel ou motivo da classificação como critério.
         event.meta_events = normalizeLeadMetaEvents(event);
         event.event_id = event.meta_events.length ? event.meta_events[0].event_id : null;
@@ -503,7 +503,10 @@ function metaEventNamesForLeadKind(kind) {
   // financeira não controla mais a Meta: rural, baixo valor, MQL interno, automotivo
   // e institucional recebem os mesmos eventos padrão e sem custom_data. Neste funil,
   // "qualificado" significa formulário válido concluído, não uma faixa financeira.
-  return ["Lead", "QualifiedLead"];
+  // `LeadQualificado` é o evento já reconhecido por este dataset. O nome reservado
+  // `QualifiedLead` pertence ao fluxo CAPI para CRM e não é registrado como evento
+  // de site enquanto essa integração não está concluída.
+  return ["Lead", "LeadQualificado"];
 }
 
 function metaEventNameForLeadKind(kind) {
@@ -969,7 +972,7 @@ async function recordMetaBatchAudit(env, leadId, metaEvents, audit) {
 async function sendLeadToMeta(event, env, leadId, ctx) {
   if (!env.META_PIXEL_ID || !env.META_ACCESS_TOKEN) return; // dormindo até ter os secrets
 
-  // Toda submissão válida recebe Lead + QualifiedLead; classificação financeira não é gate.
+  // Toda submissão válida recebe Lead + LeadQualificado; classificação financeira não é gate.
   const metaEvents = normalizeLeadMetaEvents(event);
   if (!metaEvents.length) {
     await markLeadStatus(env, leadId, "meta_status", "nao_aplicavel");
@@ -986,7 +989,7 @@ async function sendLeadToMeta(event, env, leadId, ctx) {
 
   // Envia cada evento em uma chamada própria. Além de isolar falhas, isso produz um
   // recibo inequívoco por evento no D1 e evita a interface de teste da Meta exibir só
-  // o primeiro item de um lote com Lead + QualifiedLead.
+  // o primeiro item de um lote com Lead + LeadQualificado.
   const audits = await Promise.all(metaEvents.map(async (ev) => {
     const payload = {
       data: [{
@@ -1559,7 +1562,7 @@ async function handleLeads(request, env) {
   // 30 dias de campanha já estouravam e os mais antigos sumiam da tabela sem aviso).
   const limit = Math.min(parseInt(p.get("limit")) || 100, 5000);
   // kind=nao_qualificado agrupa as classificações comerciais fora da régua interna.
-  // Todas continuam completas no D1/RD e geram os mesmos Lead e QualifiedLead na Meta.
+  // Todas continuam completas no D1/RD e geram os mesmos Lead e LeadQualificado na Meta.
   const kind = p.get("kind");
   // Colunas base + qualificadores (migration 0003). Se as colunas novas ainda não
   // existirem no D1, o 1º SELECT falha e caímos no fallback com as colunas antigas —
@@ -2667,7 +2670,7 @@ const DASHBOARD_HTML = `<!doctype html>
             </span>
           </span>
         </label>
-        <div class="filter-note">A tabela junta todos os leads capturados. A classificação é comercial e fica no D1/RD; toda submissão válida gera Lead e QualifiedLead na Meta.</div>
+        <div class="filter-note">A tabela junta todos os leads capturados. A classificação é comercial e fica no D1/RD; toda submissão válida gera Lead e LeadQualificado na Meta.</div>
       </div>
       <div class="table-scroll"><div id="leads"></div></div>
     </div>
@@ -2678,7 +2681,7 @@ const DASHBOARD_HTML = `<!doctype html>
         <div class="legend-list" id="leadTypeLegend"></div>
       </div>
       <div class="card">
-        <div class="h2row"><h2>Entrega por destino</h2><span class="hint">RD, Meta Lead e QualifiedLead</span></div>
+        <div class="h2row"><h2>Entrega por destino</h2><span class="hint">RD, Meta Lead e LeadQualificado</span></div>
         <div id="leadDeliveryBars"></div>
       </div>
     </div>
@@ -3076,7 +3079,7 @@ function renderEventSummary(d){
   var metaPending=Math.max(0,metaEligible-leadOk);
   var kpis=[
     ["Meta Lead",pretty(leadOk),"eventos com entrega CAPI ok"],
-    ["Meta QualifiedLead",pretty(leadOk),"mesmo lote CAPI do formulário válido"],
+    ["Meta LeadQualificado",pretty(leadOk),"recibo CAPI próprio do formulário válido"],
     ["Classificação MQL",pretty(internalMql),"somente no D1 e RD"],
     ["RD Station",pretty(rdOk),"leads enviados ao CRM"],
     ["Meta pendente/falha",pretty(metaPending),"sem recibo agregado confirmado"]
@@ -3740,7 +3743,7 @@ function leadEventDot(l,type){
     return statusDot("Lead",l.meta_status,true,"Toda submissão válida gera Lead; a classificação financeira fica interna");
   }
   if(type==="qualified"){
-    return statusDot("QualifiedLead",l.meta_status,true,"Formulário válido concluído; sem decisão por valor financeiro");
+    return statusDot("LeadQualificado",l.meta_status,true,"Formulário válido concluído; sem decisão por valor financeiro");
   }
   return eventDot(type,"off");
 }
@@ -3772,7 +3775,7 @@ function criteriaBox(){
   return '<div class="criteria" style="margin:0">'+
     '<b>Classificação comercial e evento Meta</b>'+
     '<ul>'+
-      '<li>Toda submissão válida → eventos padrão <b>Lead</b> e <b>QualifiedLead</b> na Meta, sem valores ou classificação.</li>'+
+      '<li>Toda submissão válida → eventos <b>Lead</b> e <b>LeadQualificado</b> na Meta, sem valores ou classificação.</li>'+
       '<li>Imóvel a partir de '+brl(MIN_IMOVEL)+' e crédito a partir de '+brl(MIN_CREDITO)+' → classificação comercial interna <b>Lead</b>.</li>'+
       '<li>Imóvel a partir de '+brl(MQL_IMOVEL)+' <b>E</b> crédito a partir de '+brl(MQL_CREDITO)+' → classificação comercial interna <b>MQL</b>.</li>'+
     '</ul>'+
@@ -3813,7 +3816,7 @@ function renderLeads(d){
   renderLeadVisuals(lastLeads);
   if(!n){document.getElementById("leads").innerHTML='<div class="empty">Nenhum lead para este filtro.</div>';return}
   var html=eventLegend();
-  html+='<table><thead><tr><th>Data</th><th>Nome</th><th>Classificação</th><th>Página</th><th>Origem</th><th>Imóvel</th><th>Crédito</th><th>RD</th><th>Meta Lead</th><th>Meta QualifiedLead</th><th></th></tr></thead><tbody>';
+  html+='<table><thead><tr><th>Data</th><th>Nome</th><th>Classificação</th><th>Página</th><th>Origem</th><th>Imóvel</th><th>Crédito</th><th>RD</th><th>Meta Lead</th><th>Meta LeadQualificado</th><th></th></tr></thead><tbody>';
   lastLeads.forEach(function(l,i){
     html+='<tr><td>'+(l.created_at||"").slice(0,16)+'</td>'+
       '<td><button class="lead-name-btn" onclick="showLead('+i+')">'+esc(l.name||"Lead sem nome")+'</button><div class="hint">'+esc(l.phone||"")+'</div></td>'+
@@ -3849,7 +3852,7 @@ function renderLeadVisuals(rows){
   document.getElementById("leadDeliveryBars").innerHTML=eventBars([
     {name:"RD Station",n:rd},
     {name:"Meta Lead",n:metaLead},
-    {name:"Meta QualifiedLead",n:metaLead},
+    {name:"Meta LeadQualificado",n:metaLead},
     {name:"Meta pendente/falha",n:Math.max(0,metaEligible-metaLead)}
   ], Math.max(total,1), "Nenhum lead para este filtro.");
 }

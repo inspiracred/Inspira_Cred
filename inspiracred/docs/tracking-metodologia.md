@@ -42,7 +42,7 @@ conversão server-side não depende do JavaScript do Pixel nem de bloqueadores.
 ### Eventos de lead
 
 A classificação é recalculada no servidor e permanece no D1, RD e dashboard. Toda
-submissão válida gera os eventos padrão `Lead` e `QualifiedLead`, independentemente de
+submissão válida gera os eventos `Lead` e `LeadQualificado`, independentemente de
 valor, faixa, tipo de imóvel ou classificação. Neste funil, qualificado significa que o
 formulário válido foi concluído, não que atingiu uma faixa financeira. `simulation_start` e `simulation_complete` continuam
 como etapas internas e não são convertidos em `InitiateCheckout` ou `SubmitApplication`.
@@ -59,4 +59,4 @@ ativação posterior.
 
 `property_type = rural` é preservado como classificação própria. O contato e seus dados
 seguem para o D1 e o RD Station. Como a classificação não controla mais a Meta, a
-submissão válida gera os mesmos `Lead` e `QualifiedLead` das demais, sem expor o tipo do imóvel.
+submissão válida gera os mesmos `Lead` e `LeadQualificado` das demais, sem expor o tipo do imóvel.

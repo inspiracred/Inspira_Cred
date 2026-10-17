@@ -138,17 +138,17 @@ function serverHarness() {
   return { api: context.__policy, env, requests, writes };
 }
 
-test("server rewrites hostile markers to Lead and QualifiedLead for every submission", async () => {
+test("server rewrites hostile markers to Lead and LeadQualificado for every submission", async () => {
   const h = serverHarness();
   const event = {
     session_id: "session-safe", name: "Pessoa Teste", email: "qa@example.invalid", phone: "+5521999999999",
     credit_value: 900000, property_value: 2000000, property_type: "casa", lead_kind: "home_equity_mql", event_id: "legacy-event",
     meta_events: [
-      { name: "LeadQualificado", event_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
+      { name: "QualifiedLead", event_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
       { name: "Lead", event_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
     ],
   };
-  assert.deepEqual(Array.from(h.api.normalizeLeadMetaEvents(event), (item) => item.name), ["Lead", "QualifiedLead"]);
+  assert.deepEqual(Array.from(h.api.normalizeLeadMetaEvents(event), (item) => item.name), ["Lead", "LeadQualificado"]);
   await h.api.sendLeadToMeta(event, h.env, 42, {
     clientIp: "203.0.113.10", userAgent: "Mozilla/5.0 QA", sourceUrl: "https://nova.inspiracred.com.br/homeequity/?credit_value=900000#private",
   });
@@ -156,7 +156,7 @@ test("server rewrites hostile markers to Lead and QualifiedLead for every submis
   const sent = h.requests.flatMap((request) => request.body.data);
   assert.ok(h.requests.every((request) => request.body.data.length === 1));
   assert.equal(sent.length, 2);
-  assert.deepEqual(Array.from(sent, (item) => item.event_name), ["Lead", "QualifiedLead"]);
+  assert.deepEqual(Array.from(sent, (item) => item.event_name), ["Lead", "LeadQualificado"]);
   for (const item of sent) {
     assert.match(item.event_id, /^[0-9a-f-]{36}$/i);
     assert.notEqual(item.event_id, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
@@ -164,7 +164,7 @@ test("server rewrites hostile markers to Lead and QualifiedLead for every submis
     assert.equal(item.event_source_url, "https://nova.inspiracred.com.br/");
   }
   assert.notEqual(sent[0].event_id, sent[1].event_id);
-  assert.doesNotMatch(JSON.stringify(sent), /900000|home_equity_mql|LeadQualificado|DocumentacaoIrregular/);
+  assert.doesNotMatch(JSON.stringify(sent), /900000|home_equity_mql|QualifiedLead|DocumentacaoIrregular/);
 });
 
 test("server recognizes rural property variants but keeps Meta independent", () => {
@@ -174,19 +174,19 @@ test("server recognizes rural property variants but keeps Meta independent", () 
   assert.equal(h.api.isRuralPropertyType("Residencial"), false);
   const rural = { property_type: "Rural", credit_value: 900000, property_value: 2000000 };
   assert.equal(h.api.normalizeLeadKind(rural), "rural");
-  assert.deepEqual(Array.from(h.api.normalizeLeadMetaEvents(rural), (item) => item.name), ["Lead", "QualifiedLead"]);
+  assert.deepEqual(Array.from(h.api.normalizeLeadMetaEvents(rural), (item) => item.name), ["Lead", "LeadQualificado"]);
 });
 
 test("server keeps financial bands internal and maps every submission to generic lead events", () => {
   const h = serverHarness();
   const cases = [
-    [{ property_type: "rural", credit_value: 900000, property_value: 2000000 }, "rural", ["Lead", "QualifiedLead"]],
-    [{ credit_value: 199999, property_value: 1000000 }, "baixo_valor", ["Lead", "QualifiedLead"]],
-    [{ credit_value: 200000, property_value: 400000 }, "home_equity", ["Lead", "QualifiedLead"]],
-    [{ credit_value: 499999, property_value: 1000000 }, "home_equity", ["Lead", "QualifiedLead"]],
-    [{ credit_value: 500000, property_value: 999999 }, "home_equity", ["Lead", "QualifiedLead"]],
-    [{ credit_value: 500000, property_value: 1000000 }, "home_equity_mql", ["Lead", "QualifiedLead"]],
-    [{ lead_kind: "descarte" }, "descarte", ["Lead", "QualifiedLead"]],
+    [{ property_type: "rural", credit_value: 900000, property_value: 2000000 }, "rural", ["Lead", "LeadQualificado"]],
+    [{ credit_value: 199999, property_value: 1000000 }, "baixo_valor", ["Lead", "LeadQualificado"]],
+    [{ credit_value: 200000, property_value: 400000 }, "home_equity", ["Lead", "LeadQualificado"]],
+    [{ credit_value: 499999, property_value: 1000000 }, "home_equity", ["Lead", "LeadQualificado"]],
+    [{ credit_value: 500000, property_value: 999999 }, "home_equity", ["Lead", "LeadQualificado"]],
+    [{ credit_value: 500000, property_value: 1000000 }, "home_equity_mql", ["Lead", "LeadQualificado"]],
+    [{ lead_kind: "descarte" }, "descarte", ["Lead", "LeadQualificado"]],
   ];
   for (const [event, kind, metaNames] of cases) {
     assert.equal(h.api.normalizeLeadKind(event), kind);
@@ -203,7 +203,7 @@ test("rural and disqualified submissions send the same generic lead events", asy
     assert.equal(h.requests.length, 2);
     const sent = h.requests.flatMap((request) => request.body.data);
     assert.ok(h.requests.every((request) => request.body.data.length === 1));
-    assert.deepEqual(Array.from(sent, (item) => item.event_name), ["Lead", "QualifiedLead"]);
+    assert.deepEqual(Array.from(sent, (item) => item.event_name), ["Lead", "LeadQualificado"]);
     for (const item of sent) assert.deepEqual(item.custom_data, {});
   }
 });
@@ -237,12 +237,12 @@ test("source URL sanitizer always reduces input to the allowed domain", () => {
 
 test("dashboard separates internal classification from generic Meta lead events", () => {
   assert.match(serverSource, /rural:"Imóvel rural"/);
-  assert.match(serverSource, /<th>Meta Lead<\/th><th>Meta QualifiedLead<\/th>/);
+  assert.match(serverSource, /<th>Meta Lead<\/th><th>Meta LeadQualificado<\/th>/);
   assert.match(serverSource, /\["Meta Lead",pretty\(leadOk\)/);
-  assert.match(serverSource, /\["Meta QualifiedLead",pretty\(leadOk\)/);
+  assert.match(serverSource, /\["Meta LeadQualificado",pretty\(leadOk\)/);
   assert.match(serverSource, /\["Classificação MQL",pretty\(internalMql\)/);
   assert.match(serverSource, /metaOk\+"\/"\+metaEligible/);
   assert.doesNotMatch(serverSource, /<th>Meta MQL<\/th>/);
-  assert.match(serverSource, /Toda submissão válida → eventos padrão <b>Lead<\/b> e <b>QualifiedLead<\/b>/);
+  assert.match(serverSource, /Toda submissão válida → eventos <b>Lead<\/b> e <b>LeadQualificado<\/b>/);
   assert.match(serverSource, /não decidem nem entram no payload da Meta/);
 });
