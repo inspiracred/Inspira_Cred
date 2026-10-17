@@ -982,34 +982,45 @@ async function sendLeadToMeta(event, env, leadId, ctx) {
   const userData = await buildUserData(event, ctx, fbc);
 
   const eventTime = Math.floor(Date.now() / 1000);
-  const payload = {
-    data: metaEvents.map((ev) => ({
-      event_name: ev.name,
-      event_time: eventTime,
-      event_id: ev.event_id || event.event_id || undefined,
-      event_source_url: sanitizeMetaSourceUrl(ctx.sourceUrl),
-      action_source: "website",
-      user_data: userData,
-      custom_data: {},
-    })),
-  };
-  if (env.META_TEST_EVENT_CODE) payload.test_event_code = env.META_TEST_EVENT_CODE;
+  const eventSourceUrl = sanitizeMetaSourceUrl(ctx.sourceUrl);
 
-  let status = "erro";
-  let audit = { http_status: null, events_received: null, error_code: null, error_subcode: null, outcome: "network_error" };
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(
-      `https://graph.facebook.com/v21.0/${env.META_PIXEL_ID}/events?access_token=${env.META_ACCESS_TOKEN}`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: controller.signal }
-    );
-    audit = await readMetaAuditResponse(res, payload.data.length);
-    status = audit.outcome === "batch_reported" ? "ok" : audit.outcome;
-  } catch (e) {
-    status = "fetch_error";
-  } finally { clearTimeout(timer); }
-  await recordMetaBatchAudit(env, leadId, payload.data, audit);
+  // Envia cada evento em uma chamada própria. Além de isolar falhas, isso produz um
+  // recibo inequívoco por evento no D1 e evita a interface de teste da Meta exibir só
+  // o primeiro item de um lote com Lead + QualifiedLead.
+  const audits = await Promise.all(metaEvents.map(async (ev) => {
+    const payload = {
+      data: [{
+        event_name: ev.name,
+        event_time: eventTime,
+        event_id: ev.event_id || event.event_id || undefined,
+        event_source_url: eventSourceUrl,
+        action_source: "website",
+        user_data: userData,
+        custom_data: {},
+      }],
+    };
+    if (env.META_TEST_EVENT_CODE) payload.test_event_code = env.META_TEST_EVENT_CODE;
+
+    let audit = { http_status: null, events_received: null, error_code: null, error_subcode: null, outcome: "network_error" };
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const res = await fetch(
+        `https://graph.facebook.com/v21.0/${env.META_PIXEL_ID}/events?access_token=${env.META_ACCESS_TOKEN}`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: controller.signal }
+      );
+      audit = await readMetaAuditResponse(res, 1);
+    } catch (e) {
+      audit.outcome = "network_error";
+    } finally { clearTimeout(timer); }
+    await recordMetaBatchAudit(env, leadId, [ev], audit);
+    return audit;
+  }));
+
+  const accepted = audits.filter((audit) => audit.outcome === "batch_reported").length;
+  const status = accepted === metaEvents.length ? "ok"
+    : accepted > 0 ? "partial_failure"
+      : (audits[0] && audits[0].outcome) || "erro";
   try {
     await env.DB.prepare(`UPDATE leads SET meta_status = ? WHERE id = ?`).bind(status, leadId).run();
   } catch (e) {

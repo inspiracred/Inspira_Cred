@@ -152,8 +152,9 @@ test("server rewrites hostile markers to Lead and QualifiedLead for every submis
   await h.api.sendLeadToMeta(event, h.env, 42, {
     clientIp: "203.0.113.10", userAgent: "Mozilla/5.0 QA", sourceUrl: "https://nova.inspiracred.com.br/homeequity/?credit_value=900000#private",
   });
-  assert.equal(h.requests.length, 1);
-  const sent = h.requests[0].body.data;
+  assert.equal(h.requests.length, 2);
+  const sent = h.requests.flatMap((request) => request.body.data);
+  assert.ok(h.requests.every((request) => request.body.data.length === 1));
   assert.equal(sent.length, 2);
   assert.deepEqual(Array.from(sent, (item) => item.event_name), ["Lead", "QualifiedLead"]);
   for (const item of sent) {
@@ -199,9 +200,11 @@ test("rural and disqualified submissions send the same generic lead events", asy
   for (const lead_kind of ["rural", "baixo_valor", "descarte"]) {
     const h = serverHarness();
     await h.api.sendLeadToMeta({ lead_kind, credit_value: 900000, property_value: 2000000 }, h.env, 42, {});
-    assert.equal(h.requests.length, 1);
-    assert.deepEqual(Array.from(h.requests[0].body.data, (item) => item.event_name), ["Lead", "QualifiedLead"]);
-    for (const item of h.requests[0].body.data) assert.deepEqual(item.custom_data, {});
+    assert.equal(h.requests.length, 2);
+    const sent = h.requests.flatMap((request) => request.body.data);
+    assert.ok(h.requests.every((request) => request.body.data.length === 1));
+    assert.deepEqual(Array.from(sent, (item) => item.event_name), ["Lead", "QualifiedLead"]);
+    for (const item of sent) assert.deepEqual(item.custom_data, {});
   }
 });
 
