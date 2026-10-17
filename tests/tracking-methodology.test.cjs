@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const vm = require("node:vm");
 
 const repo = path.resolve(__dirname, "..");
 const site = path.join(repo, "inspiracred");
@@ -52,4 +53,76 @@ test("server enriches, hashes and fans out conversions without exposing financia
   assert.match(server, /context\.waitUntil\(sendLeadToMeta/);
   assert.match(server, /custom_data:\s*\{\}/);
   assert.match(server, /isRuralPropertyType/);
+});
+
+test("Meta fbc never combines a stale cookie with the current fbclid", async () => {
+  const server = read(site, "functions", "analytics", "_app.js");
+  const rawStart = server.indexOf("function rawParamFromUrl(");
+  const buildStart = server.indexOf("function fbcPayload(");
+  const rawCode = server.slice(rawStart, buildStart);
+  const buildCode = server.slice(
+    buildStart,
+    server.indexOf("// Resolve fbp/fbc/fbclid", buildStart)
+  );
+  const resolveStart = server.indexOf("async function resolveFbIdentity(");
+  const resolveCode = server.slice(
+    resolveStart,
+    server.indexOf("// Valida o formato do cookie", resolveStart)
+  );
+  const validateCode = server.slice(
+    server.indexOf("function validateFbCookie("),
+    server.indexOf("// Detecta crawler/bot")
+  );
+  const context = vm.createContext({ Date, Number, String });
+  vm.runInContext(
+    `const SUB_DOMAIN_INDEX = 2;${rawCode}${buildCode}${resolveCode}${validateCode};` +
+      "globalThis.__buildFbc = buildFbc;globalThis.__resolveFbIdentity = resolveFbIdentity;",
+    context
+  );
+
+  const currentFbclid = "novo%2Bclique";
+  assert.equal(
+    context.__buildFbc({
+      fbc: "fb.2.1700000000000.clique-antigo",
+      fbclid: currentFbclid,
+      clickTs: 1800000000000,
+    }),
+    `fb.2.1800000000000.${currentFbclid}`
+  );
+  assert.equal(
+    context.__buildFbc({
+      fbc: `fb.2.1800000000000.${currentFbclid}`,
+      fbclid: currentFbclid,
+      clickTs: 1900000000000,
+    }),
+    `fb.2.1800000000000.${currentFbclid}`
+  );
+  assert.equal(
+    context.__buildFbc({ fbc: "fb.2.1700000000000.clique-antigo", fbclid: "", clickTs: 0 }),
+    "fb.2.1700000000000.clique-antigo"
+  );
+
+  const resolved = await context.__resolveFbIdentity(
+    {
+      DB: {
+        prepare() {
+          return {
+            bind() { return this; },
+            async first() {
+              return {
+                fbc: `fb.2.1800000000000.${currentFbclid}`,
+                fbclid: currentFbclid,
+                created_at: 1800000000,
+              };
+            },
+          };
+        },
+      },
+    },
+    { _krob_sid: "sessao", _fbc: "fb.2.1700000000000.clique-antigo" },
+    { fbclid: currentFbclid, fbc: "fb.2.1700000000000.clique-antigo" },
+    "https://nova.inspiracred.com.br/"
+  );
+  assert.equal(resolved.fbc, `fb.2.1800000000000.${currentFbclid}`);
+  assert.equal(resolved.fbcSource, "session");
 });

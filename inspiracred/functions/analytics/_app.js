@@ -808,13 +808,21 @@ function rawParamFromUrl(url, name) {
   } catch (e) { return ""; }
 }
 
-// Monta o fbc no formato do Meta. Prefere o cookie ja existente (validado); so
-// sintetiza a partir do fbclid quando nao ha cookie. `clickTs` e o timestamp do
-// CLIQUE (sessions.created_at) — usar Date.now() aqui datava o fbc no momento do
-// evento, o que fica errado quando o fbclid veio herdado da sessao (clique de dias antes).
+function fbcPayload(value) {
+  const valid = validateFbCookie(value);
+  if (!valid) return "";
+  // O payload pode conter pontos; remova apenas os tres campos fixos do prefixo.
+  return valid.replace(/^fb\.\d+\.\d+\./, "");
+}
+
+// Monta o fbc no formato do Meta. Um cookie so pode acompanhar o fbclid atual se
+// carregar exatamente o mesmo payload. Isso evita combinar um clique novo com um
+// _fbc antigo, causa do diagnostico "valor fbclid modificado no parametro fbc".
+// `clickTs` e o timestamp do CLIQUE (sessions.created_at); o fallback Date.now()
+// so e usado quando nao ha uma linha de sessao disponivel.
 function buildFbc({ fbc, fbclid, clickTs }) {
   const valid = validateFbCookie(fbc);
-  if (valid) return valid;
+  if (valid && (!fbclid || fbcPayload(valid) === String(fbclid))) return valid;
   if (!fbclid) return "";
   const ts = Number(clickTs) > 0 ? Number(clickTs) : Date.now();
   return `fb.${SUB_DOMAIN_INDEX}.${ts}.${fbclid}`;
@@ -843,6 +851,17 @@ async function resolveFbIdentity(env, cookies, event, sourceUrl) {
   const sessionFbc = s ? validateFbCookie(s.fbc) : "";
 
   const fbclid = bodyFbclid || urlFbclid || (s && s.fbclid) || "";
+  const fbcCandidates = [
+    { value: bodyFbc, source: "body" },
+    { value: cookieFbc, source: "edge_cookie" },
+    { value: sessionFbc, source: "session" },
+  ].filter((candidate) => candidate.value);
+  // Quando existe um clique atual, prioriza o _fbc que realmente pertence a ele.
+  // Em uma nova visita de anuncio, o body/cookie pode ainda carregar o clique anterior,
+  // enquanto a sessao no edge ja possui o par atualizado.
+  const selectedFbc = (fbclid
+    ? fbcCandidates.find((candidate) => fbcPayload(candidate.value) === String(fbclid))
+    : null) || fbcCandidates[0] || { value: "", source: "none" };
   // clickTs: created_at da sessao e o 1o acesso = o clique no anuncio (segundos -> ms).
   const clickTs = s && s.created_at ? Number(s.created_at) * 1000 : 0;
 
@@ -850,11 +869,11 @@ async function resolveFbIdentity(env, cookies, event, sourceUrl) {
     session: s,
     krobSid,
     fbp: bodyFbp || cookieFbp || sessionFbp || "",
-    fbc: bodyFbc || cookieFbc || sessionFbc || "",
+    fbc: selectedFbc.value,
     fbclid,
     clickTs,
     fbpSource: bodyFbp ? "body" : (cookieFbp ? "edge_cookie" : (sessionFbp ? "session" : "none")),
-    fbcSource: bodyFbc ? "body" : (cookieFbc ? "edge_cookie" : (sessionFbc ? "session" : "none")),
+    fbcSource: selectedFbc.source,
     fbclidSource: bodyFbclid ? "url" : (urlFbclid ? "event_url" : (s && s.fbclid ? "session" : "none")),
     pixelWasBlocked: (!bodyFbp && !bodyFbc) ? 1 : 0,
   };
