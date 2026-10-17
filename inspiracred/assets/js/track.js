@@ -8,7 +8,8 @@
  * META: PageView, Lead e LeadQualificado são encaminhados apenas pelo servidor (CAPI). A restrição
  * básica aplicada pela Meta a este dataset proíbe parâmetros personalizados e
  * conteúdo de URL após o domínio; por isso este arquivo não carrega nem chama o
- * Pixel no navegador. A qualificação financeira permanece só no tracking interno.
+ * Pixel no navegador. O servidor usa a qualificação apenas para selecionar o evento;
+ * valores, faixas e motivos permanecem no tracking interno.
  */
 (function () {
   var ENDPOINT = "https://nova.inspiracred.com.br/analytics/track";
@@ -244,8 +245,8 @@
     lead: function (data) {
       data = data || {};
       // O navegador entrega os dados completos ao nosso endpoint. O servidor grava a
-      // classificação no D1/RD, mas envia à Meta Lead e LeadQualificado para a submissão válida;
-      // nomes enviados pelo cliente nunca controlam a CAPI.
+      // classificação no D1/RD e decide os eventos Meta conforme a faixa financeira;
+      // nomes enviados pelo cliente nunca controlam a CAPI, e valores não vão à Meta.
       var p = { type: "lead", event_id: uuid(), url: metaSourceUrl() };
       p.fbclid = rawParam("fbclid") || null;
       p.gclid = rawParam("gclid") || null;

@@ -15,8 +15,8 @@ para um funil de crédito. A descrição completa e as diferenças deliberadas e
    encaminha o lead ao RD Station e à Meta CAPI em tarefas independentes.
 4. Nome, e-mail e telefone só chegam à Meta após normalização e SHA-256. Os campos de
    qualificação financeira permanecem internos e no RD.
-5. Imóvel rural entra completo em `leads` e segue ao RD com classificação própria. A
-   classificação não altera os eventos genéricos `Lead` e `LeadQualificado` enviados à Meta.
+5. Imóvel rural entra completo em `leads` e segue ao RD com classificação própria, sem
+   evento Meta.
 
 ## Meta
 
@@ -28,10 +28,11 @@ um `event_id` UUID único para idempotência no destino.
 Eventos externos permitidos:
 
 - `PageView` para carregamento da página, via CAPI e com URL reduzida ao domínio;
-- `Lead` e `LeadQualificado` para toda submissão válida, sem depender da classificação financeira.
+- `Lead` quando imóvel >= R$ 400 mil **E** crédito >= R$ 200 mil;
+- `Lead` e `LeadQualificado` quando imóvel >= R$ 1 milhão **E** crédito >= R$ 500 mil.
 
-`simulation_start`, `simulation_complete`, MQL e demais classificações comerciais ficam
-somente no D1/RD/dashboard. `Purchase` é reservado para uma venda real informada pelo
+Rural, descarte, abaixo da faixa mínima, `simulation_start` e `simulation_complete` não
+geram evento Meta. `Purchase` é reservado para uma venda real informada pelo
 CRM e não é disparado pelo formulário do site.
 
 Classificação, valor, dívida, documentação e outros qualificadores não são enviados em

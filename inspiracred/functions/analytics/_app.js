@@ -310,9 +310,8 @@ async function handleTrack(request, env, cors, context) {
 
         event.lead_kind = normalizeLeadKind(event);
         // O servidor é a fronteira autoritativa: clientes antigos ou manipulados não
-        // escolhem o evento Meta. A classificação completa fica no D1/RD; para a Meta
-        // saem Lead e LeadQualificado, por ter havido submissão válida, sem usar valor,
-        // faixa, tipo do imóvel ou motivo da classificação como critério.
+        // escolhem o evento Meta. A classificação completa fica no D1/RD e decide apenas
+        // quais nomes de evento saem; valores, faixas e motivos nunca entram no payload.
         event.meta_events = normalizeLeadMetaEvents(event);
         event.event_id = event.meta_events.length ? event.meta_events[0].event_id : null;
 
@@ -499,14 +498,12 @@ function normalizeLeadMetaEvents(event) {
 }
 
 function metaEventNamesForLeadKind(kind) {
-  // Todo payload do tipo `lead` representa uma submissão válida. A classificação
-  // financeira não controla mais a Meta: rural, baixo valor, MQL interno, automotivo
-  // e institucional recebem os mesmos eventos padrão e sem custom_data. Neste funil,
-  // "qualificado" significa formulário válido concluído, não uma faixa financeira.
-  // `LeadQualificado` é o evento já reconhecido por este dataset. O nome reservado
-  // `QualifiedLead` pertence ao fluxo CAPI para CRM e não é registrado como evento
-  // de site enquanto essa integração não está concluída.
-  return ["Lead", "LeadQualificado"];
+  // O formulário concluído é só o momento do processamento. A classificação financeira
+  // server-side é o gate: faixa mínima recebe Lead; faixa superior recebe ambos.
+  // Demais classificações ficam completas no D1/RD, mas não geram evento Meta.
+  if (kind === "home_equity_mql") return ["Lead", "LeadQualificado"];
+  if (kind === "home_equity") return ["Lead"];
+  return [];
 }
 
 function metaEventNameForLeadKind(kind) {
@@ -972,7 +969,7 @@ async function recordMetaBatchAudit(env, leadId, metaEvents, audit) {
 async function sendLeadToMeta(event, env, leadId, ctx) {
   if (!env.META_PIXEL_ID || !env.META_ACCESS_TOKEN) return; // dormindo até ter os secrets
 
-  // Toda submissão válida recebe Lead + LeadQualificado; classificação financeira não é gate.
+  // Só as classificações elegíveis recebem evento; o payload continua sem dado financeiro.
   const metaEvents = normalizeLeadMetaEvents(event);
   if (!metaEvents.length) {
     await markLeadStatus(env, leadId, "meta_status", "nao_aplicavel");
@@ -1562,7 +1559,7 @@ async function handleLeads(request, env) {
   // 30 dias de campanha já estouravam e os mais antigos sumiam da tabela sem aviso).
   const limit = Math.min(parseInt(p.get("limit")) || 100, 5000);
   // kind=nao_qualificado agrupa as classificações comerciais fora da régua interna.
-  // Todas continuam completas no D1/RD e geram os mesmos Lead e LeadQualificado na Meta.
+  // Todas continuam completas no D1/RD e não geram evento Meta.
   const kind = p.get("kind");
   // Colunas base + qualificadores (migration 0003). Se as colunas novas ainda não
   // existirem no D1, o 1º SELECT falha e caímos no fallback com as colunas antigas —
@@ -2670,7 +2667,7 @@ const DASHBOARD_HTML = `<!doctype html>
             </span>
           </span>
         </label>
-        <div class="filter-note">A tabela junta todos os leads capturados. A classificação é comercial e fica no D1/RD; toda submissão válida gera Lead e LeadQualificado na Meta.</div>
+        <div class="filter-note">A tabela junta todos os leads capturados. A classificação é calculada na Cloudflare: faixa mínima gera Lead; faixa superior gera Lead e LeadQualificado.</div>
       </div>
       <div class="table-scroll"><div id="leads"></div></div>
     </div>
@@ -3072,15 +3069,16 @@ function renderEventSummary(d){
   var kinds=d.lead_kind_summary||[];
   var byKind={};
   kinds.forEach(function(k){byKind[k.kind]=k;});
-  var leadOk=kinds.reduce(function(a,k){return a+Number(k.meta_ok||0)},0);
+  var leadOk=kinds.reduce(function(a,k){return a+(k.kind==="home_equity"||k.kind==="home_equity_mql"?Number(k.meta_ok||0):0)},0);
   var internalMql=(byKind.home_equity_mql&&Number(byKind.home_equity_mql.n||0))||0;
+  var qualifiedOk=(byKind.home_equity_mql&&Number(byKind.home_equity_mql.meta_ok||0))||0;
   var rdOk=kinds.reduce(function(a,k){return a+Number(k.rd_ok||0)},0);
-  var metaEligible=kinds.reduce(function(a,k){return a+Number(k.n||0)},0);
+  var metaEligible=kinds.reduce(function(a,k){return a+(k.kind==="home_equity"||k.kind==="home_equity_mql"?Number(k.n||0):0)},0);
   var metaPending=Math.max(0,metaEligible-leadOk);
   var kpis=[
     ["Meta Lead",pretty(leadOk),"eventos com entrega CAPI ok"],
-    ["Meta LeadQualificado",pretty(leadOk),"recibo CAPI próprio do formulário válido"],
-    ["Classificação MQL",pretty(internalMql),"somente no D1 e RD"],
+    ["Meta LeadQualificado",pretty(qualifiedOk),"faixa superior com recibo CAPI ok"],
+    ["Classificação MQL",pretty(internalMql),"faixa superior no D1, RD e Meta"],
     ["RD Station",pretty(rdOk),"leads enviados ao CRM"],
     ["Meta pendente/falha",pretty(metaPending),"sem recibo agregado confirmado"]
   ];
@@ -3740,10 +3738,11 @@ function leadEventDot(l,type){
     return statusDot("RD",l.rd_status,true);
   }
   if(type==="lead"){
-    return statusDot("Lead",l.meta_status,true,"Toda submissão válida gera Lead; a classificação financeira fica interna");
+    var leadApplies=kind==="home_equity"||kind==="home_equity_mql";
+    return statusDot("Lead",l.meta_status,leadApplies,"Não atingiu a faixa mínima ou não se aplica à régua financeira");
   }
   if(type==="qualified"){
-    return statusDot("LeadQualificado",l.meta_status,true,"Formulário válido concluído; sem decisão por valor financeiro");
+    return statusDot("LeadQualificado",l.meta_status,kind==="home_equity_mql","Somente a faixa superior recebe este evento");
   }
   return eventDot(type,"off");
 }
@@ -3775,11 +3774,11 @@ function criteriaBox(){
   return '<div class="criteria" style="margin:0">'+
     '<b>Classificação comercial e evento Meta</b>'+
     '<ul>'+
-      '<li>Toda submissão válida → eventos <b>Lead</b> e <b>LeadQualificado</b> na Meta, sem valores ou classificação.</li>'+
-      '<li>Imóvel a partir de '+brl(MIN_IMOVEL)+' e crédito a partir de '+brl(MIN_CREDITO)+' → classificação comercial interna <b>Lead</b>.</li>'+
-      '<li>Imóvel a partir de '+brl(MQL_IMOVEL)+' <b>E</b> crédito a partir de '+brl(MQL_CREDITO)+' → classificação comercial interna <b>MQL</b>.</li>'+
+      '<li>Rural, descarte ou abaixo da faixa mínima → completo no D1/RD e <b>sem evento Meta</b>.</li>'+
+      '<li>Imóvel a partir de '+brl(MIN_IMOVEL)+' <b>E</b> crédito a partir de '+brl(MIN_CREDITO)+' → evento <b>Lead</b>.</li>'+
+      '<li>Imóvel a partir de '+brl(MQL_IMOVEL)+' <b>E</b> crédito a partir de '+brl(MQL_CREDITO)+' → eventos <b>Lead</b> e <b>LeadQualificado</b>.</li>'+
     '</ul>'+
-    '<small>As condições financeiras valem somente no D1, RD e dashboard. Elas não decidem nem entram no payload da Meta.</small>'+
+    '<small>A Cloudflare usa as condições apenas para decidir o nome do evento. Valores, faixas e motivo da classificação não entram no payload da Meta.</small>'+
   '</div>';
 }
 function pageLeadLink(source){
@@ -3798,8 +3797,10 @@ function renderLeads(d){
   lastLeads.forEach(function(l){
     totalCredit+=Number(l.credit_value||0);
     if(l.rd_status==="ok")rdOk++;
-    metaEligible++;
-    if(l.meta_status==="ok")metaOk++;
+    if(l.lead_kind==="home_equity"||l.lead_kind==="home_equity_mql"){
+      metaEligible++;
+      if(l.meta_status==="ok")metaOk++;
+    }
   });
   var totalCreditKpi=brlKpi(totalCredit), ticketKpi=n?brlKpi(Math.round(totalCredit/n)):{short:"-",full:"-"};
   var lk=[
@@ -3831,13 +3832,16 @@ function renderLeads(d){
 
 function renderLeadVisuals(rows){
   rows=rows||[];
-  var counts={}, rd=0, metaLead=0, metaEligible=0;
+  var counts={}, rd=0, metaLead=0, metaQualified=0, metaEligible=0;
   rows.forEach(function(l){
     var k=l.lead_kind||"sem_classificacao";
     counts[k]=(counts[k]||0)+1;
     if(l.rd_status==="ok")rd++;
-    metaEligible++;
-    if(leadHasMetaLead(l))metaLead++;
+    if(k==="home_equity"||k==="home_equity_mql"){
+      metaEligible++;
+      if(leadHasMetaLead(l))metaLead++;
+    }
+    if(k==="home_equity_mql"&&leadHasMetaLead(l))metaQualified++;
   });
   var keys=Object.keys(counts).sort(function(a,b){return counts[b]-counts[a];});
   var labels=keys.map(function(k){return LEAD_KIND_LABELS[k]||k});
@@ -3852,7 +3856,7 @@ function renderLeadVisuals(rows){
   document.getElementById("leadDeliveryBars").innerHTML=eventBars([
     {name:"RD Station",n:rd},
     {name:"Meta Lead",n:metaLead},
-    {name:"Meta LeadQualificado",n:metaLead},
+    {name:"Meta LeadQualificado",n:metaQualified},
     {name:"Meta pendente/falha",n:Math.max(0,metaEligible-metaLead)}
   ], Math.max(total,1), "Nenhum lead para este filtro.");
 }
