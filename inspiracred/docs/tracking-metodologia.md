@@ -41,10 +41,12 @@ conversão server-side não depende do JavaScript do Pixel nem de bloqueadores.
 
 ### Eventos de lead
 
-A classificação é recalculada no servidor e escolhe exatamente um resultado: nenhum
-evento para rural/desqualificado, `Lead` para a faixa mínima ou `MQL` para a faixa
-superior. Valores, faixas, dívida, documentação e motivo da classificação ficam no
-D1/RD e nunca em `custom_data`.
+A classificação é recalculada no servidor e permanece no D1, RD e dashboard. Toda
+submissão válida gera o mesmo evento padrão `Lead`, independentemente de valor, faixa,
+tipo de imóvel ou classificação. `simulation_start` e `simulation_complete` continuam
+como etapas internas e não são convertidos em `InitiateCheckout` ou `SubmitApplication`.
+Valores, faixas, dívida, documentação e motivo da classificação nunca entram no payload
+da Meta. `PageView` é enviado via CAPI com a URL reduzida ao domínio.
 
 ### GA4 e Google Ads
 
@@ -55,5 +57,5 @@ ativação posterior.
 ## Regra rural
 
 `property_type = rural` é preservado como classificação própria. O contato e seus dados
-seguem para o D1 e o RD Station, mas não geram evento na Meta. A proteção server-side
-impede que um cliente antigo ou payload manipulado transforme rural em `Lead` ou `MQL`.
+seguem para o D1 e o RD Station. Como a classificação não controla mais a Meta, a
+submissão válida gera o mesmo `Lead` genérico das demais, sem expor o tipo do imóvel.

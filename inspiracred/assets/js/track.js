@@ -5,7 +5,7 @@
  *   <script>window.IC_PAGE="landing_page";</script>
  *   <script src="assets/js/track.js" defer></script>
  *
- * META: conversões são encaminhadas apenas pelo servidor (CAPI). A restrição
+ * META: PageView e Lead são encaminhados apenas pelo servidor (CAPI). A restrição
  * básica aplicada pela Meta a este dataset proíbe parâmetros personalizados e
  * conteúdo de URL após o domínio; por isso este arquivo não carrega nem chama o
  * Pixel no navegador. A qualificação financeira permanece só no tracking interno.
@@ -82,20 +82,6 @@
     return payload;
   }
 
-  // Nomes de evento internos -> evento PADRÃO do Meta.
-  // ⚠️ Precisa ser padrão: a conta está sob "Restrições de compartilhamento de dados —
-  // configuração básica" (categoria serviço financeiro), e nessa configuração evento
-  // PERSONALIZADO não é registrado nem utilizável — a Meta responde 200 e descarta.
-  // Antes eram SimulacaoIniciada/SimulacaoCompleta (custom) e não otimizavam nada.
-  // Pra a gestora ver nome em português, criar Conversão Personalizada por cima.
-  //   simulation_start    -> InitiateCheckout  ("entrou no fluxo de conversão")
-  //   simulation_complete -> SubmitApplication (solicitação de crédito enviada — é o
-  //                          evento que a própria Meta exemplifica com "cartão de crédito")
-  var PIXEL_EVENT = {
-    simulation_start: "InitiateCheckout",
-    simulation_complete: "SubmitApplication",
-  };
-
   // A URL usada na CAPI é somente o domínio. UTMs, caminho e IDs de anúncio ficam
   // no tracking interno e nunca seguem para a Meta dentro de event_source_url.
   function metaSourceUrl() {
@@ -135,8 +121,18 @@
     } catch (e) { return false; }
   }
 
-  // Page view
-  send(withUtm({ type: "page_view", url: location.pathname + location.search, title: document.title, referrer: document.referrer }));
+  // Page view. O servidor grava a navegação completa no D1 e envia à Meta somente
+  // PageView com a URL reduzida ao domínio, sem caminho, query ou classificação.
+  send(withUtm({
+    type: "page_view",
+    event_id: uuid(),
+    url: location.pathname + location.search,
+    title: document.title,
+    referrer: document.referrer,
+    fbclid: rawParam("fbclid") || null,
+    fbp: cookieVal("_fbp") || null,
+    fbc: cookieVal("_fbc") || null,
+  }));
 
   // Cliques em links e botões
   document.addEventListener("click", function (e) {
@@ -239,28 +235,17 @@
   window.inspiraTrack = {
     event: function (name, props) {
       props = props || {};
-      var pixelName = PIXEL_EVENT[name] || null;
-      var eventId = pixelName ? uuid() : null;
-      // A Meta recebe via CAPI somente a ocorrência da ação. Propriedades de negócio ficam
-      // no D1; valores, classificação, documentação e dívida nunca viram custom_data.
+      // Etapas da simulação permanecem apenas no D1. Iniciar ou concluir uma simulação
+      // ainda está muito longe de uma venda e não deve virar InitiateCheckout,
+      // SubmitApplication nem qualquer outro sinal de otimização na Meta.
       var p = { type: "event", event_name: name, properties: props };
-      // Eventos de funil mapeados pro Meta seguem server-side (CAPI).
-      if (pixelName) {
-        p.meta_event_name = pixelName;
-        p.event_id = eventId;
-        p.url = metaSourceUrl();
-        p.fbclid = rawParam("fbclid") || null;
-        p.gclid = rawParam("gclid") || null;
-        p.fbp = cookieVal("_fbp") || null;
-        p.fbc = cookieVal("_fbc") || null;
-      }
       return send(withUtm(p));
     },
     lead: function (data) {
       data = data || {};
-      // O navegador entrega os dados completos ao nosso endpoint. O servidor recalcula a
-      // classificação e decide entre nenhum evento, Lead ou MQL; nomes enviados pelo
-      // cliente nunca controlam a CAPI.
+      // O navegador entrega os dados completos ao nosso endpoint. O servidor grava a
+      // classificação no D1/RD, mas envia à Meta apenas Lead para a submissão válida;
+      // nomes enviados pelo cliente nunca controlam a CAPI.
       var p = { type: "lead", event_id: uuid(), url: metaSourceUrl() };
       p.fbclid = rawParam("fbclid") || null;
       p.gclid = rawParam("gclid") || null;

@@ -252,6 +252,7 @@ async function handleTrack(request, env, cors, context) {
           `INSERT INTO page_views (session_id, page_name, url, title, referrer, user_agent, ip_hash) VALUES (?,?,?,?,?,?,?)`
         ).bind(event.session_id, event.page_name || "other", event.url || null, event.title || null,
           event.referrer || null, event.user_agent || null, event.ip_hash || null).run();
+        await queueStandardMetaEvent(event, "page_view", request, env, context);
         break;
       case "click":
         await env.DB.prepare(
@@ -310,8 +311,8 @@ async function handleTrack(request, env, cors, context) {
         event.lead_kind = normalizeLeadKind(event);
         // O servidor é a fronteira autoritativa: clientes antigos ou manipulados não
         // escolhem o evento Meta. A classificação completa fica no D1/RD; para a Meta
-        // saem apenas os nomes permitidos (Lead e, na faixa superior, também MQL),
-        // sem valores, faixas ou motivo.
+        // sai somente Lead, por ter havido submissão válida, sem usar valor, faixa,
+        // tipo do imóvel ou motivo da classificação como critério.
         event.meta_events = normalizeLeadMetaEvents(event);
         event.event_id = event.meta_events.length ? event.meta_events[0].event_id : null;
 
@@ -397,38 +398,15 @@ async function handleTrack(request, env, cors, context) {
         break;
       }
       case "event": {
-        // A PII (nome/e-mail/telefone) que os formulários mandam junto do
-        // simulation_complete serve SÓ pro Advanced Matching da CAPI (hasheada lá).
-        // NÃO pode ir pra coluna JSON `events.properties` nem pro custom_data do Meta.
+        // A PII eventualmente presente nas propriedades de etapas antigas nunca pode
+        // ir pra coluna JSON `events.properties`. Estas etapas ficam só no D1 e não são
+        // encaminhadas à Meta.
         const eventProps = stripPii(event.properties);
         await env.DB.prepare(
           `INSERT INTO events (session_id, event_type, event_name, properties, page_name) VALUES (?,?,?,?,?)`
         ).bind(event.session_id, event.event_type || "custom", event.event_name || "custom",
           JSON.stringify(eventProps), event.page_name || null).run();
-        const allowedMetaEvent = normalizeFunnelMetaEvent(event.event_name);
-        if (allowedMetaEvent && context) {
-          const eventCookies = parseCookies(request.headers.get("Cookie") || "");
-          const eventUA = request.headers.get("User-Agent") || "";
-          const bot = detectBot(eventUA);
-          if (!bot.isBot) {
-            const eventSourceUrl = sanitizeMetaSourceUrl(event.url || request.headers.get("Referer") || "");
-            event.external_id = eventCookies._krob_eid || event.session_id || null;
-            event.meta_event_name = allowedMetaEvent;
-            // Mesma cadeia do lead (body -> cookie -> sessions). Antes o caso "event"
-            // parava no cookie e perdia o fbc cru em navegação interna — era o caminho
-            // dos 4 eventos que a Meta acusou com "fbclid modificado".
-            const evId = await resolveFbIdentity(env, eventCookies, event, eventSourceUrl);
-            event.fbp = evId.fbp;
-            event.fbc = evId.fbc;
-            event.fbclid = evId.fbclid;
-            event.click_ts = evId.clickTs;
-            context.waitUntil(sendCustomEventToMeta(event, env, {
-              clientIp: request.headers.get("CF-Connecting-IP") || "",
-              userAgent: eventUA,
-              sourceUrl: eventSourceUrl,
-            }));
-          }
-        }
+        await queueStandardMetaEvent(event, event.event_name, request, env, context);
         break;
       }
       case "tap":
@@ -521,11 +499,10 @@ function normalizeLeadMetaEvents(event) {
 }
 
 function metaEventNamesForLeadKind(kind) {
-  // A faixa superior também satisfaz a faixa mínima: envia Lead E MQL, no mesmo
-  // lote CAPI, com IDs opacos e independentes para auditoria correta do recebimento.
-  if (kind === "home_equity_mql") return ["Lead", "MQL"];
-  if (kind === "home_equity" || kind === "auto" || kind === "institucional") return ["Lead"];
-  return [];
+  // Todo payload do tipo `lead` representa uma submissão válida. A classificação
+  // financeira não controla mais a Meta: rural, baixo valor, MQL interno, automotivo
+  // e institucional recebem o mesmo evento padrão e sem custom_data.
+  return ["Lead"];
 }
 
 function metaEventNameForLeadKind(kind) {
@@ -534,8 +511,7 @@ function metaEventNameForLeadKind(kind) {
 }
 
 const FUNNEL_META_EVENTS = {
-  simulation_start: "InitiateCheckout",
-  simulation_complete: "SubmitApplication",
+  page_view: "PageView",
 };
 
 function normalizeFunnelMetaEvent(eventName) {
@@ -992,7 +968,7 @@ async function recordMetaBatchAudit(env, leadId, metaEvents, audit) {
 async function sendLeadToMeta(event, env, leadId, ctx) {
   if (!env.META_PIXEL_ID || !env.META_ACCESS_TOKEN) return; // dormindo até ter os secrets
 
-  // Rural e classificações desqualificadas permanecem no D1/RD, sem request à Meta.
+  // Toda submissão válida recebe o mesmo Lead; classificação financeira não é gate.
   const metaEvents = normalizeLeadMetaEvents(event);
   if (!metaEvents.length) {
     await markLeadStatus(env, leadId, "meta_status", "nao_aplicavel");
@@ -1038,6 +1014,30 @@ async function sendLeadToMeta(event, env, leadId, ctx) {
   } catch (e) {
     // falha de log não derruba o fan-out
   }
+}
+
+async function queueStandardMetaEvent(event, eventName, request, env, context) {
+  const allowedMetaEvent = normalizeFunnelMetaEvent(eventName);
+  if (!allowedMetaEvent || !context) return;
+
+  const eventCookies = parseCookies(request.headers.get("Cookie") || "");
+  const eventUA = request.headers.get("User-Agent") || "";
+  if (detectBot(eventUA).isBot) return;
+
+  const eventSourceUrl = sanitizeMetaSourceUrl(event.url || request.headers.get("Referer") || "");
+  event.event_name = eventName;
+  event.external_id = eventCookies._krob_eid || event.session_id || null;
+  event.meta_event_name = allowedMetaEvent;
+  const evId = await resolveFbIdentity(env, eventCookies, event, eventSourceUrl);
+  event.fbp = evId.fbp;
+  event.fbc = evId.fbc;
+  event.fbclid = evId.fbclid;
+  event.click_ts = evId.clickTs;
+  context.waitUntil(sendCustomEventToMeta(event, env, {
+    clientIp: request.headers.get("CF-Connecting-IP") || "",
+    userAgent: eventUA,
+    sourceUrl: eventSourceUrl,
+  }));
 }
 
 async function sendCustomEventToMeta(event, env, ctx) {
@@ -1546,8 +1546,8 @@ async function handleLeads(request, env) {
   // Teto alto de propósito: a aba Leads precisa mostrar TODO lead do período (com 500,
   // 30 dias de campanha já estouravam e os mais antigos sumiam da tabela sem aviso).
   const limit = Math.min(parseInt(p.get("limit")) || 100, 5000);
-  // kind=nao_qualificado agrupa as classificações sem evento Meta. Todas continuam
-  // completas no D1 e seguem para o RD Station.
+  // kind=nao_qualificado agrupa as classificações comerciais fora da régua interna.
+  // Todas continuam completas no D1/RD e geram o mesmo Lead genérico na Meta.
   const kind = p.get("kind");
   // Colunas base + qualificadores (migration 0003). Se as colunas novas ainda não
   // existirem no D1, o 1º SELECT falha e caímos no fallback com as colunas antigas —
@@ -2648,14 +2648,14 @@ const DASHBOARD_HTML = `<!doctype html>
             <span class="msel-panel" id="kindPanel" style="display:none">
               <span class="msel-actions">
                 <button type="button" id="kindAll" title="Sem filtro de classificação">Todas</button>
-                <button type="button" id="kindConv" title="Só quem conta conversão no Meta">Só conversões</button>
+                <button type="button" id="kindConv" title="Classificações comerciais qualificadas no sistema interno">Só qualificados</button>
               </span>
               <span id="kindList"></span>
               <span class="msel-apply"><small>Marque as opções</small><button type="button" data-msel-apply="kind">Aplicar</button></span>
             </span>
           </span>
         </label>
-        <div class="filter-note">A tabela agora junta todos os leads capturados. O filtro mostra qual evento/conversão aquele cadastro gerou — inclusive os que vão ao RD sem gerar evento na Meta.</div>
+        <div class="filter-note">A tabela junta todos os leads capturados. A classificação é comercial e fica no D1/RD; toda submissão válida gera o mesmo evento Lead na Meta.</div>
       </div>
       <div class="table-scroll"><div id="leads"></div></div>
     </div>
@@ -2666,7 +2666,7 @@ const DASHBOARD_HTML = `<!doctype html>
         <div class="legend-list" id="leadTypeLegend"></div>
       </div>
       <div class="card">
-        <div class="h2row"><h2>Entrega por evento</h2><span class="hint">RD, Meta Lead e MQL</span></div>
+        <div class="h2row"><h2>Entrega por destino</h2><span class="hint">RD e Meta Lead</span></div>
         <div id="leadDeliveryBars"></div>
       </div>
     </div>
@@ -3057,14 +3057,14 @@ function renderEventSummary(d){
   var kinds=d.lead_kind_summary||[];
   var byKind={};
   kinds.forEach(function(k){byKind[k.kind]=k;});
-  var leadOk=kinds.reduce(function(a,k){return a+(["home_equity","home_equity_mql","auto","institucional"].indexOf(k.kind)>-1?Number(k.meta_ok||0):0)},0);
-  var mqlOk=(byKind.home_equity_mql&&Number(byKind.home_equity_mql.meta_ok||0))||0;
+  var leadOk=kinds.reduce(function(a,k){return a+Number(k.meta_ok||0)},0);
+  var internalMql=(byKind.home_equity_mql&&Number(byKind.home_equity_mql.n||0))||0;
   var rdOk=kinds.reduce(function(a,k){return a+Number(k.rd_ok||0)},0);
-  var metaEligible=kinds.reduce(function(a,k){return a+(["home_equity","home_equity_mql","auto","institucional"].indexOf(k.kind)>-1?Number(k.n||0):0)},0);
+  var metaEligible=kinds.reduce(function(a,k){return a+Number(k.n||0)},0);
   var metaPending=Math.max(0,metaEligible-leadOk);
   var kpis=[
     ["Meta Lead",pretty(leadOk),"eventos com entrega CAPI ok"],
-    ["Meta MQL",pretty(mqlOk),"eventos com entrega CAPI ok"],
+    ["Classificação MQL",pretty(internalMql),"somente no D1 e RD"],
     ["RD Station",pretty(rdOk),"leads enviados ao CRM"],
     ["Meta pendente/falha",pretty(metaPending),"sem recibo agregado confirmado"]
   ];
@@ -3074,7 +3074,7 @@ function renderEventSummary(d){
   var signalRows=[
     {name:"Simulacoes iniciadas",n:t.sim_start||0,sub:pct(t.sim_start||0,t.visitors||0)+"% das visitas comecaram a simulacao",hot:true},
     {name:"Leads captados",n:t.leads||0,sub:pct(t.leads||0,t.visitors||0)+"% das visitas viraram lead",hot:true},
-    {name:"Leads qualificados",n:mqlOk,sub:pct(mqlOk,t.leads||0)+"% dos leads tiveram MQL entregue"},
+    {name:"Leads qualificados",n:internalMql,sub:pct(internalMql,t.leads||0)+"% classificados internamente como MQL"},
     {name:"Desqualificados",n:desq,sub:pct(desq,t.leads||0)+"% dos leads fora do perfil"}
   ];
   document.getElementById("overviewEvents").innerHTML=signalCards(signalRows);
@@ -3698,9 +3698,8 @@ function leadKindPill(k){
   return '<span class="pill '+cls+'">'+esc(lb)+'</span>';
 }
 function leadHasMetaLead(l){
-  return l.meta_status==="ok"&&["home_equity","home_equity_mql","auto","institucional"].indexOf(l.lead_kind)>-1;
+  return l.meta_status==="ok";
 }
-function leadHasMql(l){return l.meta_status==="ok"&&l.lead_kind==="home_equity_mql";}
 function eventDot(label,state,title){
   var ok={sent:1,skip:1,err:1,bot:1,off:1};
   var cls=ok[state]?state:"off";
@@ -3725,11 +3724,7 @@ function leadEventDot(l,type){
     return statusDot("RD",l.rd_status,true);
   }
   if(type==="lead"){
-    var applies=kind==="home_equity"||kind==="home_equity_mql"||kind==="auto"||kind==="institucional";
-    return statusDot("Lead",l.meta_status,applies,"Rural ou desqualificado não gera evento Meta");
-  }
-  if(type==="mql"){
-    return statusDot("MQL",l.meta_status,kind==="home_equity_mql","Somente a faixa superior gera MQL");
+    return statusDot("Lead",l.meta_status,true,"Toda submissão válida gera Lead; a classificação financeira fica interna");
   }
   return eventDot(type,"off");
 }
@@ -3759,13 +3754,13 @@ function openCriteria(){
 }
 function criteriaBox(){
   return '<div class="criteria" style="margin:0">'+
-    '<b>Como a classificação decide o evento Meta</b>'+
+    '<b>Classificação comercial e evento Meta</b>'+
     '<ul>'+
-      '<li>Imóvel rural ou lead desqualificado → fica completo no D1 e vai ao RD, <b>sem evento Meta</b>.</li>'+
-      '<li>Imóvel a partir de '+brl(MIN_IMOVEL)+' e crédito a partir de '+brl(MIN_CREDITO)+' → evento <b>Lead</b>.</li>'+
-      '<li>Imóvel a partir de '+brl(MQL_IMOVEL)+' <b>E</b> crédito a partir de '+brl(MQL_CREDITO)+' → eventos <b>MQL e Lead</b>.</li>'+
+      '<li>Toda submissão válida → evento padrão <b>Lead</b> na Meta, sem valores ou classificação.</li>'+
+      '<li>Imóvel a partir de '+brl(MIN_IMOVEL)+' e crédito a partir de '+brl(MIN_CREDITO)+' → classificação comercial interna <b>Lead</b>.</li>'+
+      '<li>Imóvel a partir de '+brl(MQL_IMOVEL)+' <b>E</b> crédito a partir de '+brl(MQL_CREDITO)+' → classificação comercial interna <b>MQL</b>.</li>'+
     '</ul>'+
-    '<small>As duas condições valem juntas (E, não OU). Valores, faixas e motivo da classificação não entram no payload da Meta.</small>'+
+    '<small>As condições financeiras valem somente no D1, RD e dashboard. Elas não decidem nem entram no payload da Meta.</small>'+
   '</div>';
 }
 function pageLeadLink(source){
@@ -3784,7 +3779,7 @@ function renderLeads(d){
   lastLeads.forEach(function(l){
     totalCredit+=Number(l.credit_value||0);
     if(l.rd_status==="ok")rdOk++;
-    if(["home_equity","home_equity_mql","auto","institucional"].indexOf(l.lead_kind)>-1)metaEligible++;
+    metaEligible++;
     if(l.meta_status==="ok")metaOk++;
   });
   var totalCreditKpi=brlKpi(totalCredit), ticketKpi=n?brlKpi(Math.round(totalCredit/n)):{short:"-",full:"-"};
@@ -3802,14 +3797,14 @@ function renderLeads(d){
   renderLeadVisuals(lastLeads);
   if(!n){document.getElementById("leads").innerHTML='<div class="empty">Nenhum lead para este filtro.</div>';return}
   var html=eventLegend();
-  html+='<table><thead><tr><th>Data</th><th>Nome</th><th>Classificação</th><th>Página</th><th>Origem</th><th>Imóvel</th><th>Crédito</th><th>RD</th><th>Meta Lead</th><th>Meta MQL</th><th></th></tr></thead><tbody>';
+  html+='<table><thead><tr><th>Data</th><th>Nome</th><th>Classificação</th><th>Página</th><th>Origem</th><th>Imóvel</th><th>Crédito</th><th>RD</th><th>Meta Lead</th><th></th></tr></thead><tbody>';
   lastLeads.forEach(function(l,i){
     html+='<tr><td>'+(l.created_at||"").slice(0,16)+'</td>'+
       '<td><button class="lead-name-btn" onclick="showLead('+i+')">'+esc(l.name||"Lead sem nome")+'</button><div class="hint">'+esc(l.phone||"")+'</div></td>'+
       '<td>'+leadKindPill(l.lead_kind)+'</td><td>'+pageLeadLink(l.source)+'</td><td>'+origemCell(l)+'</td>'+
       '<td>'+valorCell(l.property_value,MIN_IMOVEL,l.lead_kind)+'</td>'+
       '<td>'+valorCell(l.credit_value,MIN_CREDITO,l.lead_kind)+'</td>'+
-      '<td>'+leadEventDot(l,"rd")+'</td><td>'+leadEventDot(l,"lead")+'</td><td>'+leadEventDot(l,"mql")+'</td>'+
+      '<td>'+leadEventDot(l,"rd")+'</td><td>'+leadEventDot(l,"lead")+'</td>'+
       '<td><button class="btn-sm" onclick="showLead('+i+')">Ver ficha</button></td></tr>';
   });
   document.getElementById("leads").innerHTML=html+'</tbody></table>';
@@ -3817,14 +3812,13 @@ function renderLeads(d){
 
 function renderLeadVisuals(rows){
   rows=rows||[];
-  var counts={}, rd=0, metaLead=0, mql=0, metaEligible=0;
+  var counts={}, rd=0, metaLead=0, metaEligible=0;
   rows.forEach(function(l){
     var k=l.lead_kind||"sem_classificacao";
     counts[k]=(counts[k]||0)+1;
     if(l.rd_status==="ok")rd++;
-    if(["home_equity","home_equity_mql","auto","institucional"].indexOf(k)>-1)metaEligible++;
+    metaEligible++;
     if(leadHasMetaLead(l))metaLead++;
-    if(leadHasMql(l))mql++;
   });
   var keys=Object.keys(counts).sort(function(a,b){return counts[b]-counts[a];});
   var labels=keys.map(function(k){return LEAD_KIND_LABELS[k]||k});
@@ -3839,7 +3833,6 @@ function renderLeadVisuals(rows){
   document.getElementById("leadDeliveryBars").innerHTML=eventBars([
     {name:"RD Station",n:rd},
     {name:"Meta Lead",n:metaLead},
-    {name:"Meta MQL",n:mql},
     {name:"Meta pendente/falha",n:Math.max(0,metaEligible-metaLead)}
   ], Math.max(total,1), "Nenhum lead para este filtro.");
 }

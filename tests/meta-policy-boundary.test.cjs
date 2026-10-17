@@ -83,14 +83,15 @@ test("browser preserves rural lead data for D1 and RD", async () => {
   assert.equal(Object.hasOwn(lead, "meta_events"), false);
 });
 
-test("funnel events keep internal properties and queue only a CAPI marker", async () => {
+test("funnel events keep internal properties without a Meta marker", async () => {
   const h = trackerHarness();
   h.window.inspiraTrack.event("simulation_complete", { source: "home_equity_lp", credit_value: 900000 });
   assert.equal(h.fbqCalls.length, 0);
   const payloads = await Promise.all(h.beacons.map(beaconPayload));
   const event = payloads.find((payload) => payload.event_name === "simulation_complete");
   assert.equal(event.properties.credit_value, 900000);
-  assert.equal(event.url, "https://nova.inspiracred.com.br/");
+  assert.equal(Object.hasOwn(event, "meta_event_name"), false);
+  assert.equal(Object.hasOwn(event, "event_id"), false);
 });
 
 test("browser exposes no arbitrary Meta API or direct Pixel fallback", () => {
@@ -137,7 +138,7 @@ function serverHarness() {
   return { api: context.__policy, env, requests, writes };
 }
 
-test("server rewrites hostile markers to Lead and MQL for the upper financial band", async () => {
+test("server rewrites hostile markers to one generic Lead for every submission", async () => {
   const h = serverHarness();
   const event = {
     session_id: "session-safe", name: "Pessoa Teste", email: "qa@example.invalid", phone: "+5521999999999",
@@ -147,44 +148,43 @@ test("server rewrites hostile markers to Lead and MQL for the upper financial ba
       { name: "Lead", event_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
     ],
   };
-  assert.deepEqual(Array.from(h.api.normalizeLeadMetaEvents(event), (item) => item.name), ["Lead", "MQL"]);
+  assert.deepEqual(Array.from(h.api.normalizeLeadMetaEvents(event), (item) => item.name), ["Lead"]);
   await h.api.sendLeadToMeta(event, h.env, 42, {
     clientIp: "203.0.113.10", userAgent: "Mozilla/5.0 QA", sourceUrl: "https://nova.inspiracred.com.br/homeequity/?credit_value=900000#private",
   });
   assert.equal(h.requests.length, 1);
   const sent = h.requests[0].body.data;
-  assert.equal(sent.length, 2);
-  assert.deepEqual(Array.from(sent, (item) => item.event_name), ["Lead", "MQL"]);
+  assert.equal(sent.length, 1);
+  assert.deepEqual(Array.from(sent, (item) => item.event_name), ["Lead"]);
   for (const item of sent) {
     assert.match(item.event_id, /^[0-9a-f-]{36}$/i);
     assert.notEqual(item.event_id, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
     assert.deepEqual(item.custom_data, {});
     assert.equal(item.event_source_url, "https://nova.inspiracred.com.br/");
   }
-  assert.notEqual(sent[0].event_id, sent[1].event_id);
   assert.doesNotMatch(JSON.stringify(sent), /900000|home_equity_mql|LeadQualificado|DocumentacaoIrregular/);
 });
 
-test("server recognizes rural property variants and classifies them without Meta", () => {
+test("server recognizes rural property variants but keeps Meta independent", () => {
   const h = serverHarness();
   assert.equal(h.api.isRuralPropertyType("Rural"), true);
   assert.equal(h.api.isRuralPropertyType("imóvel rural"), true);
   assert.equal(h.api.isRuralPropertyType("Residencial"), false);
   const rural = { property_type: "Rural", credit_value: 900000, property_value: 2000000 };
   assert.equal(h.api.normalizeLeadKind(rural), "rural");
-  assert.deepEqual(Array.from(h.api.normalizeLeadMetaEvents(rural)), []);
+  assert.deepEqual(Array.from(h.api.normalizeLeadMetaEvents(rural), (item) => item.name), ["Lead"]);
 });
 
-test("server maps the financial bands to none, Lead, or Lead and MQL", () => {
+test("server keeps financial bands internal and maps every submission to Lead", () => {
   const h = serverHarness();
   const cases = [
-    [{ property_type: "rural", credit_value: 900000, property_value: 2000000 }, "rural", []],
-    [{ credit_value: 199999, property_value: 1000000 }, "baixo_valor", []],
+    [{ property_type: "rural", credit_value: 900000, property_value: 2000000 }, "rural", ["Lead"]],
+    [{ credit_value: 199999, property_value: 1000000 }, "baixo_valor", ["Lead"]],
     [{ credit_value: 200000, property_value: 400000 }, "home_equity", ["Lead"]],
     [{ credit_value: 499999, property_value: 1000000 }, "home_equity", ["Lead"]],
     [{ credit_value: 500000, property_value: 999999 }, "home_equity", ["Lead"]],
-    [{ credit_value: 500000, property_value: 1000000 }, "home_equity_mql", ["Lead", "MQL"]],
-    [{ lead_kind: "descarte" }, "descarte", []],
+    [{ credit_value: 500000, property_value: 1000000 }, "home_equity_mql", ["Lead"]],
+    [{ lead_kind: "descarte" }, "descarte", ["Lead"]],
   ];
   for (const [event, kind, metaNames] of cases) {
     assert.equal(h.api.normalizeLeadKind(event), kind);
@@ -194,19 +194,21 @@ test("server maps the financial bands to none, Lead, or Lead and MQL", () => {
   }
 });
 
-test("rural and disqualified leads make no Meta request", async () => {
+test("rural and disqualified submissions send the same generic Lead", async () => {
   for (const lead_kind of ["rural", "baixo_valor", "descarte"]) {
     const h = serverHarness();
     await h.api.sendLeadToMeta({ lead_kind, credit_value: 900000, property_value: 2000000 }, h.env, 42, {});
-    assert.equal(h.requests.length, 0);
-    assert.ok(h.writes.some((write) => write.params[0] === "nao_aplicavel"));
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.requests[0].body.data[0].event_name, "Lead");
+    assert.deepEqual(h.requests[0].body.data[0].custom_data, {});
   }
 });
 
-test("server allows only the two truthful funnel mappings", async () => {
+test("server allows PageView and blocks simulation stages from Meta", async () => {
   const h = serverHarness();
-  assert.equal(h.api.normalizeFunnelMetaEvent("simulation_start"), "InitiateCheckout");
-  assert.equal(h.api.normalizeFunnelMetaEvent("simulation_complete"), "SubmitApplication");
+  assert.equal(h.api.normalizeFunnelMetaEvent("page_view"), "PageView");
+  assert.equal(h.api.normalizeFunnelMetaEvent("simulation_start"), "");
+  assert.equal(h.api.normalizeFunnelMetaEvent("simulation_complete"), "");
   assert.equal(h.api.normalizeFunnelMetaEvent("LeadQualificado"), "");
   for (const hostile of ["__proto__", "constructor", "toString", null, {}]) {
     assert.equal(h.api.normalizeFunnelMetaEvent(hostile), "");
@@ -214,8 +216,13 @@ test("server allows only the two truthful funnel mappings", async () => {
   await h.api.sendCustomEventToMeta({ event_name: "LeadQualificado", meta_event_name: "LeadQualificado" }, h.env, {});
   assert.equal(h.requests.length, 0);
   await h.api.sendCustomEventToMeta({ event_name: "simulation_complete", event_id: "credito_900000_documentacao_irregular" }, h.env, {});
+  assert.equal(h.requests.length, 0);
+  await h.api.sendCustomEventToMeta({ event_name: "page_view", event_id: "credito_900000_documentacao_irregular" }, h.env, { sourceUrl: "https://nova.inspiracred.com.br/private?credit=900000" });
   assert.match(h.requests[0].body.data[0].event_id, /^[0-9a-f-]{36}$/i);
   assert.notEqual(h.requests[0].body.data[0].event_id, "credito_900000_documentacao_irregular");
+  assert.equal(h.requests[0].body.data[0].event_name, "PageView");
+  assert.equal(h.requests[0].body.data[0].event_source_url, "https://nova.inspiracred.com.br/");
+  assert.doesNotMatch(JSON.stringify(h.requests[0].body), /900000/);
 });
 
 test("source URL sanitizer always reduces input to the allowed domain", () => {
@@ -224,12 +231,13 @@ test("source URL sanitizer always reduces input to the allowed domain", () => {
   assert.equal(h.api.sanitizeMetaSourceUrl("https://evil.example/private"), "https://nova.inspiracred.com.br/");
 });
 
-test("dashboard separates Lead, MQL and non-applicable classifications", () => {
+test("dashboard separates internal classification from the generic Meta Lead", () => {
   assert.match(serverSource, /rural:"Imóvel rural"/);
-  assert.match(serverSource, /<th>Meta Lead<\/th><th>Meta MQL<\/th>/);
+  assert.match(serverSource, /<th>Meta Lead<\/th><th><\/th>/);
   assert.match(serverSource, /\["Meta Lead",pretty\(leadOk\)/);
-  assert.match(serverSource, /\["Meta MQL",pretty\(mqlOk\)/);
+  assert.match(serverSource, /\["Classificação MQL",pretty\(internalMql\)/);
   assert.match(serverSource, /metaOk\+"\/"\+metaEligible/);
-  assert.match(serverSource, /eventos <b>MQL e Lead<\/b>/);
-  assert.match(serverSource, /Valores, faixas e motivo da classificação não entram no payload da Meta/);
+  assert.doesNotMatch(serverSource, /<th>Meta MQL<\/th>/);
+  assert.match(serverSource, /Toda submissão válida → evento padrão <b>Lead<\/b>/);
+  assert.match(serverSource, /não decidem nem entram no payload da Meta/);
 });

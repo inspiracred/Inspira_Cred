@@ -169,8 +169,8 @@
         .catch(function () {});
     });
 
-    // "Simulação iniciada": 1x, no primeiro toque em qualquer campo (mesmo evento das
-    // outras páginas -> InitiateCheckout no Meta), pro funil existir no dashboard.
+    // "Simulação iniciada": 1x, no primeiro toque em qualquer campo. Esta etapa é
+    // somente interna (D1/dashboard) e não representa checkout, compra nem venda.
     var simStarted = false;
     function markSimStart() {
       if (simStarted) return;
