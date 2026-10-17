@@ -47,3 +47,23 @@ test("rewrite Hostinger atua somente na raiz do apex e preserva www", () => {
   assert.doesNotMatch(rewrite, /Redirect|RewriteRule \^\.\*/);
   assert.doesNotMatch(rewrite, /MX|TXT|nameserver/i);
 });
+
+test("URLs legadas exibidas como sitelinks recebem redirects permanentes e exatos", () => {
+  assert.match(
+    rewrite,
+    /RewriteRule \^\(\?:lp\|sitebackup\|obrigado\)\/\?\$ https:\/\/inspiracred\.com\.br\/ \[R=301,L\]/,
+  );
+  assert.match(
+    rewrite,
+    /RewriteRule \^\(\?:lp-cgi\|homeequity\)\/\?\$ https:\/\/nova\.inspiracred\.com\.br\/ \[R=301,L\]/,
+  );
+  assert.match(
+    rewrite,
+    /RewriteRule \^politica-de-privacidade\/\?\$ https:\/\/nova\.inspiracred\.com\.br\/politica-de-privacidade \[R=301,L\]/,
+  );
+  assert.match(
+    rewrite,
+    /RewriteRule \^\(\?:termos-e-condicoes\|termos-de-uso\)\/\?\$ https:\/\/nova\.inspiracred\.com\.br\/termos-de-uso \[R=301,L\]/,
+  );
+  assert.doesNotMatch(rewrite, /RewriteRule \^\.\*/);
+});
