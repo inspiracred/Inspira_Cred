@@ -159,6 +159,7 @@ test("existing home equity thresholds remain unchanged", () => {
   ]) assert.equal(backend.normalizeLeadKind({ source: "home_equity_lp", credit_value, property_value }), expected);
   assert.equal(backend.metaEventNameForLeadKind("home_equity"), "Lead");
   assert.equal(backend.metaEventNameForLeadKind("home_equity_mql"), "MQL");
+  assert.deepEqual(Array.from(backend.metaEventNamesForLeadKind("home_equity_mql")), ["Lead", "MQL"]);
   assert.equal(backend.metaEventNameForLeadKind("baixo_valor"), "");
   assert.equal(backend.normalizeLeadKind({ source: "home_equity_form", lead_kind: "auto" }), "auto");
   assert.equal(backend.normalizeLeadKind({ source: "home_equity_form", lead_kind: "descarte" }), "descarte");

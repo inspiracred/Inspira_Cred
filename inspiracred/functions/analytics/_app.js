@@ -515,14 +515,21 @@ function normalizeMetaEventId(value) {
 }
 
 function normalizeLeadMetaEvents(event) {
-  const name = metaEventNameForLeadKind(event.lead_kind || normalizeLeadKind(event));
-  return name ? [{ name, event_id: normalizeMetaEventId() }] : [];
+  return metaEventNamesForLeadKind(event.lead_kind || normalizeLeadKind(event))
+    .map((name) => ({ name, event_id: normalizeMetaEventId() }));
+}
+
+function metaEventNamesForLeadKind(kind) {
+  // A faixa superior também satisfaz a faixa mínima: envia Lead E MQL, no mesmo
+  // lote CAPI, com IDs opacos e independentes para auditoria correta do recebimento.
+  if (kind === "home_equity_mql") return ["Lead", "MQL"];
+  if (kind === "home_equity" || kind === "auto" || kind === "institucional") return ["Lead"];
+  return [];
 }
 
 function metaEventNameForLeadKind(kind) {
-  if (kind === "home_equity_mql") return "MQL";
-  if (kind === "home_equity" || kind === "auto" || kind === "institucional") return "Lead";
-  return "";
+  const names = metaEventNamesForLeadKind(kind);
+  return names.length ? names[names.length - 1] : "";
 }
 
 const FUNNEL_META_EVENTS = {
@@ -1570,8 +1577,10 @@ async function handleLeads(request, env) {
   // A Meta só fornece recibo agregado por lote. Não persistimos IDs individuais nem
   // alegamos aceite por evento: a ficha deriva apenas o estado técnico consolidado.
   rows.forEach((r) => {
-    const name = metaEventNameForLeadKind(r.lead_kind);
-    r.meta_events = r.meta_status === "ok" && name ? [{ name, at: r.created_at }] : [];
+    const names = metaEventNamesForLeadKind(r.lead_kind);
+    r.meta_events = r.meta_status === "ok"
+      ? names.map((name) => ({ name, at: r.created_at }))
+      : [];
   });
 
   return json({ leads: rows, count: rows.length });
@@ -3047,11 +3056,11 @@ function renderEventSummary(d){
   var kinds=d.lead_kind_summary||[];
   var byKind={};
   kinds.forEach(function(k){byKind[k.kind]=k;});
-  var leadOk=kinds.reduce(function(a,k){return a+(k.kind!=="home_equity_mql"?Number(k.meta_ok||0):0)},0);
+  var leadOk=kinds.reduce(function(a,k){return a+(["home_equity","home_equity_mql","auto","institucional"].indexOf(k.kind)>-1?Number(k.meta_ok||0):0)},0);
   var mqlOk=(byKind.home_equity_mql&&Number(byKind.home_equity_mql.meta_ok||0))||0;
   var rdOk=kinds.reduce(function(a,k){return a+Number(k.rd_ok||0)},0);
   var metaEligible=kinds.reduce(function(a,k){return a+(["home_equity","home_equity_mql","auto","institucional"].indexOf(k.kind)>-1?Number(k.n||0):0)},0);
-  var metaPending=Math.max(0,metaEligible-leadOk-mqlOk);
+  var metaPending=Math.max(0,metaEligible-leadOk);
   var kpis=[
     ["Meta Lead",pretty(leadOk),"eventos com entrega CAPI ok"],
     ["Meta MQL",pretty(mqlOk),"eventos com entrega CAPI ok"],
@@ -3688,7 +3697,7 @@ function leadKindPill(k){
   return '<span class="pill '+cls+'">'+esc(lb)+'</span>';
 }
 function leadHasMetaLead(l){
-  return l.meta_status==="ok"&&l.lead_kind!=="home_equity_mql";
+  return l.meta_status==="ok"&&["home_equity","home_equity_mql","auto","institucional"].indexOf(l.lead_kind)>-1;
 }
 function leadHasMql(l){return l.meta_status==="ok"&&l.lead_kind==="home_equity_mql";}
 function eventDot(label,state,title){
@@ -3715,7 +3724,7 @@ function leadEventDot(l,type){
     return statusDot("RD",l.rd_status,true);
   }
   if(type==="lead"){
-    var applies=kind==="home_equity"||kind==="auto"||kind==="institucional";
+    var applies=kind==="home_equity"||kind==="home_equity_mql"||kind==="auto"||kind==="institucional";
     return statusDot("Lead",l.meta_status,applies,"Rural ou desqualificado não gera evento Meta");
   }
   if(type==="mql"){
@@ -3753,7 +3762,7 @@ function criteriaBox(){
     '<ul>'+
       '<li>Imóvel rural ou lead desqualificado → fica completo no D1 e vai ao RD, <b>sem evento Meta</b>.</li>'+
       '<li>Imóvel a partir de '+brl(MIN_IMOVEL)+' e crédito a partir de '+brl(MIN_CREDITO)+' → evento <b>Lead</b>.</li>'+
-      '<li>Imóvel a partir de '+brl(MQL_IMOVEL)+' <b>E</b> crédito a partir de '+brl(MQL_CREDITO)+' → evento <b>MQL</b> no lugar de Lead.</li>'+
+      '<li>Imóvel a partir de '+brl(MQL_IMOVEL)+' <b>E</b> crédito a partir de '+brl(MQL_CREDITO)+' → eventos <b>MQL e Lead</b>.</li>'+
     '</ul>'+
     '<small>As duas condições valem juntas (E, não OU). Valores, faixas e motivo da classificação não entram no payload da Meta.</small>'+
   '</div>';
@@ -3830,7 +3839,7 @@ function renderLeadVisuals(rows){
     {name:"RD Station",n:rd},
     {name:"Meta Lead",n:metaLead},
     {name:"Meta MQL",n:mql},
-    {name:"Meta pendente/falha",n:Math.max(0,metaEligible-metaLead-mql)}
+    {name:"Meta pendente/falha",n:Math.max(0,metaEligible-metaLead)}
   ], Math.max(total,1), "Nenhum lead para este filtro.");
 }
 

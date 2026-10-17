@@ -123,12 +123,13 @@ function serverHarness() {
     crypto: webcrypto, Date, Math, JSON, Map, String, Number,
     setTimeout, clearTimeout,
     fetch: async (url, options) => {
-      requests.push({ url, body: JSON.parse(options.body) });
-      return new Response(JSON.stringify({ events_received: 1 }), { status: 200 });
+      const body = JSON.parse(options.body);
+      requests.push({ url, body });
+      return new Response(JSON.stringify({ events_received: body.data.length }), { status: 200 });
     },
   });
   const executable = serverSource.replace("export async function onRequest", "async function onRequest");
-  vm.runInContext(`${executable};globalThis.__policy={isRuralPropertyType,normalizeLeadKind,metaEventNameForLeadKind,normalizeLeadMetaEvents,normalizeFunnelMetaEvent,sanitizeMetaSourceUrl,sendLeadToMeta,sendCustomEventToMeta};`, context);
+  vm.runInContext(`${executable};globalThis.__policy={isRuralPropertyType,normalizeLeadKind,metaEventNameForLeadKind,metaEventNamesForLeadKind,normalizeLeadMetaEvents,normalizeFunnelMetaEvent,sanitizeMetaSourceUrl,sendLeadToMeta,sendCustomEventToMeta};`, context);
   const env = {
     META_PIXEL_ID: "3021870508000260", META_ACCESS_TOKEN: "test-secret",
     DB: { prepare(sql) { let params = []; return { bind(...values) { params = values; return this; }, async run() { writes.push({ sql, params }); } }; } },
@@ -136,7 +137,7 @@ function serverHarness() {
   return { api: context.__policy, env, requests, writes };
 }
 
-test("server rewrites hostile markers to the MQL selected by financial classification", async () => {
+test("server rewrites hostile markers to Lead and MQL for the upper financial band", async () => {
   const h = serverHarness();
   const event = {
     session_id: "session-safe", name: "Pessoa Teste", email: "qa@example.invalid", phone: "+5521999999999",
@@ -146,18 +147,21 @@ test("server rewrites hostile markers to the MQL selected by financial classific
       { name: "Lead", event_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
     ],
   };
-  assert.deepEqual(Array.from(h.api.normalizeLeadMetaEvents(event), (item) => item.name), ["MQL"]);
+  assert.deepEqual(Array.from(h.api.normalizeLeadMetaEvents(event), (item) => item.name), ["Lead", "MQL"]);
   await h.api.sendLeadToMeta(event, h.env, 42, {
     clientIp: "203.0.113.10", userAgent: "Mozilla/5.0 QA", sourceUrl: "https://nova.inspiracred.com.br/homeequity/?credit_value=900000#private",
   });
   assert.equal(h.requests.length, 1);
   const sent = h.requests[0].body.data;
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].event_name, "MQL");
-  assert.match(sent[0].event_id, /^[0-9a-f-]{36}$/i);
-  assert.notEqual(sent[0].event_id, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
-  assert.deepEqual(sent[0].custom_data, {});
-  assert.equal(sent[0].event_source_url, "https://nova.inspiracred.com.br/");
+  assert.equal(sent.length, 2);
+  assert.deepEqual(Array.from(sent, (item) => item.event_name), ["Lead", "MQL"]);
+  for (const item of sent) {
+    assert.match(item.event_id, /^[0-9a-f-]{36}$/i);
+    assert.notEqual(item.event_id, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+    assert.deepEqual(item.custom_data, {});
+    assert.equal(item.event_source_url, "https://nova.inspiracred.com.br/");
+  }
+  assert.notEqual(sent[0].event_id, sent[1].event_id);
   assert.doesNotMatch(JSON.stringify(sent), /900000|home_equity_mql|LeadQualificado|DocumentacaoIrregular/);
 });
 
@@ -171,20 +175,20 @@ test("server recognizes rural property variants and classifies them without Meta
   assert.deepEqual(Array.from(h.api.normalizeLeadMetaEvents(rural)), []);
 });
 
-test("server maps the financial bands to none, Lead or MQL", () => {
+test("server maps the financial bands to none, Lead, or Lead and MQL", () => {
   const h = serverHarness();
   const cases = [
-    [{ property_type: "rural", credit_value: 900000, property_value: 2000000 }, "rural", ""],
-    [{ credit_value: 199999, property_value: 1000000 }, "baixo_valor", ""],
-    [{ credit_value: 200000, property_value: 400000 }, "home_equity", "Lead"],
-    [{ credit_value: 500000, property_value: 1000000 }, "home_equity_mql", "MQL"],
-    [{ lead_kind: "descarte" }, "descarte", ""],
+    [{ property_type: "rural", credit_value: 900000, property_value: 2000000 }, "rural", []],
+    [{ credit_value: 199999, property_value: 1000000 }, "baixo_valor", []],
+    [{ credit_value: 200000, property_value: 400000 }, "home_equity", ["Lead"]],
+    [{ credit_value: 500000, property_value: 1000000 }, "home_equity_mql", ["Lead", "MQL"]],
+    [{ lead_kind: "descarte" }, "descarte", []],
   ];
-  for (const [event, kind, metaName] of cases) {
+  for (const [event, kind, metaNames] of cases) {
     assert.equal(h.api.normalizeLeadKind(event), kind);
-    assert.equal(h.api.metaEventNameForLeadKind(kind), metaName);
+    assert.deepEqual(Array.from(h.api.metaEventNamesForLeadKind(kind)), metaNames);
     event.lead_kind = kind;
-    assert.deepEqual(Array.from(h.api.normalizeLeadMetaEvents(event), (item) => item.name), metaName ? [metaName] : []);
+    assert.deepEqual(Array.from(h.api.normalizeLeadMetaEvents(event), (item) => item.name), metaNames);
   }
 });
 
@@ -224,5 +228,6 @@ test("dashboard separates Lead, MQL and non-applicable classifications", () => {
   assert.match(serverSource, /\["Meta Lead",pretty\(leadOk\)/);
   assert.match(serverSource, /\["Meta MQL",pretty\(mqlOk\)/);
   assert.match(serverSource, /metaOk\+"\/"\+metaEligible/);
+  assert.match(serverSource, /eventos <b>MQL e Lead<\/b>/);
   assert.match(serverSource, /Valores, faixas e motivo da classificação não entram no payload da Meta/);
 });
