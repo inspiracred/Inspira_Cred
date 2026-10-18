@@ -281,7 +281,7 @@ test("sends one Purchase for an eligible matched site lead at Crédito Liberado"
             external_id: "visitor-42",
             fbp: "fb.1.1700000000.123456789",
             fbc: "fb.1.1700000000.AbcDef",
-            meta_status: "ok",
+            meta_status: "partial_failure",
             lead_kind: "home_equity_mql",
           };
           return null;

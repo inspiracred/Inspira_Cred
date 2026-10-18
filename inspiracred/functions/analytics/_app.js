@@ -2013,20 +2013,18 @@ async function handleRdWebhook(request, env, context) {
         ? { ok: true, status: "no_matched_lead" }
         : !eligibleKind
           ? { ok: true, status: "ignored_ineligible_lead" }
-          : matchedLead.meta_status !== "ok"
-            ? { ok: true, status: "ignored_unconfirmed_lead" }
-            : await sendCrmStageToMeta({
-              eventName: metaEventName,
-              eventTime: metaEventTime,
-              eventId: metaEventId,
-              leadId: metaLeadId,
-              email: matchedLead.email || email,
-              phone: matchedLead.phone || phone,
-              sessionId: matchedLead.session_id,
-              externalId: matchedLead.external_id,
-              fbp: matchedLead.fbp || matchedLead.session_fbp,
-              fbc: matchedLead.fbc || matchedLead.session_fbc,
-            }, env);
+          : await sendCrmStageToMeta({
+            eventName: metaEventName,
+            eventTime: metaEventTime,
+            eventId: metaEventId,
+            leadId: metaLeadId,
+            email: matchedLead.email || email,
+            phone: matchedLead.phone || phone,
+            sessionId: matchedLead.session_id,
+            externalId: matchedLead.external_id,
+            fbp: matchedLead.fbp || matchedLead.session_fbp,
+            fbc: matchedLead.fbc || matchedLead.session_fbc,
+          }, env);
 
   try {
     // tenta casar com um lead nosso: e-mail exato, senão sufixo do telefone (8+ dígitos)
@@ -3247,7 +3245,7 @@ function renderSales(d){
   k.innerHTML=cards.map(function(x){return '<div class="kpi"><div class="label">'+x[0]+'</div><div class="val">'+x[1]+'</div><div class="sub"><b>'+x[2]+'</b></div></div>'}).join("");
   var rows=(d.recent||[]).filter(function(x){return Number(x.won)===1}).slice(0,10);
   if(!rows.length){recent.innerHTML='<div class="empty">Nenhum Crédito Liberado registrado no período.</div>';return;}
-  var statusName=function(s){return s==="ok"?"Purchase entregue":s==="ignored_ineligible_lead"?"Lead não elegível":s==="ignored_unconfirmed_lead"?"Lead sem recibo Meta":s==="no_matched_lead"?"Sem casamento no D1":s||"Pendente";};
+  var statusName=function(s){return s==="ok"?"Purchase entregue":s==="ignored_ineligible_lead"?"Lead não elegível":s==="no_matched_lead"?"Sem casamento no D1":s||"Pendente";};
   recent.innerHTML='<table class="sumtable"><thead><tr><th>Data</th><th style="text-align:left">Etapa</th><th style="text-align:left">Meta</th></tr></thead><tbody>'+rows.map(function(x){return '<tr><td>'+esc(x.received_at||"—")+'</td><td style="text-align:left">'+esc(x.stage||"—")+'</td><td style="text-align:left">'+esc(statusName(x.meta_status))+'</td></tr>';}).join("")+'</tbody></table>';
 }
 

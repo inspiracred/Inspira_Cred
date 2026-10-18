@@ -21,7 +21,7 @@ https://nova.inspiracred.com.br/analytics/rd-webhook?token=<RD_WEBHOOK_TOKEN>&me
 O parametro `meta_crm=1` e um opt-in obrigatorio. A automacao deve chamar essa URL
 quando uma negociacao mudar de etapa. O codigo so envia evento se a combinacao for
 exatamente `Projeto Piloto` + `Credito Liberado` e a negociacao puder ser casada com
-um lead elegivel do site cujo envio Meta original esteja confirmado no D1.
+um lead do site classificado como `home_equity` ou `home_equity_mql` no D1.
 
 O webhook:
 
