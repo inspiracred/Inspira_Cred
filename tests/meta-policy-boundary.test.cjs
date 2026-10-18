@@ -244,4 +244,8 @@ test("dashboard explains and displays the financial Meta routing", () => {
   assert.match(serverSource, /Rural, descarte ou abaixo da faixa mínima/);
   assert.match(serverSource, /eventos <b>Lead<\/b> e <b>LeadQualificado<\/b>/);
   assert.match(serverSource, /não entram no payload da Meta/);
+  assert.match(serverSource, /Vendas do CRM/);
+  assert.match(serverSource, /Projeto Piloto → Crédito Liberado → Meta Purchase/);
+  assert.match(serverSource, /\["Meta Purchase",pretty\(t\.meta_purchase_ok\|\|0\)/);
+  assert.match(serverSource, /custom_data: \{\}/);
 });

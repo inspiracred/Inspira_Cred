@@ -1088,8 +1088,8 @@ async function sendCustomEventToMeta(event, env, ctx) {
   }
 }
 
-// Dados de CRM permanecem internos. O webhook ainda registra as etapas no D1, mas
-// nenhuma etapa do CRM é enviada à Meta: elas podem refletir qualificação financeira.
+// O retorno de venda do CRM usa somente o marco comercial final. Valores financeiros,
+// faixas e motivos de classificação continuam internos e nunca entram no payload Meta.
 function findMetaLeadId(value, depth) {
   if (!value || typeof value !== "object" || (depth || 0) > 6) return "";
   const keys = ["lead_id", "leadid", "leadgen_id", "leadgenid", "facebook_lead_id", "fb_lead_id", "meta_lead_id"];
@@ -1115,8 +1115,19 @@ function findMetaLeadId(value, depth) {
   return "";
 }
 
-function metaCrmEventName(stage, won) {
-  return "";
+function normalizeCrmLabel(value) {
+  return String(value || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+const RD_PURCHASE_PIPELINE_ID = "6a8c96abcbaeaf0020f79f42";
+
+function metaCrmEventName(stage, won, pipeline, pipelineId) {
+  const pipelineName = normalizeCrmLabel(pipeline);
+  const stageName = normalizeCrmLabel(stage);
+  const rightPipeline = pipelineName === "projeto piloto" || String(pipelineId || "") === RD_PURCHASE_PIPELINE_ID;
+  return rightPipeline && stageName === "credito liberado" ? "Purchase" : "";
 }
 
 function metaCrmEventTime(value) {
@@ -1179,8 +1190,88 @@ function normalizeMetaPhone(value) {
   return digits;
 }
 
+function validMetaCrmCookie(value) {
+  return /^fb\.\d+\.\d+\.[^.\s]+(?:\.[^.\s]+)?$/.test(String(value || "")) ? String(value) : "";
+}
+
+async function findRdMatchedLead(email, phone, env) {
+  if (!env.DB) return null;
+  const select = `SELECT l.id, l.name, l.email, l.phone, l.session_id, l.krob_sid,
+      l.fbp, l.fbc, l.fbclid, l.meta_status, l.lead_kind,
+      s.external_id, s.fbp session_fbp, s.fbc session_fbc, s.fbclid session_fbclid,
+      s.created_at click_ts, s.ip_address, s.user_agent
+    FROM leads l LEFT JOIN sessions s ON s.session_id=COALESCE(l.krob_sid,l.session_id)`;
+  try {
+    if (email) {
+      const row = await env.DB.prepare(`${select} WHERE lower(l.email)=lower(?) ORDER BY l.created_at DESC LIMIT 1`)
+        .bind(String(email).trim()).first();
+      if (row) return row;
+    }
+    const digits = normalizeMetaPhone(phone).slice(-8);
+    if (digits.length >= 8) {
+      const row = await env.DB.prepare(`${select} WHERE replace(replace(replace(replace(replace(l.phone,'(',''),')',''),'-',''),' ',''),'+','') LIKE ? ORDER BY l.created_at DESC LIMIT 1`)
+        .bind("%" + digits).first();
+      if (row) return row;
+    }
+  } catch (e) {
+    // Ambientes antigos podem ainda não ter sessions/krob_sid. Mantém o casamento
+    // básico por e-mail sem impedir o registro do webhook.
+    try {
+      if (email) return await env.DB.prepare(`SELECT * FROM leads WHERE lower(email)=lower(?) ORDER BY created_at DESC LIMIT 1`)
+        .bind(String(email).trim()).first();
+    } catch (_) { /* best-effort */ }
+  }
+  return null;
+}
+
 async function sendCrmStageToMeta(event, env) {
-  return { ok: true, status: "policy_skip" };
+  if (event.eventName !== "Purchase") return { ok: true, status: "not_purchase_stage" };
+  if (!env.META_PIXEL_ID || !env.META_ACCESS_TOKEN) return { ok: false, status: "missing_meta_config" };
+
+  const leadId = findMetaLeadId({ lead_id: event.leadId });
+  const emailHash = await sha256Hex(event.email);
+  const phoneHash = await sha256Hex(normalizeMetaPhone(event.phone));
+  const externalHash = await sha256Hex(event.externalId || event.sessionId);
+  const fbp = validMetaCrmCookie(event.fbp);
+  const fbc = validMetaCrmCookie(event.fbc);
+  if (!leadId && !emailHash && !phoneHash && !externalHash && !fbp && !fbc) {
+    return { ok: true, status: "no_match_key" };
+  }
+
+  const userData = {};
+  if (leadId) userData.lead_id = leadId;
+  if (emailHash) userData.em = [emailHash];
+  if (phoneHash) userData.ph = [phoneHash];
+  if (externalHash) userData.external_id = [externalHash];
+  if (fbp) userData.fbp = fbp;
+  if (fbc) userData.fbc = fbc;
+
+  const payload = {
+    data: [{
+      event_name: "Purchase",
+      event_time: event.eventTime || Math.floor(Date.now() / 1000),
+      event_id: event.eventId,
+      action_source: "system_generated",
+      user_data: userData,
+      custom_data: {},
+    }],
+  };
+  if (env.META_TEST_EVENT_CODE) payload.test_event_code = env.META_TEST_EVENT_CODE;
+
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v21.0/${env.META_PIXEL_ID}/events?access_token=${env.META_ACCESS_TOKEN}`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
+    );
+    let result = {};
+    try { result = await response.json(); } catch (_) { /* resposta sem JSON */ }
+    const accepted = response.ok && Number(result.events_received) === 1 && !result.error;
+    return accepted
+      ? { ok: true, status: "ok" }
+      : { ok: false, status: response.ok ? "invalid_response" : `meta_http_${response.status}` };
+  } catch (e) {
+    return { ok: false, status: "network_error" };
+  }
 }
 
 /* ---- MÉTRICAS ---- */
@@ -1808,8 +1899,9 @@ async function handleHealth(request, env) {
 
 /* ---- WEBHOOK DO RD STATION CRM: venda ganha -> faturamento ----
  * Objetivo final do funil: saber quais leads viraram CLIENTE e quanto faturaram.
- * O RD CRM dispara este webhook quando uma Negociação muda de etapa/é marcada como
- * ganha; a gente grava na tabela `rd_sales` e casa com o lead por e-mail/telefone.
+ * O RD CRM dispara este webhook quando uma Negociação muda de etapa. A venda é o
+ * marco exato Projeto Piloto -> Crédito Liberado; a gente grava tudo em `rd_sales`,
+ * casa com o lead original e envia Purchase sem qualquer valor financeiro.
  *
  * Decisões de projeto:
  *  - PÚBLICO (RD não manda Basic Auth) mas com TOKEN na URL, comparado ao secret
@@ -1824,8 +1916,7 @@ async function handleHealth(request, env) {
 async function handleRdWebhook(request, env, context) {
   const url = new URL(request.url);
   const token = url.searchParams.get("token") || "";
-  // Opt-in obrigatorio: este fluxo serve somente para leads originados em
-  // Formularios Instantaneos da Meta. Leads do site usam a CAPI de website.
+  // Opt-in obrigatório para impedir que uma automação genérica do RD ative a CAPI.
   const metaCrmEnabled = url.searchParams.get("meta_crm") === "1";
   if (!env.RD_WEBHOOK_TOKEN) {
     return json({ ok: false, error: "RD_WEBHOOK_TOKEN não configurado no Pages" }, 503);
@@ -1857,25 +1948,39 @@ async function handleRdWebhook(request, env, context) {
     "document.deal_stage.name", "document.stage.name", "document.stage",
     "deal.stage.name", "deal.deal_stage.name", "deal_stage.name", "deal_stage", "stage", "etapa",
   ]);
+  const pipeline = dig(body, [
+    "document.deal_pipeline.name", "document.pipeline.name", "document.deal_stage.deal_pipeline.name",
+    "deal.deal_pipeline.name", "deal.pipeline.name", "deal.stage.deal_pipeline.name",
+    "deal_pipeline.name", "pipeline.name", "funil",
+  ]);
+  const pipelineId = dig(body, [
+    "document.deal_pipeline_id", "document.deal_pipeline.id", "document.deal_pipeline._id",
+    "document.deal_stage.deal_pipeline_id", "deal.deal_pipeline_id", "deal.deal_pipeline.id",
+    "deal_pipeline_id", "pipeline_id",
+  ]);
+  const stageId = dig(body, [
+    "document.deal_stage_id", "document.deal_stage.id", "document.deal_stage._id",
+    "deal.deal_stage_id", "deal.deal_stage.id", "deal_stage_id", "stage_id",
+  ]);
   const value = num(dig(body, [
     "document.amount_total", "document.amount_unique", "deal.amount_total", "deal.amount_montly",
     "deal.value", "deal_value", "amount", "valor", "negociacao.valor",
   ]));
-  const won = /ganh|won|vendid|fechad/i.test(String(stage || "") + " " + String(dig(body, ["document.win", "document.status", "deal.win", "win", "status"]) || "")) ? 1 : 0;
+  const legacyWon = /ganh|won|vendid|fechad/i.test(String(stage || "") + " " + String(dig(body, ["document.win", "document.status", "deal.win", "win", "status"]) || "")) ? 1 : 0;
   let email = dig(body, ["document.contacts.0.emails.0.email", "deal.contacts.0.emails.0.email", "contact.email", "email", "lead.email", "deal.email"]);
   let phone = dig(body, ["document.contacts.0.phones.0.phone", "deal.contacts.0.phones.0.phone", "contact.phone", "phone", "telefone", "lead.phone"]);
   let metaLeadId = findMetaLeadId(body);
-  const metaEligible = rdMetaLeadEvidence(deal) || rdMetaLeadEvidence(body);
-  const metaEventName = metaCrmEventName(stage, won);
+  const metaEventName = metaCrmEventName(stage, legacyWon, pipeline, pipelineId);
+  const won = metaEventName === "Purchase" ? 1 : legacyWon;
   const metaEventTime = metaCrmEventTime(dig(body, [
     "event_timestamp", "event_time", "updated_at", "changed_at", "created_at",
     "document.updated_at", "document.changed_at", "document.created_at",
     "deal.updated_at", "deal.changed_at", "deal.created_at",
     "negociacao.updated_at", "negociacao.created_at",
   ]));
-  const metaEventId = dig(body, ["transaction_uuid", "event_id"]) || (dealId
-    ? `rd:${String(dealId)}:${metaEventName}:${metaEventTime}`
-    : undefined);
+  const metaEventId = dealId && metaEventName
+    ? `rd:${String(dealId)}:${metaEventName}`
+    : (dig(body, ["transaction_uuid", "event_id"]) || undefined);
 
   // crm_deal_updated dispara em qualquer edição. Uma mesma etapa deve chegar à Meta
   // apenas uma vez; alterações de nota, responsável ou valor não são avanço de funil.
@@ -1886,36 +1991,45 @@ async function handleRdWebhook(request, env, context) {
     } catch (e) { /* tabela pode não existir ainda */ }
   }
 
+  // A notificação de mudança de etapa nem sempre traz o contato. Só buscamos na API
+  // do RD quando a etapa é realmente a venda; as demais continuam apenas no D1.
+  if (metaEventName && dealId && (!email || !phone)) {
+    const contact = await fetchRdDealContact(dealId, env);
+    if (contact) {
+      email = email || contact.email;
+      phone = phone || contact.phone;
+      metaLeadId = metaLeadId || contact.leadId;
+    }
+  }
+
+  const matchedLead = metaEventName ? await findRdMatchedLead(email, phone, env) : null;
+  const matchedLeadId = matchedLead && matchedLead.id || null;
+  const eligibleKind = matchedLead && ["home_equity", "home_equity_mql"].includes(String(matchedLead.lead_kind || ""));
   const metaCrm = !metaCrmEnabled
     ? { ok: false, status: "disabled" }
-    : !metaEligible
-      ? { ok: true, status: "ignored_non_meta" }
-      : await sendCrmStageToMeta({
-        eventName: metaEventName,
-        eventTime: metaEventTime,
-        eventId: metaEventId,
-        leadId: metaLeadId,
-        email,
-        phone,
-        }, env);
+    : !metaEventName
+      ? { ok: true, status: "not_purchase_stage" }
+      : !matchedLead
+        ? { ok: true, status: "no_matched_lead" }
+        : !eligibleKind
+          ? { ok: true, status: "ignored_ineligible_lead" }
+          : matchedLead.meta_status !== "ok"
+            ? { ok: true, status: "ignored_unconfirmed_lead" }
+            : await sendCrmStageToMeta({
+              eventName: metaEventName,
+              eventTime: metaEventTime,
+              eventId: metaEventId,
+              leadId: metaLeadId,
+              email: matchedLead.email || email,
+              phone: matchedLead.phone || phone,
+              sessionId: matchedLead.session_id,
+              externalId: matchedLead.external_id,
+              fbp: matchedLead.fbp || matchedLead.session_fbp,
+              fbc: matchedLead.fbc || matchedLead.session_fbc,
+            }, env);
 
   try {
     // tenta casar com um lead nosso: e-mail exato, senão sufixo do telefone (8+ dígitos)
-    let matchedLeadId = null;
-    try {
-      if (email) {
-        const r = await env.DB.prepare(`SELECT id FROM leads WHERE lower(email)=lower(?) ORDER BY created_at DESC LIMIT 1`).bind(String(email)).first();
-        if (r) matchedLeadId = r.id;
-      }
-      if (!matchedLeadId && phone) {
-        const digits = String(phone).replace(/\D/g, "").slice(-8);
-        if (digits.length >= 8) {
-          const r = await env.DB.prepare(`SELECT id FROM leads WHERE replace(replace(replace(replace(phone,'(',''),')',''),'-',''),' ','') LIKE ? ORDER BY created_at DESC LIMIT 1`).bind("%" + digits).first();
-          if (r) matchedLeadId = r.id;
-        }
-      }
-    } catch (e) { /* matching é best-effort */ }
-
     await env.DB.prepare(
       `INSERT INTO rd_sales (deal_id, deal_name, stage, value, won, contact_email, contact_phone, matched_lead_id, meta_status, raw)
        VALUES (?,?,?,?,?,?,?,?,?,?)`
@@ -1932,14 +2046,14 @@ async function handleRdWebhook(request, env, context) {
       stored: false,
       meta_crm: metaCrm,
       hint: "aplicar migration 0009_rd_sales ou verificar payload",
-      parsed: { dealId, stage, value, won, email: !!email, phone: !!phone, metaLeadId: !!metaLeadId },
+      parsed: { dealId, pipeline, pipelineId, stage, stageId, value, won, email: !!email, phone: !!phone, metaLeadId: !!metaLeadId, matchedLeadId },
     }, 200);
   }
   return json({
     ok: true,
     stored: true,
     meta_crm: metaCrm,
-    parsed: { dealId, dealName, stage, value, won, matched: null, metaLeadId: !!metaLeadId },
+    parsed: { dealId, dealName, pipeline, pipelineId, stage, stageId, value, won, matchedLeadId, metaLeadId: !!metaLeadId },
   });
 }
 
@@ -2112,11 +2226,13 @@ async function handleSales(request, env) {
       `SELECT COUNT(*) eventos,
               SUM(CASE WHEN won=1 THEN 1 ELSE 0 END) vendas,
               SUM(CASE WHEN won=1 THEN COALESCE(value,0) ELSE 0 END) faturamento,
-              SUM(CASE WHEN won=1 AND matched_lead_id IS NOT NULL THEN 1 ELSE 0 END) vendas_casadas
+              SUM(CASE WHEN won=1 AND matched_lead_id IS NOT NULL THEN 1 ELSE 0 END) vendas_casadas,
+              SUM(CASE WHEN won=1 AND meta_status='ok' THEN 1 ELSE 0 END) meta_purchase_ok,
+              SUM(CASE WHEN won=1 AND COALESCE(meta_status,'')<>'ok' THEN 1 ELSE 0 END) meta_purchase_pendente
        FROM rd_sales WHERE DATE(received_at) BETWEEN ? AND ?`
     ).bind(start, end).first();
     const recent = (await env.DB.prepare(
-      `SELECT id, deal_name, stage, value, won, contact_email, matched_lead_id, received_at
+      `SELECT id, deal_name, stage, value, won, contact_email, matched_lead_id, meta_status, received_at
        FROM rd_sales WHERE DATE(received_at) BETWEEN ? AND ? ORDER BY received_at DESC LIMIT 50`
     ).bind(start, end).all()).results || [];
     return json({ range: { start, end }, pendente: false, totals: totals || {}, recent });
@@ -2683,6 +2799,11 @@ const DASHBOARD_HTML = `<!doctype html>
       </div>
     </div>
     <div class="card" style="margin-top:18px">
+      <div class="h2row"><h2>Vendas do CRM</h2><span class="hint">Projeto Piloto → Crédito Liberado → Meta Purchase</span></div>
+      <div class="kpis" id="salesKpis"></div>
+      <div id="salesRecent"></div>
+    </div>
+    <div class="card" style="margin-top:18px">
       <div class="h2row"><h2>Eventos enviados / registrados</h2><span class="hint">apoio técnico do período</span></div>
       <div class="kpis" id="eventKpis"></div>
       <div id="eventSummary"></div>
@@ -2993,9 +3114,10 @@ function loadAll(){
   // continuava misturando tráfego pago e orgânico.
   var p2=fetch("${API}/leads"+qs+"&limit=5000"+pageQ+srcQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderLeads);
   var p3=fetch("${API}/campaigns"+qs+pageQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderCampaigns);
+  var p4=fetch("${API}/sales"+qs+"&_="+Date.now()).then(function(r){return r.json()}).then(renderSales);
   var p5=fetch("${API}/health"+qs+pageQ+srcQ+"&_="+Date.now()).then(function(r){return r.json()}).then(renderHealth);
   if(hmPageLoaded)loadPageMap(); // mantém o mapa da página em sincronia com o período
-  Promise.all([p1,p2,p3,p5]).then(function(){
+  Promise.all([p1,p2,p3,p4,p5]).then(function(){
     document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--green-ink)">atualizado às '+new Date().toLocaleTimeString("pt-BR")+'</span>';
   }).catch(function(e){console.error(e);document.getElementById("scope").innerHTML=scopeTxt+' · <span style="color:var(--red-ink)">erro ao carregar</span>';})
   .then(function(){setLoading(false);});
@@ -3105,6 +3227,28 @@ function renderEventSummary(d){
   document.getElementById("eventSummary").innerHTML='<table class="sumtable"><thead><tr><th>Evento / conversão</th><th style="text-align:left">Tipo</th><th>Qtd.</th><th>Sessões / RD</th></tr></thead><tbody>'+
     all.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td style="text-align:left;font-weight:500;color:var(--muted)">'+esc(x.type)+'</td><td class="num">'+pretty(x.n)+'</td><td class="num">'+pretty(x.sessions)+'</td></tr>';}).join("")+
     '</tbody></table>';
+}
+
+function renderSales(d){
+  var k=document.getElementById("salesKpis"), recent=document.getElementById("salesRecent");
+  if(!k||!recent)return;
+  if(!d||d.pendente){
+    k.innerHTML="";
+    recent.innerHTML='<div class="empty">O histórico de vendas do RD ainda não está disponível neste ambiente.</div>';
+    return;
+  }
+  var t=d.totals||{};
+  var cards=[
+    ["Crédito liberado",pretty(t.vendas||0),"vendas reconhecidas no Projeto Piloto"],
+    ["Meta Purchase",pretty(t.meta_purchase_ok||0),"eventos aceitos pela Conversions API"],
+    ["Vendas casadas",pretty(t.vendas_casadas||0),"ligadas ao lead original no D1"],
+    ["Purchase pendente",pretty(t.meta_purchase_pendente||0),"sem envio, sem casamento ou com falha"]
+  ];
+  k.innerHTML=cards.map(function(x){return '<div class="kpi"><div class="label">'+x[0]+'</div><div class="val">'+x[1]+'</div><div class="sub"><b>'+x[2]+'</b></div></div>'}).join("");
+  var rows=(d.recent||[]).filter(function(x){return Number(x.won)===1}).slice(0,10);
+  if(!rows.length){recent.innerHTML='<div class="empty">Nenhum Crédito Liberado registrado no período.</div>';return;}
+  var statusName=function(s){return s==="ok"?"Purchase entregue":s==="ignored_ineligible_lead"?"Lead não elegível":s==="ignored_unconfirmed_lead"?"Lead sem recibo Meta":s==="no_matched_lead"?"Sem casamento no D1":s||"Pendente";};
+  recent.innerHTML='<table class="sumtable"><thead><tr><th>Data</th><th style="text-align:left">Etapa</th><th style="text-align:left">Meta</th></tr></thead><tbody>'+rows.map(function(x){return '<tr><td>'+esc(x.received_at||"—")+'</td><td style="text-align:left">'+esc(x.stage||"—")+'</td><td style="text-align:left">'+esc(statusName(x.meta_status))+'</td></tr>';}).join("")+'</tbody></table>';
 }
 
 function eventBars(rows,max,emptyMsg){
