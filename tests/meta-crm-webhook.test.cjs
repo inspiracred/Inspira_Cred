@@ -30,7 +30,9 @@ const jsonCode = server.slice(
 
 let capturedRequest = null;
 let capturedRdRequest = null;
+let capturedRdRequests = [];
 let rdContactResponse = null;
+let rdCustomFieldResponse = null;
 const backend = vm.createContext({
   crypto: webcrypto,
   TextEncoder,
@@ -38,8 +40,28 @@ const backend = vm.createContext({
   URL,
   Response,
   fetch: async (url, options) => {
+    if (String(url).includes("crm.rdstation.com/api/v1/custom_fields/")) {
+      const request = { url: String(url), options: options || {}, body: options && options.body ? JSON.parse(options.body) : null };
+      capturedRdRequest = request;
+      capturedRdRequests.push(request);
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return rdCustomFieldResponse || {
+            id: "6a8d8f74c6b6ba0022134b4d",
+            label: "Tipologia do imóvel",
+            type: "option",
+            for: "deal",
+            allow_new: false,
+            opts: ["Residencial", "Comercial", "Outro"],
+          };
+        },
+      };
+    }
     if (String(url).includes("crm.rdstation.com/api/v1/deals/")) {
-      capturedRdRequest = { url, options };
+      capturedRdRequest = { url: String(url), options: options || {}, body: options && options.body ? JSON.parse(options.body) : null };
+      capturedRdRequests.push(capturedRdRequest);
       return {
         ok: true,
         status: 200,
@@ -102,6 +124,81 @@ test("normalizes timestamps and Brazilian phone numbers", () => {
   assert.equal(backend.metaCrmEventTime("2026-09-30T12:00:00Z"), 1790769600);
   assert.equal(backend.normalizeMetaPhone("(21) 99999-9999"), "5521999999999");
   assert.equal(backend.normalizeMetaPhone("+55 21 99999-9999"), "5521999999999");
+});
+
+test("maps every captured form field to the real Projeto Piloto deal fields", () => {
+  const mapped = backend.rdDealValuesFromLead({
+    source: "home_equity_lp",
+    property_type: "imóvel rural",
+    property_value: 1200000,
+    credit_value: 600000,
+    situacao_imovel: "Financiado",
+    documentacao_ok: "Sim",
+    utm_source: "meta_ads",
+    utm_medium: "facebook_feed",
+    utm_campaign: "campanha-rural",
+    utm_content: "criativo-01",
+    utm_term: "publico-aberto",
+  });
+  assert.equal(mapped["6a8d8f74c6b6ba0022134b4d"], "Rural");
+  assert.equal(mapped["667bf1228635d700220ab178"], "1200000");
+  assert.equal(mapped["6a8d90147e10a60025ff55d8"], "Não");
+  assert.equal(mapped["667bf189c5b6ed0022d683b9"], "Sim");
+  assert.equal(mapped["6a6040e77f7d3b1dfaf73a57"], "Home Equity");
+  assert.equal(mapped["6a60410bb3c062002464c426"], "campanha-rural");
+  assert.equal(mapped["6a604133b867c804a2095955"], "criativo-01");
+  assert.equal(mapped["6a60411e5de92300329f858d"], "facebook_feed");
+  assert.equal(mapped["6a6041507c7cc3001d5b93fd"], "meta_ads");
+  assert.equal(mapped["6a604164a24ea200300c3e5c"], "publico-aberto");
+});
+
+test("syncs missing CRM fields, credit amount and enables new property options", async () => {
+  capturedRdRequest = null;
+  capturedRdRequests = [];
+  rdCustomFieldResponse = {
+    id: "6a8d8f74c6b6ba0022134b4d",
+    label: "Tipologia do imóvel",
+    type: "option",
+    for: "deal",
+    allow_new: false,
+    opts: ["Residencial", "Comercial", "Outro"],
+    order: 1,
+    visible: true,
+  };
+  const result = await backend.syncLeadToRdDeal("deal-sync-42", {
+    source: "landing_page",
+    property_type: "Rural",
+    property_value: 1000000,
+    credit_value: 500000,
+    imovel_quitado: "Sim",
+    documentacao_ok: "Não",
+    utm_source: "meta_ads",
+    utm_medium: "paid_social",
+    utm_campaign: "campanha-qa",
+    utm_content: "anuncio-qa",
+    utm_term: "segmento-qa",
+  }, {
+    amount_unique: 0,
+    deal_custom_fields: [{
+      custom_field_id: "667bf1228635d700220ab178",
+      custom_field: { id: "667bf1228635d700220ab178", label: "Valor do imóvel" },
+      value: "1000000",
+    }],
+  }, { RD_CRM_API_TOKEN: "rd-token" });
+
+  assert.deepEqual({ ...result }, { ok: true, status: "synced", changed: 10 });
+  const optionUpdate = capturedRdRequests.find((request) => request.url.includes("/custom_fields/") && request.options.method === "PUT");
+  assert.ok(optionUpdate);
+  assert.equal(optionUpdate.body.custom_field.allow_new, true);
+  assert.ok(optionUpdate.body.custom_field.options.includes("Rural"));
+  const dealUpdate = capturedRdRequests.find((request) => request.url.includes("/deals/deal-sync-42") && request.options.method === "PUT");
+  assert.ok(dealUpdate);
+  assert.equal(dealUpdate.body.deal.amount_unique, 500000);
+  const fields = Object.fromEntries(dealUpdate.body.deal.deal_custom_fields.map((field) => [field.custom_field_id, field.value]));
+  assert.equal(fields["6a8d8f74c6b6ba0022134b4d"], "Rural");
+  assert.equal(fields["6a8d90147e10a60025ff55d8"], "Sim");
+  assert.equal(fields["667bf189c5b6ed0022d683b9"], "Não");
+  assert.equal(fields["6a6041507c7cc3001d5b93fd"], "meta_ads");
 });
 
 test("CRM sender emits Purchase without financial or classification data", async () => {

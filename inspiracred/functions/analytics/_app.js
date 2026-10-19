@@ -1123,10 +1123,31 @@ function normalizeCrmLabel(value) {
 
 const RD_PURCHASE_PIPELINE_ID = "6a8c96abcbaeaf0020f79f42";
 
-function metaCrmEventName(stage, won, pipeline, pipelineId) {
+// Campos reais da entidade Negociação no RD CRM (Projeto Piloto). A conversão do
+// RD Marketing cria o negócio, mas a antiga "combinação de campos" só copiava Valor
+// do imóvel e Formulário de Origem. O webhook abaixo completa o negócio diretamente
+// pela API do CRM, usando o lead autoritativo salvo no D1.
+const RD_DEAL_SYNC_FIELDS = Object.freeze({
+  propertyType: "6a8d8f74c6b6ba0022134b4d",       // Tipologia do imóvel (option)
+  propertyValue: "667bf1228635d700220ab178",      // Valor do imóvel (text)
+  propertyPaid: "6a8d90147e10a60025ff55d8",       // Imóvel quitado? (option)
+  documentation: "667bf189c5b6ed0022d683b9",      // Documentação ok? (text)
+  formOrigin: "6a6040e77f7d3b1dfaf73a57",         // Formulário de Origem (text)
+  utmCampaign: "6a60410bb3c062002464c426",        // UTM Campaign (text)
+  utmContent: "6a604133b867c804a2095955",         // UTM Content (text)
+  utmMedium: "6a60411e5de92300329f858d",          // UTM Medium (text)
+  utmSource: "6a6041507c7cc3001d5b93fd",          // UTM Source (text)
+  utmTerm: "6a604164a24ea200300c3e5c",            // UTM Term (text)
+});
+
+function isRdProjectPilot(pipeline, pipelineId) {
   const pipelineName = normalizeCrmLabel(pipeline);
+  return pipelineName === "projeto piloto" || String(pipelineId || "") === RD_PURCHASE_PIPELINE_ID;
+}
+
+function metaCrmEventName(stage, won, pipeline, pipelineId) {
   const stageName = normalizeCrmLabel(stage);
-  const rightPipeline = pipelineName === "projeto piloto" || String(pipelineId || "") === RD_PURCHASE_PIPELINE_ID;
+  const rightPipeline = isRdProjectPilot(pipeline, pipelineId);
   return rightPipeline && stageName === "credito liberado" ? "Purchase" : "";
 }
 
@@ -1184,6 +1205,132 @@ async function fetchRdDealContact(dealId, env) {
   }
 }
 
+function normalizeRdDealPropertyType(value) {
+  const normalized = normalizeCrmLabel(value);
+  const values = {
+    residencial: "Residencial",
+    comercial: "Comercial",
+    industrial: "Industrial",
+    rural: "Rural",
+    "imovel rural": "Rural",
+    casa: "Casa",
+    apartamento: "Apartamento",
+    terreno: "Terreno",
+    outro: "Outro",
+  };
+  return values[normalized] || (value ? String(value).trim() : "");
+}
+
+function normalizeRdDealYesNo(value, fallback) {
+  const normalized = normalizeCrmLabel(value || fallback);
+  if (["sim", "quitado", "quitada"].includes(normalized)) return "Sim";
+  if (["nao", "financiado", "financiada"].includes(normalized)) return "Não";
+  return value ? String(value).trim() : "";
+}
+
+function rdDealFormOrigin(source) {
+  return ({
+    landing_page: "Simulação",
+    home_equity_lp: "Home Equity",
+    home_equity_form: "Typeform",
+    home_institucional: "Site Institucional",
+  })[String(source || "")] || "";
+}
+
+function rdDealValuesFromLead(lead) {
+  if (!lead) return {};
+  const value = (input) => input == null ? "" : String(input).trim();
+  const propertyValue = Number(lead.property_value);
+  const paid = normalizeRdDealYesNo(lead.imovel_quitado, lead.situacao_imovel);
+  const documentation = value(lead.possui_matricula || lead.documentacao_ok);
+  return {
+    [RD_DEAL_SYNC_FIELDS.propertyType]: normalizeRdDealPropertyType(lead.property_type),
+    [RD_DEAL_SYNC_FIELDS.propertyValue]: Number.isFinite(propertyValue) && propertyValue > 0 ? String(propertyValue) : "",
+    [RD_DEAL_SYNC_FIELDS.propertyPaid]: paid,
+    [RD_DEAL_SYNC_FIELDS.documentation]: documentation,
+    [RD_DEAL_SYNC_FIELDS.formOrigin]: rdDealFormOrigin(lead.source),
+    [RD_DEAL_SYNC_FIELDS.utmCampaign]: value(lead.utm_campaign),
+    [RD_DEAL_SYNC_FIELDS.utmContent]: value(lead.utm_content),
+    [RD_DEAL_SYNC_FIELDS.utmMedium]: value(lead.utm_medium),
+    [RD_DEAL_SYNC_FIELDS.utmSource]: value(lead.utm_source),
+    [RD_DEAL_SYNC_FIELDS.utmTerm]: value(lead.utm_term),
+  };
+}
+
+async function ensureRdDealOptionValue(fieldId, optionValue, env) {
+  if (!fieldId || !optionValue || !env.RD_CRM_API_TOKEN) return { ok: true, status: "not_needed" };
+  const token = encodeURIComponent(env.RD_CRM_API_TOKEN);
+  const endpoint = `https://crm.rdstation.com/api/v1/custom_fields/${encodeURIComponent(fieldId)}?token=${token}`;
+  try {
+    const response = await fetch(endpoint, { headers: { Accept: "application/json" } });
+    if (!response.ok) return { ok: false, status: `field_get_http_${response.status}` };
+    const field = await response.json();
+    const options = Array.isArray(field.opts) ? field.opts.map(String) : [];
+    if (options.includes(optionValue) || field.allow_new === true) return { ok: true, status: "ready" };
+    const update = await fetch(endpoint, {
+      method: "PUT",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        custom_field: {
+          label: field.label || "Tipologia do imóvel",
+          type: field.type || "option",
+          for: field.for || "deal",
+          unique: !!field.unique,
+          required: !!field.required,
+          visible: field.visible !== false,
+          allow_new: true,
+          options: options.concat([optionValue]),
+          order: Number.isFinite(Number(field.order)) ? Number(field.order) : 0,
+        },
+      }),
+    });
+    return update.ok
+      ? { ok: true, status: "option_enabled" }
+      : { ok: false, status: `field_put_http_${update.status}` };
+  } catch (e) {
+    return { ok: false, status: "field_network_error" };
+  }
+}
+
+async function syncLeadToRdDeal(dealId, lead, document, env) {
+  if (!dealId || !lead) return { ok: true, status: "no_matched_lead" };
+  if (!env.RD_CRM_API_TOKEN) return { ok: false, status: "missing_crm_token" };
+
+  const desired = rdDealValuesFromLead(lead);
+  const current = new Map(rdCustomFieldEntries(document).map((entry) => [entry.id, entry.value]));
+  const changes = Object.entries(desired)
+    .filter(([, fieldValue]) => fieldValue !== "")
+    .filter(([fieldId, fieldValue]) => String(current.get(fieldId) || "") !== String(fieldValue))
+    .map(([custom_field_id, fieldValue]) => ({ custom_field_id, value: fieldValue }));
+  const creditValue = Number(lead.credit_value);
+  const currentAmount = Number(document && (document.amount_unique || document.amount_total) || 0);
+  const amountChanged = Number.isFinite(creditValue) && creditValue > 0 && currentAmount !== creditValue;
+  if (!changes.length && !amountChanged) return { ok: true, status: "already_synced", changed: 0 };
+
+  const propertyType = desired[RD_DEAL_SYNC_FIELDS.propertyType];
+  if (changes.some((item) => item.custom_field_id === RD_DEAL_SYNC_FIELDS.propertyType)) {
+    const option = await ensureRdDealOptionValue(RD_DEAL_SYNC_FIELDS.propertyType, propertyType, env);
+    if (!option.ok) return { ok: false, status: option.status, changed: 0 };
+  }
+
+  const deal = {};
+  if (changes.length) deal.deal_custom_fields = changes;
+  if (amountChanged) deal.amount_unique = creditValue;
+  try {
+    const endpoint = `https://crm.rdstation.com/api/v1/deals/${encodeURIComponent(String(dealId))}?token=${encodeURIComponent(env.RD_CRM_API_TOKEN)}`;
+    const response = await fetch(endpoint, {
+      method: "PUT",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ deal }),
+    });
+    return response.ok
+      ? { ok: true, status: "synced", changed: changes.length + (amountChanged ? 1 : 0) }
+      : { ok: false, status: `deal_put_http_${response.status}`, changed: 0 };
+  } catch (e) {
+    return { ok: false, status: "deal_network_error", changed: 0 };
+  }
+}
+
 function normalizeMetaPhone(value) {
   let digits = String(value || "").replace(/\D/g, "");
   if ((digits.length === 10 || digits.length === 11) && !digits.startsWith("55")) digits = "55" + digits;
@@ -1197,7 +1344,10 @@ function validMetaCrmCookie(value) {
 async function findRdMatchedLead(email, phone, env) {
   if (!env.DB) return null;
   const select = `SELECT l.id, l.name, l.email, l.phone, l.session_id, l.krob_sid,
-      l.fbp, l.fbc, l.fbclid, l.meta_status, l.lead_kind,
+      l.fbp, l.fbc, l.fbclid, l.meta_status, l.lead_kind, l.source,
+      l.property_type, l.property_value, l.credit_value, l.imovel_quitado,
+      l.documentacao_ok, l.situacao_imovel, l.possui_matricula,
+      l.utm_source, l.utm_medium, l.utm_campaign, l.utm_content, l.utm_term,
       s.external_id, s.fbp session_fbp, s.fbc session_fbc, s.fbclid session_fbclid,
       s.created_at click_ts, s.ip_address, s.user_agent
     FROM leads l LEFT JOIN sessions s ON s.session_id=COALESCE(l.krob_sid,l.session_id)`;
@@ -1971,6 +2121,7 @@ async function handleRdWebhook(request, env, context) {
   let phone = dig(body, ["document.contacts.0.phones.0.phone", "deal.contacts.0.phones.0.phone", "contact.phone", "phone", "telefone", "lead.phone"]);
   let metaLeadId = findMetaLeadId(body);
   const metaEventName = metaCrmEventName(stage, legacyWon, pipeline, pipelineId);
+  const projectPilotDeal = isRdProjectPilot(pipeline, pipelineId);
   const won = metaEventName === "Purchase" ? 1 : legacyWon;
   const metaEventTime = metaCrmEventTime(dig(body, [
     "event_timestamp", "event_time", "updated_at", "changed_at", "created_at",
@@ -1991,9 +2142,9 @@ async function handleRdWebhook(request, env, context) {
     } catch (e) { /* tabela pode não existir ainda */ }
   }
 
-  // A notificação de mudança de etapa nem sempre traz o contato. Só buscamos na API
-  // do RD quando a etapa é realmente a venda; as demais continuam apenas no D1.
-  if (metaEventName && dealId && (!email || !phone)) {
+  // A notificação do RD normalmente não traz contato. No Projeto Piloto precisamos
+  // dele também no Novo Lead para casar com o D1 e completar os campos do negócio.
+  if ((metaEventName || projectPilotDeal) && dealId && (!email || !phone)) {
     const contact = await fetchRdDealContact(dealId, env);
     if (contact) {
       email = email || contact.email;
@@ -2002,8 +2153,13 @@ async function handleRdWebhook(request, env, context) {
     }
   }
 
-  const matchedLead = metaEventName ? await findRdMatchedLead(email, phone, env) : null;
+  const matchedLead = (metaEventName || projectPilotDeal) ? await findRdMatchedLead(email, phone, env) : null;
   const matchedLeadId = matchedLead && matchedLead.id || null;
+  const crmSync = !projectPilotDeal
+    ? { ok: true, status: "outside_project_pilot", changed: 0 }
+    : !matchedLead
+      ? { ok: true, status: "no_matched_lead", changed: 0 }
+      : await syncLeadToRdDeal(dealId, matchedLead, deal, env);
   const eligibleKind = matchedLead && ["home_equity", "home_equity_mql"].includes(String(matchedLead.lead_kind || ""));
   const metaCrm = !metaCrmEnabled
     ? { ok: false, status: "disabled" }
@@ -2043,6 +2199,7 @@ async function handleRdWebhook(request, env, context) {
       ok: metaCrm.ok,
       stored: false,
       meta_crm: metaCrm,
+      crm_sync: crmSync,
       hint: "aplicar migration 0009_rd_sales ou verificar payload",
       parsed: { dealId, pipeline, pipelineId, stage, stageId, value, won, email: !!email, phone: !!phone, metaLeadId: !!metaLeadId, matchedLeadId },
     }, 200);
@@ -2051,6 +2208,7 @@ async function handleRdWebhook(request, env, context) {
     ok: true,
     stored: true,
     meta_crm: metaCrm,
+    crm_sync: crmSync,
     parsed: { dealId, dealName, pipeline, pipelineId, stage, stageId, value, won, matchedLeadId, metaLeadId: !!metaLeadId },
   });
 }
