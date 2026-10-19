@@ -37,6 +37,7 @@ function setup(transport = "tracker", overrides = {}) {
   const window = {
     location, matchMedia: () => ({ matches: true }), addEventListener() {},
     inspiraTrack: transport.startsWith("missing") ? null : {
+      leadConfirmed(payload) { leads.push(payload); return Promise.resolve(transport === "tracker" || transport === "event-throws"); },
       lead(payload) { leads.push(payload); return transport === "tracker" || transport === "event-throws"; },
       event(name, props) { if (transport === "event-throws") throw new Error("event mock"); events.push({ name, props }); },
     },
@@ -49,7 +50,7 @@ function setup(transport = "tracker", overrides = {}) {
     fetch(url, options) {
       requests.push({ url, payload: JSON.parse(options.body) });
       if (transport === "reject") return Promise.reject(new Error("offline mock"));
-      return Promise.resolve({ ok: transport === "fetch" });
+      return Promise.resolve({ ok: transport.includes("fetch") });
     },
     setTimeout(callback) { timers.push(callback); },
   });
@@ -65,6 +66,13 @@ test("valid submission preserves MQL data and leaves Meta routing to the server"
   assert.equal(Object.hasOwn(r.leads[0], "meta_events"), false);
   assert.equal(JSON.stringify(r.events), '[{"name":"simulation_complete","props":{"source":"home_equity_lp"}}]');
   assert.equal(r.timers.length, 1);
+  r.timers[0]();
+  assert.match(r.window.location.href, /^https:\/\/wa\.me\/5521977340731\?text=/);
+  const message = decodeURIComponent(r.window.location.href.split("?text=")[1]);
+  assert.match(message, /Nome: QA Local/);
+  assert.match(message, /Valor do imóvel: R\$\s*1\.000\.000/);
+  assert.match(message, /Valor desejado: R\$\s*500\.000/);
+  assert.deepEqual(r.events.map((event) => event.name), ["simulation_complete", "whatsapp_open"]);
 });
 
 test("low-value submission remains classified without a client-selected event", async () => {
@@ -98,9 +106,9 @@ test("failed fallback handoff remains retryable and never completes", async () =
 });
 
 test("fallback payload also leaves the Meta event to the server", async () => {
-  const r = setup("missing-beacon");
+  const r = setup("missing-fetch");
   await r.submit();
-  const payload = JSON.parse(await r.requests[0].blob.text());
+  const payload = r.requests[0].payload;
   assert.equal(Object.hasOwn(payload, "meta_events"), false);
   assert.equal(payload.lead_kind, "home_equity_mql");
 });

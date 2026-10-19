@@ -137,8 +137,8 @@
               <p class="form-message" id="form-message"></p>
               <div class="form-foot">
                 <div class="form-foot-left">
-                  <button class="button button-lg form-submit-btn" type="submit">Ver minha simulação</button>
-                  <p class="form-note">A simulação é gratuita, preliminar e sujeita à aprovação de crédito.</p>
+                  <button class="button button-lg form-submit-btn" type="submit">Enviar e falar no WhatsApp</button>
+                  <p class="form-note">Após registrar sua simulação, abriremos o WhatsApp para você iniciar o atendimento.</p>
                 </div>
                 <div class="form-trust">
                   <span><svg class="tr-lock" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Dados protegidos</span>
@@ -427,8 +427,8 @@
            pro /analytics/track: o servidor grava no D1 e dispara RD + CAPI do mesmo jeito.
            Mesma função nas 4 páginas com formulário — nenhum lead depende do script de rastreio. */
         function enviarLead(payload) {
-          if (window.inspiraTrack && typeof window.inspiraTrack.lead === "function") {
-            try { window.inspiraTrack.lead(payload); return; } catch (e) {}
+          if (window.inspiraTrack && typeof window.inspiraTrack.leadConfirmed === "function") {
+            try { return window.inspiraTrack.leadConfirmed(payload); } catch (e) {}
           }
           var body = { type: "lead", url: location.href, page_name: window.IC_PAGE || payload.source || "other" };
           for (var k in payload) if (Object.prototype.hasOwnProperty.call(payload, k)) body[k] = payload[k];
@@ -438,11 +438,14 @@
             var q = new URLSearchParams(location.search);
             ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "meta_campaign_id", "meta_adset_id", "meta_ad_id"].forEach(function (u) { if (body[u] == null && q.get(u)) body[u] = q.get(u); });
           } catch (e) {}
-          var json = JSON.stringify(body);
           try {
-            if (navigator.sendBeacon && navigator.sendBeacon("/analytics/track", new Blob([json], { type: "text/plain;charset=UTF-8" }))) return;
-          } catch (e) {}
-          try { fetch("/analytics/track", { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: json, keepalive: true }); } catch (e) {}
+            return fetch("/analytics/track", {
+              method: "POST",
+              headers: { "Content-Type": "text/plain;charset=UTF-8" },
+              body: JSON.stringify(body),
+              keepalive: true
+            }).then(function (response) { return response.ok; }, function () { return false; });
+          } catch (e) { return Promise.resolve(false); }
         }
 
         var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -483,6 +486,21 @@
             currency: "BRL",
             maximumFractionDigits: 0
           }).format(Math.max(0, Number(value) || 0));
+        }
+
+        function whatsappUrl(lines) {
+          return "https://wa.me/5521977340731?text=" + encodeURIComponent(lines.filter(Boolean).join("\n"));
+        }
+
+        function trackWhatsappHandoff() {
+          try {
+            if (window.inspiraTrack) {
+              window.inspiraTrack.event("whatsapp_open", {
+                source: "landing_page",
+                trigger: "form_success"
+              });
+            }
+          } catch (e) {}
         }
 
         function payment(principal) {
@@ -597,8 +615,9 @@
             return ok;
           }
 
-          form.addEventListener("submit", function (event) {
+          form.addEventListener("submit", async function (event) {
             event.preventDefault();
+            if (submitBtn && submitBtn.disabled) return;
             showMessage("", "error");
 
             var data = {
@@ -615,6 +634,11 @@
             if (!validate(data)) {
               showMessage("Revise os campos destacados para ver sua simulação.", "error");
               return;
+            }
+
+            if (submitBtn) {
+              submitBtn.disabled = true;
+              submitBtn.textContent = "Enviando…";
             }
 
             var maxCredit = Math.floor(data.propertyValue * 0.6 / 1000) * 1000;
@@ -637,8 +661,9 @@
 
             // Todo contato válido segue completo ao D1/RD. A função do servidor decide
             // se a Meta recebe nenhum evento, Lead ou MQL.
+            var accepted = false;
             try {
-              enviarLead({
+              accepted = await enviarLead({
                   source: "landing_page",
                   form_type: "home_equity_simulator",
                   lead_kind: kind,
@@ -657,6 +682,15 @@
                   estimated_installment: Math.round(installment || 0)
                 });
             } catch (e) {}
+
+            if (!accepted) {
+              if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Enviar e falar no WhatsApp";
+              }
+              showMessage("Não foi possível enviar agora. Tente novamente em instantes.", "error");
+              return;
+            }
             if (ruralProperty) {
               try {
                 if (window.inspiraTrack) {
@@ -676,20 +710,29 @@
               }
             } catch (e) {}
 
-            // Mesmo fluxo da LP de Home Equity: qualificado vai pra página de obrigado com
-            // o botão do consultor no WhatsApp; baixo valor vai pra de não elegível. O
-            // atraso deixa o beacon do lead e o Pixel saírem antes da navegação (a página
-            // de obrigado não dispara conversão). O lead chega no RD de qualquer jeito,
-            // pelo servidor, então o redirecionamento não depende dele.
             if (submitBtn) {
               submitBtn.disabled = true;
-              submitBtn.textContent = "Enviando…";
+              submitBtn.textContent = kind === "home_equity" || kind === "home_equity_mql"
+                ? "Abrindo WhatsApp…"
+                : "Enviando…";
             }
             setTimeout(function () {
-              window.location.href = kind === "baixo_valor" || kind === "descarte" || kind === "rural"
-                ? "/obrigado/nao-elegivel/"
-                : "/obrigado/simulacao/";
-            }, 900);
+              if (kind === "baixo_valor" || kind === "descarte" || kind === "rural") {
+                window.location.href = "/obrigado/nao-elegivel/";
+                return;
+              }
+              trackWhatsappHandoff();
+              window.location.href = whatsappUrl([
+                "Olá! Acabei de preencher o formulário da InspiraCred.",
+                "",
+                "Nome: " + data.name,
+                "Tipo de imóvel: " + data.propertyType,
+                "Valor do imóvel: " + displayMoney(data.propertyValue),
+                "Valor desejado: " + displayMoney(data.creditValue),
+                "Imóvel quitado: " + (data.financed ? "Não" : "Sim"),
+                "Documentação regularizada: " + (data.docsOk ? "Sim" : "Não")
+              ]);
+            }, 250);
           });
         }
 

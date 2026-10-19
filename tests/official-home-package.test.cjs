@@ -32,8 +32,10 @@ test("assets, tracking e sucesso ficam explícitos sem alterar a raiz de nova", 
   assert.match(html, /https:\/\/nova\.inspiracred\.com\.br\/termos-de-uso/);
   assert.doesNotMatch(html, /href="\/termos-de-uso\//);
   assert.match(script, /https:\/\/nova\.inspiracred\.com\.br\/analytics\/track/);
-  assert.match(script, /https:\/\/nova\.inspiracred\.com\.br\/obrigado\/home\//);
   assert.match(script, /https:\/\/nova\.inspiracred\.com\.br\/obrigado\/home-nao-elegivel\//);
+  assert.match(script, /https:\/\/wa\.me\/5521977340731\?text=/);
+  assert.match(script, /leadConfirmed/);
+  assert.match(script, /whatsapp_open/);
   assert.doesNotMatch(script, /sendBeacon\("\/analytics\/track"/);
   assert.doesNotMatch(script, /fetch\("\/analytics\/track"/);
   assert.match(script, /simulation_discard/);

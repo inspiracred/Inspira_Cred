@@ -26,7 +26,7 @@ function element(value = "") {
   };
 }
 
-function submit(value, tracking = "ok", overrides = {}) {
+async function submit(value, tracking = "ok", overrides = {}) {
   const fields = {
     nome: ["f-nome", "Teste Local"], email: ["f-email", "teste@example.com"],
     celular: ["f-celular", "(21) 99999-9999"], estado: ["f-estado", "RJ"],
@@ -64,7 +64,8 @@ function submit(value, tracking = "ok", overrides = {}) {
     matchMedia: () => ({ matches: true, addEventListener() {} }),
     addEventListener() {}, location: { search: "?utm_source=teste-local", href: "/home/" },
     inspiraTrack: tracking === "missing" ? null : {
-      lead(data) { if (tracking === "throw") throw Error("offline"); leads.push(data); },
+      leadConfirmed(data) { if (tracking === "throw") throw Error("offline"); leads.push(data); return Promise.resolve(true); },
+      lead(data) { if (tracking === "throw") throw Error("offline"); leads.push(data); return true; },
       event(...args) { events.push(args); },
     },
   };
@@ -79,13 +80,13 @@ function submit(value, tracking = "ok", overrides = {}) {
   });
   vm.runInContext(client, context);
   const send = () => form.listeners.submit({ preventDefault() {} });
-  send();
+  await send();
   return { window, leads, events, button, inputs, errors, message: ids["form-message"], send };
 }
 
 for (const credit of [1, 99999, 100000, 500000]) {
-  test("home sem tipo de solução / R$ " + credit, () => {
-    const result = submit(credit.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
+  test("home sem tipo de solução / R$ " + credit, async () => {
+    const result = await submit(credit.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
     assert.equal(result.leads.length, 1);
     const payload = result.leads[0];
     const kind = credit < 100000 ? "baixo_valor" : "institucional";
@@ -94,39 +95,47 @@ for (const credit of [1, 99999, 100000, 500000]) {
     assert.equal(payload.utm_source, "teste-local");
     assert.equal(Object.hasOwn(payload, "solucao"), false);
     assert.equal(Object.hasOwn(payload, "meta_events"), false, "server owns Meta routing");
-    assert.equal(result.window.location.href, credit < 100000 ? "/obrigado/home-nao-elegivel/" : "/obrigado/home/");
+    if (credit < 100000) {
+      assert.equal(result.window.location.href, "/obrigado/home-nao-elegivel/");
+    } else {
+      assert.match(result.window.location.href, /^https:\/\/wa\.me\/5521977340731\?text=/);
+      const message = decodeURIComponent(result.window.location.href.split("?text=")[1]);
+      assert.match(message, /Nome: Teste Local/);
+      assert.match(message, new RegExp("Valor desejado: R\\$\\s*" + credit.toLocaleString("pt-BR")));
+      assert.deepEqual(result.events.map(([name]) => name), ["whatsapp_open"]);
+    }
     assert.equal(backend.normalizeLeadKind(payload), kind);
     assert.equal(backend.shouldSendLeadToRD(kind), true);
-    result.send();
+    await result.send();
     assert.equal(result.leads.length, 1, "double submit must not duplicate lead");
   });
 }
 
 for (const value of ["", "R$ 0,00"]) {
-  test("reject empty or zero credit: " + value, () => {
-    const r = submit(value);
+  test("reject empty or zero credit: " + value, async () => {
+    const r = await submit(value);
     assert.equal(r.leads.length, 0);
     assert.equal(r.window.location.href, "/home/");
     assert.ok(r.errors.valor_credito.textContent);
   });
 }
 for (const overrides of [{ email: "invalido" }, { celular: "123" }, { cidade: "" }, { estado: "" }, { nome: "" }]) {
-  test("validate required contact: " + JSON.stringify(overrides), () => {
-    const r = submit("R$ 100.000,00", "ok", overrides);
+  test("validate required contact: " + JSON.stringify(overrides), async () => {
+    const r = await submit("R$ 100.000,00", "ok", overrides);
     assert.equal(r.leads.length, 0);
     assert.equal(r.window.location.href, "/home/");
   });
 }
 for (const state of ["missing", "throw"]) {
-  test("keep form usable when tracking is " + state, () => {
-    const r = submit("R$ 100.000,00", state);
+  test("keep form usable when tracking is " + state, async () => {
+    const r = await submit("R$ 100.000,00", state);
     assert.equal(r.window.location.href, "/home/");
     assert.equal(r.button.disabled, false);
     assert.ok(r.message.classList.contains("is-visible"));
   });
 }
-test("home preserva imóvel rural no D1/RD sem selecionar evento Meta", () => {
-  const r = submit("R$ 500.000,00", "ok", { tipo_imovel: "Rural" });
+test("home preserva imóvel rural no D1/RD sem selecionar evento Meta", async () => {
+  const r = await submit("R$ 500.000,00", "ok", { tipo_imovel: "Rural" });
   assert.equal(r.leads.length, 1);
   assert.equal(r.leads[0].lead_kind, "rural");
   assert.equal(backend.normalizeLeadKind(r.leads[0]), "rural");

@@ -10,8 +10,14 @@
      pro /analytics/track: o servidor grava no D1 e dispara RD + CAPI do mesmo jeito.
      Mesma função nas 4 páginas com formulário — nenhum lead depende do script de rastreio. */
   function enviarLead(payload) {
+    if (window.inspiraTrack && typeof window.inspiraTrack.leadConfirmed === "function") {
+      try { return window.inspiraTrack.leadConfirmed(payload); } catch (e) {}
+    }
     if (window.inspiraTrack && typeof window.inspiraTrack.lead === "function") {
-      try { return window.inspiraTrack.lead(payload); } catch (e) {}
+      try {
+        var queued = window.inspiraTrack.lead(payload);
+        return queued && typeof queued.then === "function" ? queued : Promise.resolve(queued !== false);
+      } catch (e) {}
     }
     var body = { type: "lead", url: location.href, page_name: window.IC_PAGE || payload.source || "other" };
     for (var k in payload) if (Object.prototype.hasOwnProperty.call(payload, k)) body[k] = payload[k];
@@ -21,12 +27,8 @@
       var q = new URLSearchParams(location.search);
       ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "meta_campaign_id", "meta_adset_id", "meta_ad_id"].forEach(function (u) { if (body[u] == null && q.get(u)) body[u] = q.get(u); });
     } catch (e) {}
-    var json = JSON.stringify(body);
     try {
-      if (navigator.sendBeacon && navigator.sendBeacon("/analytics/track", new Blob([json], { type: "text/plain;charset=UTF-8" }))) return true;
-    } catch (e) {}
-    try {
-      return fetch("/analytics/track", { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: json, keepalive: true })
+      return fetch("/analytics/track", { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: JSON.stringify(body), keepalive: true })
         .then(function (response) { return response.ok; }, function () { return false; });
     } catch (e) { return false; }
   }
@@ -51,6 +53,29 @@
     function parseMoney(value) {
       var digits = value.replace(/\D/g, "");
       return digits ? Number(digits) / 100 : 0;
+    }
+
+    function displayMoney(value) {
+      return new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+        maximumFractionDigits: 0
+      }).format(Math.max(0, Number(value) || 0));
+    }
+
+    function whatsappUrl(lines) {
+      return "https://wa.me/5521977340731?text=" + encodeURIComponent(lines.filter(Boolean).join("\n"));
+    }
+
+    function trackWhatsappHandoff() {
+      try {
+        if (window.inspiraTrack && typeof window.inspiraTrack.event === "function") {
+          window.inspiraTrack.event("whatsapp_open", {
+            source: "home_equity_lp",
+            trigger: "form_success"
+          });
+        }
+      } catch (e) {}
     }
     function isRuralProperty(value) {
       return String(value || "").trim().toLowerCase() === "rural";
@@ -326,19 +351,32 @@
         }
       } catch (e) {}
 
-      // Mostra o sucesso inline por um instante e redireciona pra página de obrigado.
-      // O atraso deixa o encaminhamento local concluir antes da navegação; a
-      // conversão já foi enviada acima (a página de obrigado não dispara evento).
+      var creditValue = parseMoney(data.valor_emprestimo);
+      var propertyValue = parseMoney(data.valor_imovel);
+      var isAuto = data.tipo_bem === "Automóvel";
+      // Mesma regra do envio acima: só o valor decide (financiado não desqualifica).
+      var isLead = isAuto || (creditValue >= MIN_RD_EMP && propertyValue >= MIN_RD_IMOVEL);
+      if (!isLead) {
+        setTimeout(function () { window.location.href = "/obrigado/nao-elegivel/"; }, 250);
+        return;
+      }
+
       form.classList.add("is-hidden");
       formSuccess.classList.remove("is-hidden");
+      submitBtn.textContent = "Abrindo WhatsApp…";
       setTimeout(function () {
-        var creditValue = parseMoney(data.valor_emprestimo);
-        var propertyValue = parseMoney(data.valor_imovel);
-        var isAuto = data.tipo_bem === "Automóvel";
-        // Mesma regra do envio acima: só o valor decide (financiado não desqualifica).
-        var isLead = isAuto || (creditValue >= MIN_RD_EMP && propertyValue >= MIN_RD_IMOVEL);
-        window.location.href = isLead ? (isAuto ? "/obrigado/auto/" : "/obrigado/home-equity/") : "/obrigado/nao-elegivel/";
-      }, 900);
+        trackWhatsappHandoff();
+        window.location.href = whatsappUrl([
+          "Olá! Acabei de preencher o formulário da InspiraCred.",
+          "",
+          "Nome: " + data.nome,
+          "Tipo de bem: " + data.tipo_bem,
+          isAuto ? "" : "Tipo de imóvel: " + data.tipo_imovel,
+          "Valor do " + (isAuto ? "automóvel" : "imóvel") + ": " + displayMoney(propertyValue),
+          "Valor desejado: " + displayMoney(creditValue),
+          "Situação do " + (isAuto ? "automóvel" : "imóvel") + ": " + data.situacao_imovel
+        ]);
+      }, 250);
     });
   }
 

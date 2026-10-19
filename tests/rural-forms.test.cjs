@@ -34,7 +34,8 @@ test("landing and Home Equity preserve rural leads for D1/RD", () => {
 test("official home package sends rural to D1/RD before redirecting as not eligible", () => {
   const script = read("hosting/official-home/script.js");
   assert.match(script, /var leadKind = ruralProperty \? "rural"/);
-  assert.match(script, /enviarLead\(Object\.assign\(/);
-  assert.match(script, /window\.location\.href = ruralProperty \|\| baixoValor/);
-  assert.ok(script.indexOf('window.inspiraTrack.event("simulation_discard"') < script.indexOf("enviarLead(Object.assign"));
+  assert.match(script, /accepted = await enviarLead\(Object\.assign\(/);
+  assert.match(script, /if \(ruralProperty \|\| baixoValor\)/);
+  assert.match(script, /obrigado\/home-nao-elegivel/);
+  assert.ok(script.indexOf('window.inspiraTrack.event("simulation_discard"') < script.indexOf("accepted = await enviarLead(Object.assign"));
 });

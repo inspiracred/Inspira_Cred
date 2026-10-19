@@ -122,6 +122,24 @@
     } catch (e) { return false; }
   }
 
+  // Formulários que encaminham direto ao WhatsApp precisam saber se a Cloudflare
+  // realmente recebeu o lead antes de sair da página. Diferente de `send`, este
+  // caminho não usa sendBeacon: aguarda o HTTP 200 e só então libera a navegação.
+  function sendConfirmed(payload) {
+    payload.session_id = sid;
+    if (!payload.page_name) payload.page_name = PAGE;
+    try {
+      var body = JSON.stringify(payload);
+      return fetch(ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=UTF-8" },
+        body: body,
+        keepalive: true,
+        mode: "cors"
+      }).then(function (response) { return response.ok; }, function () { return false; });
+    } catch (e) { return Promise.resolve(false); }
+  }
+
   // Page view. O servidor grava a navegação completa no D1 e envia à Meta somente
   // PageView com a URL reduzida ao domínio, sem caminho, query ou classificação.
   send(withUtm({
@@ -233,6 +251,17 @@
   }
 
   // API para eventos manuais (usada pela landing na simulação/lead)
+  function leadPayload(data) {
+    data = data || {};
+    var p = { type: "lead", event_id: uuid(), url: metaSourceUrl() };
+    p.fbclid = rawParam("fbclid") || null;
+    p.gclid = rawParam("gclid") || null;
+    p.fbp = cookieVal("_fbp") || null;
+    p.fbc = cookieVal("_fbc") || null;
+    for (var k in data) if (k !== "meta_events") p[k] = data[k];
+    return withUtm(p);
+  }
+
   window.inspiraTrack = {
     event: function (name, props) {
       props = props || {};
@@ -243,21 +272,15 @@
       return send(withUtm(p));
     },
     lead: function (data) {
-      data = data || {};
       // O navegador entrega os dados completos ao nosso endpoint. O servidor grava a
       // classificação no D1/RD e decide os eventos Meta conforme a faixa financeira;
       // nomes enviados pelo cliente nunca controlam a CAPI, e valores não vão à Meta.
-      var p = { type: "lead", event_id: uuid(), url: metaSourceUrl() };
-      p.fbclid = rawParam("fbclid") || null;
-      p.gclid = rawParam("gclid") || null;
-      // _fbp/_fbc lidos pelo navegador (Pixel ou cookie de edge). O servidor usa como
-      // 1ª opção da cadeia de fallback e pra saber se o Pixel foi bloqueado (Fase B).
-      p.fbp = cookieVal("_fbp") || null;
-      p.fbc = cookieVal("_fbc") || null;
-      for (var k in data) if (k !== "meta_events") p[k] = data[k];
       // withUtm preenche utm_* de first-touch (localStorage) quando o payload não trouxe —
       // sem isso o lead perde a origem se a URL "limpou" as UTMs antes do envio (→ "direto").
-      return send(withUtm(p));
+      return send(leadPayload(data));
+    },
+    leadConfirmed: function (data) {
+      return sendConfirmed(leadPayload(data));
     },
   };
 })();

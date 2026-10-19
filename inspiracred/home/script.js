@@ -13,8 +13,14 @@
      pro /analytics/track: o servidor grava no D1 e dispara RD + CAPI do mesmo jeito.
      Mesma função nas 4 páginas com formulário — nenhum lead depende do script de rastreio. */
   function enviarLead(payload) {
+    if (window.inspiraTrack && typeof window.inspiraTrack.leadConfirmed === "function") {
+      try { return window.inspiraTrack.leadConfirmed(payload); } catch (e) {}
+    }
     if (window.inspiraTrack && typeof window.inspiraTrack.lead === "function") {
-      try { window.inspiraTrack.lead(payload); return; } catch (e) {}
+      try {
+        var queued = window.inspiraTrack.lead(payload);
+        return queued && typeof queued.then === "function" ? queued : Promise.resolve(queued !== false);
+      } catch (e) {}
     }
     var body = { type: "lead", url: location.href, page_name: window.IC_PAGE || payload.source || "other" };
     for (var k in payload) if (Object.prototype.hasOwnProperty.call(payload, k)) body[k] = payload[k];
@@ -24,11 +30,14 @@
       var q = new URLSearchParams(location.search);
       ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "meta_campaign_id", "meta_adset_id", "meta_ad_id"].forEach(function (u) { if (body[u] == null && q.get(u)) body[u] = q.get(u); });
     } catch (e) {}
-    var json = JSON.stringify(body);
     try {
-      if (navigator.sendBeacon && navigator.sendBeacon("/analytics/track", new Blob([json], { type: "text/plain;charset=UTF-8" }))) return;
-    } catch (e) {}
-    try { fetch("/analytics/track", { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: json, keepalive: true }); } catch (e) {}
+      return fetch("/analytics/track", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=UTF-8" },
+        body: JSON.stringify(body),
+        keepalive: true
+      }).then(function (response) { return response.ok; }, function () { return false; });
+    } catch (e) { return Promise.resolve(false); }
   }
 
   /* ============================================================
@@ -109,6 +118,26 @@
     function parseMoney(value) {
       var digits = (value || "").replace(/\D/g, "");
       return digits ? Number(digits) / 100 : 0;
+    }
+    function displayMoney(value) {
+      return new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+        maximumFractionDigits: 0
+      }).format(Math.max(0, Number(value) || 0));
+    }
+    function whatsappUrl(lines) {
+      return "https://wa.me/5521977340731?text=" + encodeURIComponent(lines.filter(Boolean).join("\n"));
+    }
+    function trackWhatsappHandoff() {
+      try {
+        if (window.inspiraTrack && typeof window.inspiraTrack.event === "function") {
+          window.inspiraTrack.event("whatsapp_open", {
+            source: PAGE_SOURCE,
+            trigger: "form_success"
+          });
+        }
+      } catch (e) {}
     }
     function isRuralProperty(value) {
       return String(value || "").trim().toLowerCase() === "rural";
@@ -210,7 +239,7 @@
       return ok;
     }
 
-    form.addEventListener("submit", function (e) {
+    form.addEventListener("submit", async function (e) {
       e.preventDefault();
       if (submitBtn.disabled) return;
       formMessage.textContent = "";
@@ -248,10 +277,11 @@
         } catch (err) {}
       }
 
+      var accepted = false;
       try {
           // Mantém a régua própria da Home: abaixo de R$ 100 mil fica salvo no RD,
           // mas não conta conversão no Meta. Aqui não se coleta valor de imóvel.
-          enviarLead(Object.assign({
+          accepted = await enviarLead(Object.assign({
             name: data.nome,
             email: data.email,
             phone: "+55" + data.celular.replace(/\D/g, ""),
@@ -262,14 +292,28 @@
             source: PAGE_SOURCE,
             lead_kind: leadKind
           }, getUtmParams()));
-      } catch (err) {
+      } catch (err) {}
+      if (!accepted) {
         submitBtn.disabled = false;
-        submitBtn.textContent = "Enviar";
+        submitBtn.textContent = "Enviar e falar no WhatsApp";
         formMessage.textContent = "Não foi possível enviar agora. Tente novamente em instantes.";
         formMessage.classList.add("is-visible", "is-error");
         return;
       }
-      window.location.href = ruralProperty || baixoValor ? "/obrigado/home-nao-elegivel/" : "/obrigado/home/";
+      if (ruralProperty || baixoValor) {
+        window.location.href = "/obrigado/home-nao-elegivel/";
+        return;
+      }
+      submitBtn.textContent = "Abrindo WhatsApp…";
+      trackWhatsappHandoff();
+      window.location.href = whatsappUrl([
+        "Olá! Acabei de preencher o formulário da InspiraCred.",
+        "",
+        "Nome: " + data.nome,
+        "Tipo de imóvel: " + data.tipo_imovel,
+        "Valor desejado: " + displayMoney(credito),
+        "Cidade: " + data.cidade + " - " + data.estado
+      ]);
     });
   }
 
