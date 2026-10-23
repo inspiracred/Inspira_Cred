@@ -16,6 +16,10 @@ test("all traffic forms announce the WhatsApp handoff before submission", () => 
     assert.match(html, />Enviar e falar no WhatsApp<\/button>/);
     assert.match(html, /abriremos o WhatsApp/i);
   }
+  const guidedForm = read("inspiracred", "formulario", "index.html");
+  const guidedFormScript = read("inspiracred", "formulario", "script.js");
+  assert.match(guidedForm, /abriremos o WhatsApp/i);
+  assert.match(guidedFormScript, /Enviar e falar no WhatsApp/);
 });
 
 test("eligible submissions wait for Cloudflare and then open a personalized WhatsApp message", () => {
@@ -23,6 +27,7 @@ test("eligible submissions wait for Cloudflare and then open a personalized What
     read("inspiracred", "index.html"),
     read("inspiracred", "homeequity", "script.js"),
     read("inspiracred", "home", "script.js"),
+    read("inspiracred", "formulario", "script.js"),
     read("hosting", "official-home", "script.js"),
   ];
   for (const source of implementations) {
@@ -56,9 +61,11 @@ test("rural and below-minimum leads keep the non-eligible route", () => {
   const landing = read("inspiracred", "index.html");
   const homeEquity = read("inspiracred", "homeequity", "script.js");
   const home = read("inspiracred", "home", "script.js");
+  const guidedForm = read("inspiracred", "formulario", "script.js");
   assert.match(landing, /kind === "baixo_valor" \|\| kind === "descarte" \|\| kind === "rural"/);
   assert.match(homeEquity, /if \(!isLead\)/);
   assert.match(home, /if \(ruralProperty \|\| baixoValor\)/);
+  assert.match(guidedForm, /kind === "baixo_valor" \|\| kind === "descarte" \|\| kind === "rural"/);
 });
 
 test("shared tracker exposes a confirmed lead transport without changing ordinary beacon events", () => {

@@ -16,8 +16,14 @@
      pro /analytics/track: o servidor grava no D1 e dispara RD + CAPI do mesmo jeito.
      Mesma função nas 4 páginas com formulário — nenhum lead depende do script de rastreio. */
   function enviarLead(payload) {
+    if (window.inspiraTrack && typeof window.inspiraTrack.leadConfirmed === "function") {
+      try { return window.inspiraTrack.leadConfirmed(payload); } catch (e) {}
+    }
     if (window.inspiraTrack && typeof window.inspiraTrack.lead === "function") {
-      try { window.inspiraTrack.lead(payload); return; } catch (e) {}
+      try {
+        var queued = window.inspiraTrack.lead(payload);
+        return queued && typeof queued.then === "function" ? queued : Promise.resolve(queued !== false);
+      } catch (e) {}
     }
     var body = { type: "lead", url: location.href, page_name: window.IC_PAGE || payload.source || "other" };
     for (var k in payload) if (Object.prototype.hasOwnProperty.call(payload, k)) body[k] = payload[k];
@@ -27,11 +33,10 @@
       var q = new URLSearchParams(location.search);
       ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "meta_campaign_id", "meta_adset_id", "meta_ad_id"].forEach(function (u) { if (body[u] == null && q.get(u)) body[u] = q.get(u); });
     } catch (e) {}
-    var json = JSON.stringify(body);
     try {
-      if (navigator.sendBeacon && navigator.sendBeacon("/analytics/track", new Blob([json], { type: "text/plain;charset=UTF-8" }))) return;
-    } catch (e) {}
-    try { fetch("/analytics/track", { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: json, keepalive: true }); } catch (e) {}
+      return fetch("/analytics/track", { method: "POST", headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: JSON.stringify(body), keepalive: true })
+        .then(function (response) { return response.ok; }, function () { return false; });
+    } catch (e) { return false; }
   }
 
   var answers = {};
@@ -112,6 +117,7 @@
         { label: "Imóvel residencial", value: "residencial" },
         { label: "Imóvel comercial", value: "comercial" },
         { label: "Imóvel industrial", value: "industrial" },
+        { label: "Imóvel rural", value: "rural" },
         { label: "Outro", value: "outro" }
       ],
       showIf: function () { return answers.possui_imovel === "sim"; }
@@ -373,7 +379,7 @@
     var current = Math.min(stepIndex + 1, total);
     setProgress(current, total);
     backButton.hidden = stepIndex === 0;
-    nextButton.textContent = stepIndex === total - 1 ? "Enviar respostas" : "Continuar";
+    nextButton.textContent = stepIndex === total - 1 ? "Enviar e falar no WhatsApp" : "Continuar";
   }
 
   function renderChoice(step) {
@@ -672,6 +678,33 @@
     return parseMoney(answers.valor_automovel);
   }
 
+  function displayMoney(value) {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+      maximumFractionDigits: 0
+    }).format(Math.max(0, Number(value) || 0));
+  }
+
+  function whatsappUrl(lines) {
+    return "https://wa.me/5521977340731?text=" + encodeURIComponent(lines.filter(Boolean).join("\n"));
+  }
+
+  function trackWhatsappHandoff() {
+    try {
+      if (window.inspiraTrack && typeof window.inspiraTrack.event === "function") {
+        window.inspiraTrack.event("whatsapp_open", {
+          source: "home_equity_form",
+          trigger: "form_success"
+        });
+      }
+    } catch (e) {}
+  }
+
+  function isRuralProperty(value) {
+    return String(value || "").trim().toLowerCase() === "rural";
+  }
+
   // Classifica o lead pelo que foi respondido.
   //  baixo_valor      = RD como lead não qualificado; ainda gera o Lead padrão na Meta
   //  home_equity      = imóvel + matrícula + crédito >= 200 mil + imóvel >= 400 mil
@@ -679,6 +712,7 @@
   //  auto             = não tem imóvel, mas tem automóvel (garantia de veículo)
   function classifyLead() {
     if (answers.possui_imovel === "sim") {
+      if (isRuralProperty(answers.tipo_imovel)) return "rural";
       var creditValue = selectedCreditValue();
       var propertyValue = selectedAssetValue();
       if (creditValue < MIN_CREDIT_VALUE || propertyValue < MIN_RD_PROPERTY_VALUE) return "baixo_valor";
@@ -695,7 +729,7 @@
   }
 
   function thankYouConfig(kind) {
-    if (kind === "baixo_valor" || kind === "descarte") return THANK_YOU.notQualified;
+    if (kind === "baixo_valor" || kind === "descarte" || kind === "rural") return THANK_YOU.notQualified;
     if (kind === "auto") return THANK_YOU.auto;
     return THANK_YOU.qualified;
   }
@@ -747,7 +781,7 @@
     } catch (e) {}
   }
 
-  function complete() {
+  async function complete() {
     if (submitting) return;
     submitting = true;
     nextButton.disabled = true;
@@ -789,23 +823,58 @@
 
     // O LEAD sai primeiro e sem depender do track.js nem do evento de funil abaixo
     // (antes, se o simulation_complete falhasse, o lead nem era enviado).
-    try { enviarLead(payload); } catch (e) {}
+    var accepted = false;
+    try { accepted = await enviarLead(payload); } catch (e) {}
+    if (!accepted) {
+      submitting = false;
+      nextButton.disabled = false;
+      nextButton.textContent = "Enviar e falar no WhatsApp";
+      return;
+    }
+    var totalSteps = Math.max(visibleSteps().length, 6);
+    setProgress(totalSteps, totalSteps);
+    if (kind === "baixo_valor" || kind === "descarte" || kind === "rural") {
+      if (kind === "rural") {
+        try {
+          if (window.inspiraTrack && typeof window.inspiraTrack.event === "function") {
+            window.inspiraTrack.event("simulation_discard", {
+              source: "home_equity_form",
+              reason: "rural_property"
+            });
+          }
+        } catch (e) {}
+      }
+      var nav = document.querySelector(".nav-actions");
+      if (nav) nav.hidden = true;
+      renderThankYou(kind);
+      return;
+    }
+
     try {
       if (window.inspiraTrack) {
-        // name/email/phone vão SÓ pro Advanced Matching da CAPI: o servidor hasheia
-        // (buildUserData) e o stripPii impede que caiam em events.properties/custom_data.
-        // É o maior ganho de EMQ do funil — aqui a etapa de contato já foi preenchida.
         window.inspiraTrack.event("simulation_complete", {
           source: "home_equity_form"
         });
       }
     } catch (e) {}
 
-    var totalSteps = Math.max(visibleSteps().length, 6);
-    setProgress(totalSteps, totalSteps);
-    var nav = document.querySelector(".nav-actions");
-    if (nav) nav.hidden = true;
-    renderThankYou(kind);
+    nextButton.textContent = "Abrindo WhatsApp…";
+    setTimeout(function () {
+      trackWhatsappHandoff();
+      var isAuto = kind === "auto";
+      window.location.href = whatsappUrl([
+        "Olá! Acabei de preencher o formulário da InspiraCred.",
+        "",
+        "Nome: " + (answers.nome || ""),
+        isAuto ? "Tipo de bem: Automóvel" : "Tipo de imóvel: " + (labelFor("tipo_imovel", answers.tipo_imovel) || ""),
+        "Valor do " + (isAuto ? "automóvel" : "imóvel") + ": " + displayMoney(assetValue),
+        "Valor desejado: " + (isAuto
+          ? (labelFor("faixa_emprestimo_auto", answers.faixa_emprestimo_auto) || displayMoney(creditValue))
+          : (labelFor("faixa_credito", answers.faixa_credito) || displayMoney(creditValue))),
+        isAuto ? "Automóvel quitado: " + (labelFor("automovel_quitado", answers.automovel_quitado) || "") : "Imóvel quitado: " + (labelFor("imovel_quitado", answers.imovel_quitado) || ""),
+        isAuto ? "" : "Documentação regularizada: " + (labelFor("possui_matricula", answers.possui_matricula) || "")
+      ]);
+    }, 250);
   }
 
   function goNext() {
