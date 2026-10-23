@@ -41,6 +41,8 @@
     var formSuccess = document.getElementById("form-success");
     var formMessage = document.getElementById("form-message");
     var submitBtn = form.querySelector("button[type='submit']");
+    var MAX_CREDIT_VALUE = 12000000;
+    var MAX_PROPERTY_VALUE = 20000000;
 
     // Máscara de VALOR INTEIRO em reais: dígitos digitados = reais (ninguém pede
     // centavo de crédito). ",00" fixo/decorativo; a regex remove esse sufixo de
@@ -239,17 +241,18 @@
       var isAuto = data.tipo_bem === "Automóvel";
       if (!data.tipo_bem) { setError("tipo_bem", "Selecione o tipo de bem."); ok = false; }
       if (!data.valor_emprestimo || creditValue <= 0) { setError("valor_emprestimo", "Informe o valor do crédito."); ok = false; }
+      else if (creditValue > MAX_CREDIT_VALUE) { setError("valor_emprestimo", "O valor do crédito deve ser de até R$ 12.000.000."); ok = false; }
       if (!isAuto && !data.tipo_imovel) { setError("tipo_imovel", "Selecione o tipo de imóvel."); ok = false; }
       if (!data.situacao_imovel) { setError("situacao_imovel", isAuto ? "Selecione a situação do automóvel." : "Selecione a situação do imóvel."); ok = false; }
       if (!data.valor_imovel || propertyValue <= 0) { setError("valor_imovel", isAuto ? "Informe o valor do automóvel." : "Informe o valor do imóvel."); ok = false; }
+      else if (!isAuto && propertyValue > MAX_PROPERTY_VALUE) { setError("valor_imovel", "O valor do imóvel deve ser de até R$ 20.000.000."); ok = false; }
       // Financiado: o saldo devedor é obrigatório para a análise interna no RD.
       if (data.situacao_imovel === "Financiado" && (!data.saldo_devedor || parseMoney(data.saldo_devedor) <= 0)) {
         setError("saldo_devedor", isAuto ? "Informe quanto falta pagar do automóvel." : "Informe quanto falta pagar do imóvel.");
         ok = false;
       }
-      // Sem trava de valor: a pessoa pode pedir o quanto quiser. Quem decide se é
-      // qualificado é a classificação (nossos eventos), não um bloqueio no formulário —
-      // travar aqui só fazia a gente perder o contato. (decisão do cliente, 24/07/2026)
+      // Os tetos evitam valores impossíveis nas estatísticas. A régua de qualificação
+      // continua independente: abaixo dos mínimos o contato ainda é preservado.
       return ok;
     }
 

@@ -119,6 +119,12 @@ for (const value of ["", "R$ 0,00"]) {
     assert.ok(r.errors.valor_credito.textContent);
   });
 }
+test("reject credit above R$ 12 million", async () => {
+  const r = await submit("R$ 12.000.001,00");
+  assert.equal(r.leads.length, 0);
+  assert.equal(r.window.location.href, "/home/");
+  assert.match(r.errors.valor_credito.textContent, /12\.000\.000/);
+});
 for (const overrides of [{ email: "invalido" }, { celular: "123" }, { cidade: "" }, { estado: "" }, { nome: "" }]) {
   test("validate required contact: " + JSON.stringify(overrides), async () => {
     const r = await submit("R$ 100.000,00", "ok", overrides);
@@ -174,6 +180,12 @@ test("home equity applies the approved 700k property and 350k credit MQL thresho
   assert.equal(backend.metaEventNameForLeadKind("baixo_valor"), "");
   assert.equal(backend.normalizeLeadKind({ source: "home_equity_form", lead_kind: "auto" }), "auto");
   assert.equal(backend.normalizeLeadKind({ source: "home_equity_form", lead_kind: "descarte" }), "descarte");
+});
+test("backend rejects statistical outliers without changing auto asset semantics", () => {
+  assert.match(backend.validateLeadValueLimits({ credit_value: 12000001 }), /12\.000\.000/);
+  assert.match(backend.validateLeadValueLimits({ credit_value: 12000000, property_value: 20000001 }), /20\.000\.000/);
+  assert.equal(backend.validateLeadValueLimits({ credit_value: 12000000, property_value: 20000000 }), "");
+  assert.equal(backend.validateLeadValueLimits({ lead_kind: "auto", possui_automovel: "Sim", property_value: 25000000, credit_value: 12000000 }), "");
 });
 for (const route of ["home", "home-nao-elegivel"]) {
   test("thank-you page assets and CTA: " + route, () => {

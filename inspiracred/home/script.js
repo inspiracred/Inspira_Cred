@@ -96,6 +96,7 @@
     var formMessage = document.getElementById("form-message");
     var submitBtn = form.querySelector("button[type='submit']");
     var MIN_CREDITO = 100000;
+    var MAX_CREDITO = 12000000;
     function setError(name, msg) {
       var el = form.querySelector('[data-error="' + name + '"]');
       var input = form.querySelector('[name="' + name + '"]');
@@ -236,6 +237,7 @@
       if (!data.cidade) { setError("cidade", "Informe sua cidade."); ok = false; }
       var credito = parseMoney(data.valor_credito);
       if (!credito) { setError("valor_credito", "Informe o valor do crédito."); ok = false; }
+      else if (credito > MAX_CREDITO) { setError("valor_credito", "O valor do crédito deve ser de até R$ 12.000.000."); ok = false; }
       return ok;
     }
 

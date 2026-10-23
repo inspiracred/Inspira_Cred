@@ -46,6 +46,8 @@
   var started = false;
   var submitting = false;
   var MIN_CREDIT_VALUE = 200000;
+  var MAX_CREDIT_VALUE = 12000000;
+  var MAX_PROPERTY_VALUE = 20000000;
   // Abaixo disso, o valor do bem (imóvel/veículo) provavelmente é erro de digitação
   // (ex.: R$ 500 no lugar de R$ 500.000). Mostra um aviso pra pessoa confirmar — NÃO
   // bloqueia o envio, só conscientiza.
@@ -173,7 +175,7 @@
         { label: "De R$ 200 mil a R$ 349 mil", value: "200k_349k", amount: 300000 },
         { label: "De R$ 350 mil a R$ 499 mil", value: "350k_499k", amount: 350000 },
         { label: "De R$ 500 mil a R$ 900 mil", value: "500k_900k", amount: 700000 },
-        { label: "Acima de R$ 900 mil", value: "acima_900k", amount: 1000000 }
+        { label: "De R$ 900 mil a R$ 12 milhões", value: "acima_900k", amount: 1000000 }
       ],
       showIf: function () { return answers.possui_imovel === "sim"; }
     },
@@ -223,7 +225,7 @@
       options: [
         { label: "Menos de R$ 200 mil", value: "auto_menos_200k", amount: 150000 },
         { label: "De R$ 200 mil a R$ 500 mil", value: "auto_200k_500k", amount: 350000 },
-        { label: "Acima de R$ 500 mil", value: "auto_acima_500k", amount: 600000 }
+        { label: "De R$ 500 mil a R$ 12 milhões", value: "auto_acima_500k", amount: 600000 }
       ],
       showIf: function () { return answers.possui_imovel === "nao" && answers.possui_automovel === "sim"; }
     },
@@ -644,6 +646,10 @@
       }
       if ((field.id === "valor_imovel" || field.id === "valor_automovel") && parseMoney(value) <= 0) {
         setFieldError(field.id, "Informe um valor válido.");
+        okFields = false;
+      }
+      if (field.id === "valor_imovel" && parseMoney(value) > MAX_PROPERTY_VALUE) {
+        setFieldError(field.id, "O valor do imóvel deve ser de até R$ 20.000.000.");
         okFields = false;
       }
     });

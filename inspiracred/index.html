@@ -456,6 +456,8 @@
 
         var MIN_CREDIT = 200000;
         var MIN_PROPERTY = 400000;
+        var MAX_CREDIT = 12000000;
+        var MAX_PROPERTY = 20000000;
         var MQL_CREDIT = 350000;
         var MQL_PROPERTY = 700000;
         var MONTHLY_RATE = 0.0109;
@@ -610,7 +612,9 @@
             if (!/^[0-9]{10,11}$/.test(digits(data.phone))) { setError("phone", "Informe um celular com DDD."); ok = false; }
             if (!data.propertyType) { setError("property_type", "Selecione o tipo de imóvel."); ok = false; }
             if (data.propertyValue <= 0) { setError("property_value", "Informe o valor do imóvel."); ok = false; }
+            else if (data.propertyValue > MAX_PROPERTY) { setError("property_value", "O valor do imóvel deve ser de até R$ 20.000.000."); ok = false; }
             if (data.creditValue <= 0) { setError("credit_value", "Informe o valor desejado."); ok = false; }
+            else if (data.creditValue > MAX_CREDIT) { setError("credit_value", "O valor do crédito deve ser de até R$ 12.000.000."); ok = false; }
             if (data.financed && data.debtBalance <= 0) { setError("saldo_devedor", "Informe o saldo devedor aproximado."); ok = false; }
             return ok;
           }

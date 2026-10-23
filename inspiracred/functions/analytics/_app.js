@@ -267,6 +267,9 @@ async function handleTrack(request, env, cors, context) {
           event.success === false ? 0 : 1, event.completion_time_ms || null, event.page_name || "other").run();
         break;
       case "lead": {
+        const valueLimitError = validateLeadValueLimits(event);
+        if (valueLimitError) return json({ error: valueLimitError }, 422, cors);
+
         const leadCookies = parseCookies(request.headers.get("Cookie") || "");
         const leadUA = request.headers.get("User-Agent") || "";
 
@@ -459,6 +462,24 @@ function isRuralPropertyType(value) {
     .trim()
     .toLowerCase();
   return normalized === "rural" || normalized === "imovel rural";
+}
+
+const MAX_PROPERTY_VALUE = 20000000;
+const MAX_CREDIT_VALUE = 12000000;
+
+function validateLeadValueLimits(event) {
+  const credit = Number(event && event.credit_value);
+  if (Number.isFinite(credit) && credit > MAX_CREDIT_VALUE) {
+    return "O valor do crédito deve ser de até R$ 12.000.000.";
+  }
+
+  const property = Number(event && event.property_value);
+  const isAuto = String(event && event.possui_automovel || "").trim().toLowerCase() === "sim" ||
+    (event && event.lead_kind === "auto" && !event.property_type);
+  if (!isAuto && Number.isFinite(property) && property > MAX_PROPERTY_VALUE) {
+    return "O valor do imóvel deve ser de até R$ 20.000.000.";
+  }
+  return "";
 }
 
 function normalizeLeadKind(event) {
