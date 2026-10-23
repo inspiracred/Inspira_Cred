@@ -157,8 +157,8 @@
     var MIN_EMP = 200000;
     var MIN_RD_EMP = 200000;
     var MIN_RD_IMOVEL = 400000;
-    var MQL_EMP = 500000;
-    var MQL_IMOVEL = 1000000;
+    var MQL_EMP = 350000;
+    var MQL_IMOVEL = 700000;
 
     var bemSelect = document.getElementById("f-bem");
     var tipoField = document.getElementById("f-tipo-field");
@@ -286,8 +286,8 @@
       try {
         { // sem "if (window.inspiraTrack)": o enviarLead tem envio de reserva se o track.js faltar
           // A regra comercial fica completa no RD/D1 e o servidor seleciona o evento Meta.
-          // Imóvel precisa ter no mínimo R$400 mil. A partir de R$500 mil de crédito +
-          // imóvel de R$1M vira MQL interno. Automóvel quitado vai ao RD como auto.
+          // Imóvel precisa ter no mínimo R$400 mil. A partir de R$350 mil de crédito +
+          // imóvel de R$700 mil vira MQL interno. Automóvel quitado vai ao RD como auto.
           // Bem financiado não desqualifica, e não cria marcador na Meta.
           var creditValue = parseMoney(data.valor_emprestimo);
           var propertyValue = parseMoney(data.valor_imovel);

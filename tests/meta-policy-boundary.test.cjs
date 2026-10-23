@@ -7,6 +7,9 @@ const { webcrypto } = require("node:crypto");
 const root = path.resolve(__dirname, "../inspiracred");
 const trackerSource = fs.readFileSync(path.join(root, "assets/js/track.js"), "utf8");
 const serverSource = fs.readFileSync(path.join(root, "functions/analytics/_app.js"), "utf8");
+const rootLandingSource = fs.readFileSync(path.join(root, "index.html"), "utf8");
+const formSource = fs.readFileSync(path.join(root, "formulario/script.js"), "utf8");
+const homeEquitySource = fs.readFileSync(path.join(root, "homeequity/script.js"), "utf8");
 
 function trackerHarness() {
   const beacons = [];
@@ -181,11 +184,11 @@ test("server uses financial bands only to select event names", () => {
   const h = serverHarness();
   const cases = [
     [{ property_type: "rural", credit_value: 900000, property_value: 2000000 }, "rural", []],
-    [{ credit_value: 199999, property_value: 1000000 }, "baixo_valor", []],
+    [{ credit_value: 199999, property_value: 700000 }, "baixo_valor", []],
     [{ credit_value: 200000, property_value: 400000 }, "home_equity", ["Lead"]],
-    [{ credit_value: 499999, property_value: 1000000 }, "home_equity", ["Lead"]],
-    [{ credit_value: 500000, property_value: 999999 }, "home_equity", ["Lead"]],
-    [{ credit_value: 500000, property_value: 1000000 }, "home_equity_mql", ["Lead", "LeadQualificado"]],
+    [{ credit_value: 349999, property_value: 700000 }, "home_equity", ["Lead"]],
+    [{ credit_value: 350000, property_value: 699999 }, "home_equity", ["Lead"]],
+    [{ credit_value: 350000, property_value: 700000 }, "home_equity_mql", ["Lead", "LeadQualificado"]],
     [{ lead_kind: "descarte" }, "descarte", []],
   ];
   for (const [event, kind, metaNames] of cases) {
@@ -194,6 +197,20 @@ test("server uses financial bands only to select event names", () => {
     event.lead_kind = kind;
     assert.deepEqual(Array.from(h.api.normalizeLeadMetaEvents(event), (item) => item.name), metaNames);
   }
+});
+
+test("all forms and the dashboard use the approved 700k/350k MQL boundary", () => {
+  assert.match(rootLandingSource, /MQL_CREDIT = 350000/);
+  assert.match(rootLandingSource, /MQL_PROPERTY = 700000/);
+  assert.match(formSource, /MQL_CREDIT_VALUE = 350000/);
+  assert.match(formSource, /MQL_PROPERTY_VALUE = 700000/);
+  assert.match(homeEquitySource, /MQL_EMP = 350000/);
+  assert.match(homeEquitySource, /MQL_IMOVEL = 700000/);
+  assert.match(serverSource, /credit >= 350000 && property >= 700000/);
+  assert.match(serverSource, /MQL_IMOVEL=700000, MQL_CREDITO=350000/);
+  assert.match(formSource, /De R\$ 200 mil a R\$ 349 mil[\s\S]*amount: 300000/);
+  assert.match(formSource, /De R\$ 350 mil a R\$ 499 mil[\s\S]*amount: 350000/);
+  assert.doesNotMatch(formSource, /value: "200k_500k"/);
 });
 
 test("rural and disqualified submissions send no Meta event", async () => {

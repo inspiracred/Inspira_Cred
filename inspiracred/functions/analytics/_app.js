@@ -480,7 +480,7 @@ function normalizeLeadKind(event) {
   // documentação irregular não impedem a captura; esses dados permanecem apenas no
   // D1/RD e nunca viram evento, parâmetro ou marcador na Meta.
   if (credit < 200000 || property < 400000) return "baixo_valor";
-  if (credit >= 500000 && property >= 1000000) return "home_equity_mql";
+  if (credit >= 350000 && property >= 700000) return "home_equity_mql";
   return "home_equity";
 }
 
@@ -4058,7 +4058,7 @@ function eventLegend(){
 /* Critérios de qualificação — os MESMOS números do formulário, da landing, da Home
    Equity e do servidor. Ficam escritos na tela pra ninguém precisar adivinhar por que
    um lead entrou como qualificado ou não. Se a regra mudar no código, muda aqui. */
-var MIN_IMOVEL=400000, MIN_CREDITO=200000, MQL_IMOVEL=1000000, MQL_CREDITO=500000;
+var MIN_IMOVEL=400000, MIN_CREDITO=200000, MQL_IMOVEL=700000, MQL_CREDITO=350000;
 function valorCell(v,minimo,kind){
   if(v==null||v==="")return '<span class="val-na">—</span>';
   // automóvel, rural, descarte e site institucional não são avaliados pela régua do imóvel: mostra neutro

@@ -43,8 +43,8 @@ conversão server-side não depende do JavaScript do Pixel nem de bloqueadores.
 
 A classificação é recalculada no servidor depois da submissão válida. Rural, descarte e
 abaixo da faixa mínima não geram evento Meta. Imóvel de pelo menos R$ 400 mil **E** crédito
-de pelo menos R$ 200 mil gera `Lead`. Imóvel de pelo menos R$ 1 milhão **E** crédito de
-pelo menos R$ 500 mil gera `Lead` e `LeadQualificado`. `simulation_start` e `simulation_complete` continuam
+de pelo menos R$ 200 mil gera `Lead`. Imóvel de pelo menos R$ 700 mil **E** crédito de
+pelo menos R$ 350 mil gera `Lead` e `LeadQualificado`. `simulation_start` e `simulation_complete` continuam
 como etapas internas e não são convertidos em `InitiateCheckout` ou `SubmitApplication`.
 Valores, faixas, dívida, documentação e motivo da classificação nunca entram no payload
 da Meta. `PageView` é enviado via CAPI com a URL reduzida ao domínio.

@@ -29,7 +29,7 @@ Eventos externos permitidos:
 
 - `PageView` para carregamento da página, via CAPI e com URL reduzida ao domínio;
 - `Lead` quando imóvel >= R$ 400 mil **E** crédito >= R$ 200 mil;
-- `Lead` e `LeadQualificado` quando imóvel >= R$ 1 milhão **E** crédito >= R$ 500 mil.
+- `Lead` e `LeadQualificado` quando imóvel >= R$ 700 mil **E** crédito >= R$ 350 mil.
 
 Rural, descarte, abaixo da faixa mínima, `simulation_start` e `simulation_complete` não
 geram evento Meta. `Purchase` é reservado para uma venda real informada pelo

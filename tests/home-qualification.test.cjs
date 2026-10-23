@@ -161,12 +161,12 @@ test("backend enforces home minimum for legacy auto payloads", () => {
   assert.equal(backend.normalizeLeadKind({ source: "home_institucional", lead_kind: "auto", credit_value: 50000 }), "baixo_valor");
   assert.equal(backend.normalizeLeadKind({ source: "home_institucional", credit_value: "invalid" }), "baixo_valor");
 });
-test("existing home equity thresholds remain unchanged", () => {
+test("home equity applies the approved 700k property and 350k credit MQL thresholds", () => {
   for (const [credit_value, property_value, expected] of [
-    [199999, 1000000, "baixo_valor"], [200000, 399999, "baixo_valor"],
+    [199999, 700000, "baixo_valor"], [200000, 399999, "baixo_valor"],
     [200000, 400000, "home_equity"],
-    [499999, 1000000, "home_equity"], [500000, 999999, "home_equity"],
-    [500000, 1000000, "home_equity_mql"],
+    [349999, 700000, "home_equity"], [350000, 699999, "home_equity"],
+    [350000, 700000, "home_equity_mql"],
   ]) assert.equal(backend.normalizeLeadKind({ source: "home_equity_lp", credit_value, property_value }), expected);
   assert.equal(backend.metaEventNameForLeadKind("home_equity"), "Lead");
   assert.equal(backend.metaEventNameForLeadKind("home_equity_mql"), "LeadQualificado");

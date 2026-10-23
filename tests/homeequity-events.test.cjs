@@ -24,8 +24,8 @@ function element(value = "") {
 function setup(transport = "tracker", overrides = {}) {
   const values = {
     "f-nome": "QA Local", "f-email": "qa@example.invalid", "f-celular": "(21) 92345-6789",
-    "f-bem": "Imóvel", "f-valor-emp": "R$ 500.000,00", "f-tipo": "Casa",
-    "f-situacao": "Quitado", "f-valor-imovel": "R$ 1.000.000,00", "f-saldo": "", ...overrides,
+    "f-bem": "Imóvel", "f-valor-emp": "R$ 350.000,00", "f-tipo": "Casa",
+    "f-situacao": "Quitado", "f-valor-imovel": "R$ 700.000,00", "f-saldo": "", ...overrides,
   };
   const ids = Object.fromEntries(Object.entries(values).map(([id, value]) => [id, element(value)]));
   for (const id of ["lead-form", "form-success", "form-message", "f-tipo-field", "f-situacao-label", "f-valor-imovel-label", "f-saldo-field", "f-saldo-label"]) ids[id] = element();
@@ -70,8 +70,8 @@ test("valid submission preserves MQL data and leaves Meta routing to the server"
   assert.match(r.window.location.href, /^https:\/\/wa\.me\/5521977340731\?text=/);
   const message = decodeURIComponent(r.window.location.href.split("?text=")[1]);
   assert.match(message, /Nome: QA Local/);
-  assert.match(message, /Valor do imóvel: R\$\s*1\.000\.000/);
-  assert.match(message, /Valor desejado: R\$\s*500\.000/);
+  assert.match(message, /Valor do imóvel: R\$\s*700\.000/);
+  assert.match(message, /Valor desejado: R\$\s*350\.000/);
   assert.deepEqual(r.events.map((event) => event.name), ["simulation_complete", "whatsapp_open"]);
 });
 
