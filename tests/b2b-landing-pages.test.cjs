@@ -83,10 +83,14 @@ test("pages avoid decorative section hats and keep the new visual rhythm", () =>
   for (const html of [counters, partners]) {
     assert.doesNotMatch(html, /hero-kicker|class="eyebrow/);
     assert.match(html, /class="navy-panel/);
-    assert.match(html, /class="shell form-panel"/);
   }
+  assert.match(counters, /class="shell form-panel"/);
   assert.match(partners, /class="hero partners-hero"/);
-  assert.ok(fs.existsSync(path.join(site, "assets", "img", "parceiros-hero-network-v1.webp")));
+  assert.match(partners, /class="shell partner-form-panel"/);
+  assert.match(partners, /class="shell partner-final-cta-inner"/);
+  assert.ok(fs.existsSync(path.join(site, "assets", "img", "parceiros-hero-natural-v2.webp")));
+  const css = read("assets", "css", "lp-b2b.css");
+  assert.doesNotMatch(css, /\.section\s*\{[^}]*overflow:\s*(?:clip|hidden)/);
 });
 
 test("secondary phone guidance is available on demand without reserving form space", () => {
