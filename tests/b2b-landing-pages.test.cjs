@@ -76,3 +76,24 @@ test("forms keep required semantics without visual asterisk noise", () => {
     assert.match(html, /name="phone"[^>]*required/);
   }
 });
+
+test("pages avoid decorative section hats and keep the new visual rhythm", () => {
+  const counters = read("contadores", "index.html");
+  const partners = read("parceiros", "index.html");
+  for (const html of [counters, partners]) {
+    assert.doesNotMatch(html, /hero-kicker|class="eyebrow/);
+    assert.match(html, /class="navy-panel/);
+    assert.match(html, /class="shell form-panel"/);
+  }
+  assert.match(partners, /class="hero partners-hero"/);
+  assert.ok(fs.existsSync(path.join(site, "assets", "img", "parceiros-hero-network-v1.webp")));
+});
+
+test("secondary phone guidance is available on demand without reserving form space", () => {
+  const html = read("contadores", "index.html");
+  const css = read("assets", "css", "lp-b2b.css");
+  assert.match(html, /class="field-info"/);
+  assert.match(html, /role="tooltip"/);
+  assert.doesNotMatch(html, /class="field-help"/);
+  assert.match(css, /\.field-info-wrap:focus-within \.field-tooltip/);
+});

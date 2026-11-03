@@ -9,7 +9,7 @@
     <link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="../assets/css/lp-b2b.css" />
   </head>
-  <body>
+  <body class="page-contadores">
     <a class="skip-link" href="#conteudo">Ir para o conteúdo</a>
 
     <header class="site-header">
@@ -34,7 +34,6 @@
       <section class="hero" data-section="hero">
         <div class="shell hero-grid">
           <div class="hero-copy" data-reveal>
-            <p class="hero-kicker">Crédito para expansão contábil</p>
             <h1>Encontrou uma carteira contábil para comprar? O capital pode estar no seu <em>imóvel.</em></h1>
             <p class="hero-lead">Com o crédito com garantia de imóvel, você pode buscar o capital necessário para dar entrada na compra de outras carteiras ou escritórios, sem precisar tirar todo o dinheiro do caixa da empresa.</p>
             <div class="hero-actions">
@@ -68,7 +67,6 @@
       <section class="section" data-section="capital-entrada">
         <div class="shell intro-grid">
           <div class="sticky-copy" data-reveal>
-            <span class="eyebrow">A lógica da operação</span>
             <h2 class="section-title">Você pode precisar financiar apenas a entrada, não o valor total.</h2>
           </div>
           <div class="story" data-reveal>
@@ -79,11 +77,10 @@
         </div>
       </section>
 
-      <section class="section section-soft" id="como-funciona" data-section="como-funciona">
+      <section class="section" id="como-funciona" data-section="como-funciona">
         <div class="shell">
-          <div data-reveal>
-            <span class="eyebrow">Como funciona</span>
-            <h2 class="section-title">Um caminho claro para avaliar o crédito da sua próxima aquisição.</h2>
+          <div class="section-heading centered" data-reveal>
+            <h2 class="section-title">Como você pode buscar crédito para comprar sua próxima carteira contábil.</h2>
             <p class="section-copy">A decisão continua sendo sua em cada etapa. A simulação é preliminar e não representa aprovação ou oferta garantida.</p>
           </div>
           <div class="steps-grid three">
@@ -95,27 +92,28 @@
         </div>
       </section>
 
-      <section class="section section-navy" id="simulacoes" data-section="simulacoes">
+      <section class="section simulation-section" id="simulacoes" data-section="simulacoes">
         <div class="shell">
-          <div data-reveal>
-            <span class="eyebrow on-dark">Referência inicial</span>
-            <h2 class="section-title on-dark">Veja quanto você pode solicitar.</h2>
-            <p class="section-copy on-dark">O crédito pode ajudar a comprar uma carteira contábil ou outro escritório. O lucro gerado pelos novos clientes pode contribuir para o pagamento das parcelas, mas não substitui a análise da capacidade financeira do seu negócio.</p>
+          <div class="navy-panel simulation-panel">
+            <div class="section-heading centered" data-reveal>
+              <h2 class="section-title on-dark">Veja quanto você pode solicitar.</h2>
+              <p class="section-copy on-dark">O crédito pode ajudar a comprar uma carteira contábil ou outro escritório. O lucro gerado pelos novos clientes pode contribuir para o pagamento das parcelas, mas não substitui a análise da capacidade financeira do seu negócio.</p>
+            </div>
+            <div class="simulations">
+              <article class="simulation-card" data-reveal>
+                <small>Simulação de crédito</small><h3>R$ 250 mil</h3>
+                <div class="installment"><span>60 parcelas iniciais estimadas</span><strong>R$ 6.491,67</strong></div>
+                <div class="installment"><span>120 parcelas iniciais estimadas</span><strong>R$ 4.287,15</strong></div>
+              </article>
+              <article class="simulation-card" data-reveal>
+                <small>Simulação de crédito</small><h3>R$ 500 mil</h3>
+                <div class="installment"><span>60 parcelas iniciais estimadas</span><strong>R$ 12.932,84</strong></div>
+                <div class="installment"><span>120 parcelas iniciais estimadas</span><strong>R$ 8.575,01</strong></div>
+              </article>
+            </div>
+            <p class="legal-note">Taxa utilizada nas simulações: 1,09% ao mês + IPCA. Simulações ilustrativas, com parcelas iniciais estimadas. Os valores estão sujeitos à análise de crédito, renda, imóvel e condições da instituição financeira. A taxa utilizada não representa uma oferta garantida. As parcelas podem variar conforme a atualização pelo IPCA e as condições contratuais. Pode haver IOF, seguros, despesas e outros custos incluídos no Custo Efetivo Total (CET).</p>
+            <a class="button simulation-cta" href="#avaliacao">Quero fazer minha simulação</a>
           </div>
-          <div class="simulations">
-            <article class="simulation-card" data-reveal>
-              <small>Simulação de crédito</small><h3>R$ 250 mil</h3>
-              <div class="installment"><span>60 parcelas iniciais estimadas</span><strong>R$ 6.491,67</strong></div>
-              <div class="installment"><span>120 parcelas iniciais estimadas</span><strong>R$ 4.287,15</strong></div>
-            </article>
-            <article class="simulation-card" data-reveal>
-              <small>Simulação de crédito</small><h3>R$ 500 mil</h3>
-              <div class="installment"><span>60 parcelas iniciais estimadas</span><strong>R$ 12.932,84</strong></div>
-              <div class="installment"><span>120 parcelas iniciais estimadas</span><strong>R$ 8.575,01</strong></div>
-            </article>
-          </div>
-          <p class="legal-note">Taxa utilizada nas simulações: 1,09% ao mês + IPCA. Simulações ilustrativas, com parcelas iniciais estimadas. Os valores estão sujeitos à análise de crédito, renda, imóvel e condições da instituição financeira. A taxa utilizada não representa uma oferta garantida. As parcelas podem variar conforme a atualização pelo IPCA e as condições contratuais. Pode haver IOF, seguros, despesas e outros custos incluídos no Custo Efetivo Total (CET).</p>
-          <a class="button" href="#avaliacao" style="margin-top:28px">Quero fazer minha simulação</a>
         </div>
       </section>
 
@@ -125,8 +123,7 @@
             <img src="../home/img/equipe.webp" alt="Equipe da InspiraCred reunida no escritório" width="1086" height="1448" loading="lazy" />
           </figure>
           <div data-reveal>
-            <span class="eyebrow">Experiência e acesso</span>
-            <h2 class="section-title">Em vez de procurar banco por banco, conte com quem conhece o mercado.</h2>
+            <h2 class="section-title">Em vez de procurar banco por banco, conte com quem conhece o mercado de crédito.</h2>
             <p class="section-copy">A InspiraCred combina experiência no mercado com acesso a cerca de 30 instituições financeiras para buscar as melhores condições de crédito para você.</p>
             <div class="trust-points">
               <div class="trust-point"><i>01</i><div><strong>Mais alternativas</strong><span>Sua busca não fica limitada à proposta de um único banco.</span></div></div>
@@ -138,9 +135,8 @@
       </section>
 
       <section class="section form-section" id="avaliacao" data-section="formulario">
-        <div class="shell form-grid">
+        <div class="shell form-panel"><div class="form-grid">
           <div class="form-copy" data-reveal>
-            <span class="eyebrow on-dark">Avaliação inicial</span>
             <h2 class="section-title on-dark">Descubra quais condições podem estar disponíveis para o seu caso.</h2>
             <p class="section-copy">Preencha os dados abaixo. A simulação é gratuita, preliminar e sujeita à aprovação de crédito.</p>
             <div class="form-assurance">
@@ -153,7 +149,7 @@
               <div class="form-head"><h3>Solicite sua avaliação de crédito</h3></div>
               <div class="form-fields">
                 <div class="field"><label for="contador-nome">Nome completo</label><input id="contador-nome" name="name" type="text" autocomplete="name" placeholder="Digite seu nome completo" aria-describedby="erro-contador-nome" required /><p class="field-error" id="erro-contador-nome" data-error-for="name"></p></div>
-                <div class="field"><label for="contador-celular">Número de celular</label><div class="phone-control"><span class="phone-prefix">+55</span><input id="contador-celular" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(DDD) + celular" data-phone aria-describedby="ajuda-contador-celular erro-contador-celular" required /></div><p class="field-help" id="ajuda-contador-celular">Utilizamos o WhatsApp como uma das formas de contato.</p><p class="field-error" id="erro-contador-celular" data-error-for="phone"></p></div>
+                <div class="field"><div class="field-label-row"><label for="contador-celular">Número de celular</label><span class="field-info-wrap"><button class="field-info" type="button" aria-label="Por que pedimos o celular?" aria-describedby="ajuda-contador-celular">i</button><span class="field-tooltip" id="ajuda-contador-celular" role="tooltip">Utilizamos o WhatsApp como uma das formas de contato.</span></span></div><div class="phone-control"><span class="phone-prefix">+55</span><input id="contador-celular" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(DDD) + celular" data-phone aria-describedby="erro-contador-celular" required /></div><p class="field-error" id="erro-contador-celular" data-error-for="phone"></p></div>
                 <div class="field"><label for="contador-tipo">Tipo de imóvel</label><select id="contador-tipo" name="property_type" aria-describedby="erro-contador-tipo" required><option value="">Selecione</option><option>Residencial</option><option>Comercial</option><option>Industrial</option><option>Rural</option><option>Outro</option></select><p class="field-error" id="erro-contador-tipo" data-error-for="property_type"></p></div>
                 <div class="field"><label for="contador-imovel">Valor do imóvel</label><input id="contador-imovel" name="property_value" type="text" inputmode="numeric" placeholder="Valor mínimo R$ 400.000" data-money aria-describedby="erro-contador-imovel" required /><p class="field-error" id="erro-contador-imovel" data-error-for="property_value"></p></div>
                 <div class="field"><label for="contador-situacao">Situação do imóvel</label><select id="contador-situacao" name="situacao_imovel" aria-describedby="erro-contador-situacao" required><option value="">Selecione</option><option>Quitado</option><option>Financiado</option></select><p class="field-error" id="erro-contador-situacao" data-error-for="situacao_imovel"></p></div>
@@ -169,12 +165,12 @@
               <div class="success-icon" aria-hidden="true">✓</div><h3>Recebemos sua solicitação.</h3><p>Agora você pode iniciar a conversa com nossa equipe pelo WhatsApp para contextualizar a aquisição.</p><a class="button button-dark" href="https://wa.me/5521977340731" target="_blank" rel="noopener noreferrer" data-whatsapp-success>Continuar no WhatsApp</a>
             </div>
           </div>
-        </div>
+        </div></div>
       </section>
 
       <section class="section" id="duvidas" data-section="duvidas">
         <div class="shell-narrow">
-          <div data-reveal><span class="eyebrow">Antes de decidir</span><h2 class="section-title">Tire suas dúvidas sobre o crédito para a aquisição.</h2></div>
+          <div data-reveal><h2 class="section-title">Tire suas dúvidas sobre o crédito para a aquisição.</h2></div>
           <div class="faq-list" data-reveal>
             <div class="faq-item"><button class="faq-question" type="button" aria-expanded="false"><span>Preciso ter um imóvel quitado?</span><span aria-hidden="true">+</span></button><div class="faq-answer"><div><p>Não precisa. Se o imóvel não estiver quitado, ele ainda pode entrar na operação, sujeito à análise. Nossa equipe avaliará o seu caso.</p></div></div></div>
             <div class="faq-item"><button class="faq-question" type="button" aria-expanded="false"><span>Quanto posso conseguir de crédito?</span><span aria-hidden="true">+</span></button><div class="faq-answer"><div><p>O valor depende da avaliação do imóvel, renda, capacidade de pagamento e critérios da instituição financeira. A simulação ajuda a identificar possibilidades para o seu perfil.</p></div></div></div>
@@ -185,8 +181,8 @@
         </div>
       </section>
 
-      <section class="section section-soft final-cta" data-section="cta-final">
-        <div class="shell-narrow" data-reveal><span class="eyebrow">Próximo passo</span><h2 class="section-title">A próxima carteira que pode fazer seu escritório crescer não precisa ficar apenas nos planos.</h2><p class="section-copy">Descubra se o seu imóvel pode ajudar você a conseguir o capital necessário para avançar na negociação.</p><a class="button button-dark" href="#avaliacao">Solicitar avaliação de crédito</a></div>
+      <section class="section final-cta" data-section="cta-final">
+        <div class="shell-narrow final-cta-panel" data-reveal><h2 class="section-title">A próxima carteira que pode fazer seu escritório crescer não precisa ficar apenas nos planos.</h2><p class="section-copy">Descubra se o seu imóvel pode ajudar você a conseguir o capital necessário para avançar na negociação.</p><a class="button button-dark" href="#avaliacao">Solicitar avaliação de crédito</a></div>
       </section>
     </main>
 
