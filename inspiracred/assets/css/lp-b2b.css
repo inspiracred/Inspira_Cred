@@ -319,7 +319,6 @@ button { color: inherit; }
 .field { min-width: 0; }
 .field-full { grid-column: 1 / -1; }
 .field label { display: block; margin-bottom: 7px; font-size: .78rem; font-weight: 800; color: #263753; }
-.field .required { color: var(--orange-600); }
 .control-wrap { position: relative; }
 .field input, .field select {
   width: 100%;

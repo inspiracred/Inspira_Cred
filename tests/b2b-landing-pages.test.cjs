@@ -66,3 +66,13 @@ test("forms expose persistent labels, error regions and success states", () => {
     assert.match(html, /type="submit"/);
   }
 });
+
+test("forms keep required semantics without visual asterisk noise", () => {
+  for (const page of ["contadores", "parceiros"]) {
+    const html = read(page, "index.html");
+    assert.doesNotMatch(html, /Campos com/i);
+    assert.doesNotMatch(html, /class="required"/);
+    assert.match(html, /name="name"[^>]*required/);
+    assert.match(html, /name="phone"[^>]*required/);
+  }
+});
