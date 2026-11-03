@@ -86,11 +86,18 @@ test("pages avoid decorative section hats and keep the new visual rhythm", () =>
   }
   assert.match(counters, /class="shell form-panel"/);
   assert.match(partners, /class="hero partners-hero"/);
+  assert.match(partners, /data-site-header/);
+  assert.match(partners, /class="partner-hero-image"/);
+  assert.match(partners, /class="section partner-faq-section"/);
+  assert.match(partners, /class="button cta-pulse"/);
   assert.match(partners, /class="shell partner-form-panel"/);
   assert.match(partners, /class="shell partner-final-cta-inner"/);
-  assert.ok(fs.existsSync(path.join(site, "assets", "img", "parceiros-hero-natural-v2.webp")));
+  assert.ok(fs.existsSync(path.join(site, "assets", "img", "parceiros-hero-square-v4.webp")));
   const css = read("assets", "css", "lp-b2b.css");
   assert.doesNotMatch(css, /\.section\s*\{[^}]*overflow:\s*(?:clip|hidden)/);
+  assert.match(css, /\.site-header\.is-sticky/);
+  assert.match(css, /@keyframes header-drop/);
+  assert.match(css, /@keyframes cta-pulse/);
 });
 
 test("secondary phone guidance is available on demand without reserving form space", () => {

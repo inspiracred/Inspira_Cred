@@ -24,6 +24,25 @@
     });
   }
 
+  var siteHeader = qs("[data-site-header]");
+  var pageHero = qs(".hero");
+  if (siteHeader && pageHero) {
+    var headerTicking = false;
+    function updateStickyHeader() {
+      var trigger = Math.max(0, pageHero.offsetTop + pageHero.offsetHeight - 88);
+      siteHeader.classList.toggle("is-sticky", window.scrollY >= trigger);
+      headerTicking = false;
+    }
+    function requestHeaderUpdate() {
+      if (headerTicking) return;
+      headerTicking = true;
+      window.requestAnimationFrame(updateStickyHeader);
+    }
+    window.addEventListener("scroll", requestHeaderUpdate, { passive: true });
+    window.addEventListener("resize", requestHeaderUpdate);
+    updateStickyHeader();
+  }
+
   qsa(".faq-question").forEach(function (button) {
     button.addEventListener("click", function () {
       var open = button.getAttribute("aria-expanded") === "true";
