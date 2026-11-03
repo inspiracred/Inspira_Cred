@@ -352,6 +352,12 @@ async function handleTrack(request, env, cors, context) {
             await env.DB.prepare(`UPDATE leads SET lead_kind=? WHERE id=?`)
               .bind(event.lead_kind || null, leadId).run();
           } catch (e) { /* coluna lead_kind ainda não existe (migration 0004 pendente) — ok */ }
+          // Cadastro do programa de parceiros (migration 0014). O campo fica no D1;
+          // envio ao RD segue desativado até existir identificador/fluxo e campo reais.
+          try {
+            await env.DB.prepare(`UPDATE leads SET partner_role=? WHERE id=?`)
+              .bind(event.source === "parceiros_lp" ? (event.partner_role || null) : null, leadId).run();
+          } catch (e) { /* coluna partner_role ainda não existe — lead core já está salvo */ }
           // Saúde do tracking (migration 0005): de onde vieram fbp/fbc usados na CAPI.
           try {
             await env.DB.prepare(`UPDATE leads SET fbp_source=?, fbc_source=? WHERE id=?`)
@@ -438,6 +444,9 @@ const RD_PAGE_CONFIG = {
   landing_page: { identificador: "Simulação", label: "Simulação" },
   home_equity_lp: { identificador: "Home Equity", label: "Home Equity" },
   home_equity_form: { identificador: "Typeform", label: "Typeform" },
+  // Reutiliza o identificador Home Equity já confirmado no RD. A origem específica
+  // permanece legível no campo Formulário de Origem e nas tags.
+  contador_aquisicao_lp: { identificador: "Home Equity", label: "Contadores — Aquisição" },
   // Home institucional (/home/): reutiliza o identificador histórico já ligado ao fluxo
   // que cria a Negociação. A origem continua separada por label, tag e UTMs.
   home_institucional: { identificador: "landing-nova-raiz", label: "Site Institucional" },
@@ -453,6 +462,7 @@ const LEAD_KIND_LABEL = {
   descarte: "Banco de dados — não qualificado",
   institucional: "Lead site institucional",
   rural: "Imóvel rural",
+  parceiro: "Cadastro de parceiro",
 };
 
 function isRuralPropertyType(value) {
@@ -484,6 +494,8 @@ function validateLeadValueLimits(event) {
 
 function normalizeLeadKind(event) {
   const current = event.lead_kind || "";
+  // Cadastro profissional: não é solicitação financeira nem evento de crédito.
+  if (event.source === "parceiros_lp") return "parceiro";
   if (isRuralPropertyType(event.property_type)) return "rural";
   // A Home não coleta valor de imóvel. Aplica seu mínimo de crédito também
   // no servidor, inclusive para veículos, sem perder a classificação de baixo valor.
@@ -575,6 +587,9 @@ function rdTags(event) {
   if (event.source === "home_institucional") {
     tags.push("site institucional");
     if (event.solucao) tags.push(String(event.solucao).toLowerCase().slice(0, 60));
+  }
+  if (event.source === "contador_aquisicao_lp") {
+    tags.push("lp contadores", "aquisição carteira contábil");
   }
   return tags.length ? tags : undefined;
 }
@@ -1255,6 +1270,7 @@ function rdDealFormOrigin(source) {
     home_equity_lp: "Home Equity",
     home_equity_form: "Typeform",
     home_institucional: "Site Institucional",
+    contador_aquisicao_lp: "Contadores — Aquisição",
   })[String(source || "")] || "";
 }
 
@@ -3135,9 +3151,9 @@ const DASHBOARD_HTML = `<!doctype html>
 
 <script>
 var dailyChart=null, sourceChart=null, leadTypeChart=null, lastLeads=[], lastAllLeads=[], activeTab="overview";
-var PAGE_LABELS={landing_page:"Simulação",home_institucional:"Site institucional",home_equity_lp:"Home Equity",home_equity_form:"Typeform",link_bio:"Link na bio",obrigado_simulacao:"Obrigado · Simulação",obrigado_home_equity:"Obrigado · Home Equity",obrigado_formulario:"Obrigado · Typeform",obrigado_auto:"Obrigado · Auto",obrigado_nao_elegivel:"Obrigado · Não elegível",obrigado_home:"Obrigado · Site institucional",obrigado_home_nao_elegivel:"Obrigado · Site institucional não elegível",other:"Outras"};
-var LEAD_KIND_LABELS={home_equity:"Lead",institucional:"Lead site institucional",home_equity_mql:"MQL",baixo_valor:"Lead desqualificado",auto:"Lead automotivo",descarte:"Banco de dados (sem imóvel/veículo)",rural:"Imóvel rural"};
-var PAGE_URLS={obrigado_home:"https://nova.inspiracred.com.br/obrigado/home/",obrigado_home_nao_elegivel:"https://nova.inspiracred.com.br/obrigado/home-nao-elegivel/",landing_page:"https://nova.inspiracred.com.br/",home_institucional:"https://nova.inspiracred.com.br/home/",home_equity_lp:"https://nova.inspiracred.com.br/homeequity/",home_equity_form:"https://nova.inspiracred.com.br/formulario/",link_bio:"https://links.inspiracred.com.br/",obrigado_simulacao:"https://nova.inspiracred.com.br/obrigado/simulacao/",obrigado_home_equity:"https://nova.inspiracred.com.br/obrigado/home-equity/",obrigado_formulario:"https://nova.inspiracred.com.br/obrigado/formulario/",obrigado_auto:"https://nova.inspiracred.com.br/obrigado/auto/",obrigado_nao_elegivel:"https://nova.inspiracred.com.br/obrigado/nao-elegivel/"};
+var PAGE_LABELS={landing_page:"Simulação",home_institucional:"Site institucional",home_equity_lp:"Home Equity",home_equity_form:"Typeform",contador_aquisicao_lp:"Contadores — Aquisição",parceiros_lp:"Programa de parceiros",link_bio:"Link na bio",obrigado_simulacao:"Obrigado · Simulação",obrigado_home_equity:"Obrigado · Home Equity",obrigado_formulario:"Obrigado · Typeform",obrigado_auto:"Obrigado · Auto",obrigado_nao_elegivel:"Obrigado · Não elegível",obrigado_home:"Obrigado · Site institucional",obrigado_home_nao_elegivel:"Obrigado · Site institucional não elegível",other:"Outras"};
+var LEAD_KIND_LABELS={home_equity:"Lead",institucional:"Lead site institucional",home_equity_mql:"MQL",baixo_valor:"Lead desqualificado",auto:"Lead automotivo",descarte:"Banco de dados (sem imóvel/veículo)",rural:"Imóvel rural",parceiro:"Cadastro de parceiro"};
+var PAGE_URLS={obrigado_home:"https://nova.inspiracred.com.br/obrigado/home/",obrigado_home_nao_elegivel:"https://nova.inspiracred.com.br/obrigado/home-nao-elegivel/",landing_page:"https://nova.inspiracred.com.br/",home_institucional:"https://nova.inspiracred.com.br/home/",home_equity_lp:"https://nova.inspiracred.com.br/homeequity/",home_equity_form:"https://nova.inspiracred.com.br/formulario/",contador_aquisicao_lp:"https://nova.inspiracred.com.br/contadores/",parceiros_lp:"https://nova.inspiracred.com.br/parceiros/",link_bio:"https://links.inspiracred.com.br/",obrigado_simulacao:"https://nova.inspiracred.com.br/obrigado/simulacao/",obrigado_home_equity:"https://nova.inspiracred.com.br/obrigado/home-equity/",obrigado_formulario:"https://nova.inspiracred.com.br/obrigado/formulario/",obrigado_auto:"https://nova.inspiracred.com.br/obrigado/auto/",obrigado_nao_elegivel:"https://nova.inspiracred.com.br/obrigado/nao-elegivel/"};
 var CHART_PALETTE=["#f97316","#0b2d72","#10b981","#f59e0b","#3b82f6","#8b5cf6","#ec4899"];
 var META_SOURCES=["meta_ads","fb","ig","facebook","instagram"];
 function isMetaSourceValue(v){return META_SOURCES.indexOf(String(v||"").toLowerCase())>-1||/meta|facebook|instagram/i.test(String(v||""));}
