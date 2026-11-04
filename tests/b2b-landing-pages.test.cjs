@@ -104,6 +104,9 @@ test("pages avoid template patterns and keep the rebuilt editorial rhythm", () =
   const css = read("assets", "css", "lp-b2b-rebuild.css");
   const script = read("assets", "js", "lp-b2b.js");
   assert.match(css, /\.site-header\.is-sticky/);
+  assert.match(css, /\.page-parceiros \.site-header:not\(\.is-sticky\)[^}]+background: transparent/);
+  assert.match(css, /\.nav-links \.button \{ color: #fff; \}/);
+  assert.match(css, /parceiros-hero-portfolio-v6\.webp/);
   assert.match(css, /@keyframes header-drop/);
   assert.match(css, /@keyframes cta-pulse/);
   assert.match(css, /\.partner-closing[^}]+linear-gradient/);
@@ -128,6 +131,7 @@ test("B2B narratives use purpose-built scenes and the verified InspiraCred team 
     "parceiros-opportunity-v1.webp",
     "parceiros-introduction-v2.webp",
     "parceiros-hero-referral-v5.webp",
+    "parceiros-hero-portfolio-v6.webp",
     "parceiros-closing-abstract-v1.webp",
     "parceiros-trust-handoff-v1.webp",
   ];

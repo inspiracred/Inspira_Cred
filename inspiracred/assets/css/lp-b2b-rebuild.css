@@ -50,6 +50,7 @@ ul, ol { padding: 0; }
 .brand img { width: 100%; height: auto; }
 .site-header.is-sticky .brand { width: 138px; transition: width .5s cubic-bezier(.16,1,.3,1); }
 .nav-links { display: flex; align-items: center; gap: clamp(18px, 2.4vw, 38px); }
+.nav-links .button { color: #fff; }
 .nav-links > a:not(.button) { position: relative; font-weight: 650; text-decoration: none; }
 .nav-links > a:not(.button)::after { content: ""; position: absolute; inset: auto 0 -6px; height: 2px; background: currentColor; transform: scaleX(0); transform-origin: right; transition: transform .25s ease; }
 .nav-links > a:not(.button):hover::after { transform: scaleX(1); transform-origin: left; }
@@ -175,10 +176,12 @@ ul, ol { padding: 0; }
 .footer-word { overflow: hidden; height: clamp(80px, 14vw, 180px); color: rgba(255,255,255,.045); font-size: clamp(116px, 20vw, 295px); font-weight: 700; letter-spacing: -.08em; line-height: .73; text-align: center; white-space: nowrap; }
 
 /* Parceiros: o Hero funciona como uma passagem entre relacionamento e receita. */
-.page-parceiros .site-header:not(.is-sticky) { background: #fff; }
-.partner-sentence { position: relative; min-height: 100svh; overflow: hidden; padding: 116px 0 54px; color: #fff; background: var(--ink); }
-.partner-sentence::before { content: ""; position: absolute; inset: auto auto -24vw -14vw; width: 46vw; height: 46vw; border: 1px solid rgba(255,255,255,.09); border-radius: 50%; pointer-events: none; }
-.partner-hero-stage { position: relative; display: grid; min-height: calc(100svh - 170px); grid-template-columns: minmax(0, .92fr) minmax(420px, 1.08fr); gap: clamp(44px, 6vw, 96px); align-items: center; }
+.page-parceiros .site-header:not(.is-sticky) { color: #fff; background: transparent; }
+.page-parceiros .site-header:not(.is-sticky) .brand img { filter: brightness(0) invert(1); }
+.page-parceiros .site-header:not(.is-sticky) .nav-links > a:not(.button), .page-parceiros .site-header:not(.is-sticky) .menu-button { color: #fff; }
+.partner-sentence { position: relative; min-height: 100svh; overflow: hidden; padding: 116px 0 54px; color: #fff; background: var(--ink) url("../img/generated/parceiros-hero-portfolio-v6.webp") center / cover no-repeat; }
+.partner-sentence::before { content: ""; position: absolute; inset: 0; background: rgba(6,26,66,.54); pointer-events: none; }
+.partner-hero-stage { position: relative; z-index: 1; display: grid; min-height: calc(100svh - 170px); grid-template-columns: minmax(0, .92fr) minmax(420px, 1.08fr); gap: clamp(44px, 6vw, 96px); align-items: center; }
 .partner-hero-copy { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: flex-start; }
 .partner-sentence h1 { max-width: 720px; color: #fff; font-size: clamp(46px, 4.15vw, 60px); line-height: .98; }
 .partner-sentence .hero-emphasis { position: relative; display: inline; color: #fff; }
@@ -254,6 +257,8 @@ ul, ol { padding: 0; }
   .brand { width: 132px; }.site-header.is-sticky .brand { width: 122px; }
   .menu-button { display: inline-flex; }
   .nav-links { position: fixed; inset: 70px 0 auto; display: grid; gap: 0; padding: 14px 20px 22px; background: var(--paper); border-bottom: 2px solid var(--line); transform: translateY(-130%); opacity: 0; pointer-events: none; transition: transform .35s cubic-bezier(.16,1,.3,1), opacity .2s ease; }
+  .page-parceiros .site-header:not(.is-sticky) .nav-links { color: var(--ink); }
+  .page-parceiros .site-header:not(.is-sticky) .nav-links > a:not(.button) { color: var(--ink); }
   .nav-links.is-open { transform: translateY(0); opacity: 1; pointer-events: auto; }.nav-links > a:not(.button) { padding: 14px 0; border-bottom: 2px solid var(--line); }.nav-links .button { margin-top: 16px; }
 }
 
