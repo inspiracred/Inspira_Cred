@@ -1,253 +1,257 @@
 ---
 name: "InspiraCred B2B Landing Pages"
-description: "Um dossiê editorial de crédito que transforma decisões complexas em caminhos claros e confiáveis."
+description: "Arquitetura editorial de crédito em que a frase constrói o espaço e a fotografia se abre como passagem."
 colors:
-  midnight-navy: "#04132f"
-  dossier-navy: "#071b42"
-  institutional-blue: "#0b2d72"
-  interactive-blue: "#16458d"
-  mist-blue: "#e5edf9"
-  paper-blue: "#f2f6fb"
-  action-orange: "#c74600"
-  signal-orange: "#f46b16"
-  soft-orange: "#fff0e6"
-  ink: "#0b1933"
-  muted-ink: "#44516a"
-  paper: "#ffffff"
-  success: "#18794e"
+  warm-paper: "#f4f2ec"
+  white: "#ffffff"
+  navy: "#071b42"
+  navy-soft: "#243858"
+  orange: "#ff7a21"
+  muted: "#657189"
+  near-black: "#0b0c0f"
+  footer-black: "#020817"
+  success: "#0a7f4f"
   danger: "#b42318"
 typography:
   display:
-    fontFamily: "Instrument Sans, sans-serif"
-    fontSize: "clamp(3.55rem, 4.2vw, 3.85rem)"
-    fontWeight: 800
-    lineHeight: 0.98
+    fontFamily: "Instrument Sans, Arial, sans-serif"
+    fontSize: "clamp(52px, 5vw, 72px)"
+    fontWeight: 620
+    lineHeight: 0.93
     letterSpacing: "-0.04em"
   headline:
-    fontFamily: "Instrument Sans, sans-serif"
-    fontSize: "clamp(2rem, 8vw, 2.8rem)"
-    fontWeight: 800
-    lineHeight: 1.05
-    letterSpacing: "-0.035em"
+    fontFamily: "Instrument Sans, Arial, sans-serif"
+    fontSize: "clamp(40px, 5.2vw, 76px)"
+    fontWeight: 590
+    lineHeight: 0.98
+    letterSpacing: "-0.04em"
   title:
-    fontFamily: "Instrument Sans, sans-serif"
-    fontSize: "1.35rem"
-    fontWeight: 800
-    lineHeight: 1.2
-    letterSpacing: "-0.015em"
+    fontFamily: "Instrument Sans, Arial, sans-serif"
+    fontSize: "clamp(28px, 3vw, 46px)"
+    fontWeight: 560
+    lineHeight: 1
+    letterSpacing: "-0.04em"
   body:
-    fontFamily: "Inter, system-ui, sans-serif"
-    fontSize: "1rem"
+    fontFamily: "Instrument Sans, Arial, sans-serif"
+    fontSize: "16px"
     fontWeight: 400
-    lineHeight: 1.62
+    lineHeight: 1.55
   label:
-    fontFamily: "Inter, system-ui, sans-serif"
-    fontSize: "0.82rem"
-    fontWeight: 800
-    lineHeight: 1.4
+    fontFamily: "Instrument Sans, Arial, sans-serif"
+    fontSize: "13px"
+    fontWeight: 700
+    lineHeight: 1.25
+  footer-wordmark:
+    fontFamily: "Instrument Sans, Arial, sans-serif"
+    fontSize: "clamp(116px, 20vw, 295px)"
+    fontWeight: 700
+    lineHeight: 0.73
+    letterSpacing: "-0.08em"
 rounded:
-  control: "10px"
-  sm: "12px"
-  form: "14px"
-  panel: "16px"
-  pill: "999px"
+  field: "1px"
+  control: "2px"
+  circle: "999px"
 spacing:
   xs: "8px"
-  sm: "12px"
-  md: "18px"
-  lg: "24px"
-  xl: "34px"
-  section-mobile: "72px"
-  section-desktop: "96px"
+  sm: "14px"
+  md: "24px"
+  lg: "48px"
+  xl: "80px"
+  gutter: "clamp(20px, 4vw, 64px)"
+  section: "clamp(100px, 12vw, 180px)"
 components:
   button-primary:
-    backgroundColor: "{colors.action-orange}"
-    textColor: "{colors.paper}"
+    backgroundColor: "{colors.orange}"
+    textColor: "{colors.navy}"
     typography: "{typography.label}"
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
     padding: "13px 22px"
     height: "50px"
   button-dark:
-    backgroundColor: "{colors.dossier-navy}"
-    textColor: "{colors.paper}"
+    backgroundColor: "{colors.navy}"
+    textColor: "{colors.white}"
     typography: "{typography.label}"
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.control}"
     padding: "13px 22px"
     height: "50px"
   input:
-    backgroundColor: "{colors.paper-blue}"
-    textColor: "{colors.ink}"
+    backgroundColor: "{colors.white}"
+    textColor: "{colors.navy}"
     typography: "{typography.body}"
-    rounded: "{rounded.control}"
-    padding: "10px 12px"
+    rounded: "{rounded.field}"
+    padding: "11px 12px"
     height: "48px"
-  form-card:
-    backgroundColor: "{colors.paper}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.form}"
-    padding: "24px 18px"
-  dossier-panel:
-    backgroundColor: "{colors.dossier-navy}"
-    textColor: "{colors.paper}"
-    rounded: "{rounded.panel}"
-    padding: "46px 22px"
-  signal-chip:
-    backgroundColor: "{colors.signal-orange}"
-    textColor: "{colors.midnight-navy}"
-    typography: "{typography.label}"
-    rounded: "{rounded.pill}"
-    padding: "6px 10px"
+  form-surface:
+    backgroundColor: "{colors.warm-paper}"
+    textColor: "{colors.navy}"
+    rounded: "{rounded.field}"
+    padding: "clamp(28px, 4vw, 54px)"
+  model-simple:
+    backgroundColor: "{colors.navy}"
+    textColor: "{colors.white}"
+    rounded: "{rounded.field}"
+    padding: "clamp(40px, 6vw, 90px)"
+  model-structured:
+    backgroundColor: "{colors.orange}"
+    textColor: "{colors.navy}"
+    rounded: "{rounded.field}"
+    padding: "clamp(40px, 6vw, 90px)"
 ---
 
 # Design System: InspiraCred B2B Landing Pages
 
 ## Overview
 
-**Creative North Star: "Dossiê em Movimento"**
+**Creative North Star: "Arquitetura de Aberturas"**
 
-O sistema se comporta como um dossiê de crédito que ganha clareza conforme a leitura avança. A autoridade vem de hierarquia editorial, dados legíveis, ressalvas visíveis e fotografia profissional real — nunca de espetáculo financeiro, promessas visuais ou excesso de decoração.
+O sistema transforma crédito e parceria em espaço editorial. A frase é o layout: grandes campos tipográficos organizam a leitura, e a fotografia entra por vãos inline, shutters e portais que tornam a oportunidade visível sem recorrer a mockups, cards flutuantes ou decoração financeira.
 
-A composição alterna papel branco, névoa azul e âncoras de azul-marinho para organizar a narrativa sem cair em uma sequência de cartões idênticos. O laranja é um sinal controlado de ação, progresso e ênfase. Camadas de pasta, listas abertas, linhas de processo e campos planos dão ao conjunto uma linguagem própria, sóbria e direta.
+Cada mudança de papel ganha uma composição própria. Processo vira escada ou relay; simulação vira ledger; modelos viram territórios completos de cor; confiança aparece no encontro entre retrato, afirmação e linhas de evidência. A direção aprovada usa o seed `af46343b95cb4b52` e está liberada para ship.
 
 **Key Characteristics:**
 
-- Editorial, seguro e objetivo.
-- Plano por padrão, com profundidade criada por cor, recorte e sobreposição.
-- Fotografia humana e profissional como prova de presença, não como ornamento.
-- Hierarquia tipográfica forte com texto regulatório sempre legível.
-- Movimento curto e funcional, com experiência completa sem animação.
-- Mobile recomposto como uma narrativa vertical própria.
+- A frase ocupa o campo e determina a composição.
+- Fotografias naturais funcionam como aberturas, não como fundos decorativos.
+- Papel quente e branco arquitetônico dominam; navy e near-black criam territórios.
+- Laranja sinaliza ação, passagem ou contraste estrutural.
+- Linhas, vazios e recortes substituem cards, sombras e ornamentos.
+- Desktop e mobile preservam o gesto editorial com composições próprias.
 
 ## Colors
 
-A paleta combina azuis de confiança, superfícies frias de papel e um laranja quente reservado a decisões e sinais importantes.
+A paleta é curta e arquitetônica: papel quente, branco luminoso, navy institucional, laranja de ação e pretos profundos para fechamento.
 
 ### Primary
 
-- **Azul Dossiê** (`dossier-navy`): sustenta Hero escuro, painéis de evidência, formulários e chamadas finais de alta confiança.
-- **Azul Institucional** (`institutional-blue`): reforça marca, indicadores e áreas internas dos painéis sem competir com a ação principal.
-- **Azul Interativo** (`interactive-blue`): marca foco de campos e estados interativos escuros.
+- **Navy Institucional** (`navy`): tinta principal, ledger, território escuro, botão secundário e linhas de estrutura.
+- **Navy Suave** (`navy-soft`): explicações e texto secundário que ainda precisam pertencer ao mesmo campo cromático.
 
 ### Secondary
 
-- **Laranja de Ação** (`action-orange`): pertence aos botões primários e a estados de seleção com contraste de texto branco.
-- **Laranja de Sinal** (`signal-orange`): destaca palavras-chave, marcadores de processo, medidores, etiquetas e a faixa de CTA assumidamente promocional.
-- **Laranja Suave** (`soft-orange`): cria ênfase editorial de baixa intensidade em badges e destaques de contexto.
+- **Laranja de Passagem** (`orange`): CTA primário, numerais financeiros, filetes de travessia e um dos territórios de modelo.
 
 ### Neutral
 
-- **Azul Meia-Noite** (`midnight-navy`): ancora os fundos mais profundos, modelos comparativos e fechamento institucional.
-- **Tinta** (`ink`): texto principal sobre superfícies claras.
-- **Tinta Suave** (`muted-ink`): texto explicativo, notas e parágrafos secundários.
-- **Papel** (`paper`): canvas predominante, formulários e cartões de conteúdo.
-- **Papel Azul** (`paper-blue`): campos, FAQ e grandes áreas de descanso visual.
-- **Névoa Azul** (`mist-blue`): linhas de processo, medidores e superfícies de apoio.
+- **Papel Quente** (`warm-paper`): canvas principal e superfície dos formulários.
+- **Branco Arquitetônico** (`white`): seções abertas, respiros e contraste com o papel.
+- **Cinza de Apoio** (`muted`): notas, placeholders e texto de baixa hierarquia.
+- **Quase Preto** (`near-black`): campo de fechamento editorial.
+- **Preto de Rodapé** (`footer-black`): base institucional e wordmark monumental.
 
 ### Semantic
 
-- **Sucesso** (`success`): confirmação explícita após envio.
-- **Perigo** (`danger`): validação e mensagens de erro; nunca como decoração.
+- **Sucesso** (`success`): confirmação após envio e único círculo preenchido além do ícone de informação.
+- **Perigo** (`danger`): validação textual e borda de erro; nunca decoração.
 
-**The Controlled Orange Rule.** O laranja pertence a ações decisivas, ênfases textuais, indicadores compactos e faixas de CTA intencionais; ele não alterna seções nem vira gradiente decorativo.
+**The Orange Is a Passage Rule.** O laranja marca ação, valor ou travessia entre territórios; ele não cria gradientes, badges, eyebrows ou alternância cosmética de seções.
 
-**The One Dark Anchor Rule.** Cada trecho de narrativa pode ter uma âncora azul-marinho forte, mas o entorno deve voltar ao papel ou à névoa para preservar ritmo e legibilidade.
+**The Paper Has Two Temperatures Rule.** Papel Quente sustenta a narrativa e Branco abre pausas arquitetônicas. A diferença é estrutural e deve permanecer sutil.
 
 ## Typography
 
-**Display Font:** Instrument Sans (com `sans-serif`)
+**Display, Body and Label Font:** Instrument Sans (com `Arial, sans-serif`)
 
-**Body Font:** Inter (com `system-ui, sans-serif`)
-
-**Character:** Instrument Sans traz presença compacta e contemporânea aos títulos; Inter mantém explicações, condições e formulários calmos e altamente legíveis. A hierarquia é firme, mas não transforma texto financeiro em slogan agressivo.
+**Character:** Uma única família carrega da informação regulatória ao pôster. A variedade vem de escala, peso, medida, linha e posição — não de trocar fontes ou adicionar categorias visuais artificiais.
 
 ### Hierarchy
 
-- **Display** (800, escala fluida de Hero, 0.98): títulos de primeira dobra; no mobile a escala reduz sem perder a quebra editorial.
-- **Headline** (800, escala fluida de seção, 1.05): títulos de seção com largura controlada e balanço de linhas.
-- **Title** (800, 1.25–1.45rem, 1.2): etapas, modelos, públicos e títulos internos.
-- **Body** (400–500, 1rem, 1.62): narrativa principal com linhas geralmente limitadas a 52–68 caracteres tipográficos.
-- **Label** (700–800, 0.82–0.92rem): campos, badges, notas curtas e navegação; caixa normal por padrão.
+- **Display** (620, escala fluida de 52–72px, 0.93): frases de Hero que ocupam toda a largura e recebem uma abertura fotográfica inline.
+- **Headline** (590, escala fluida de 40–76px, 0.98): grandes campos de seção, fechamentos e territórios.
+- **Title** (560–590, escala fluida de 28–46px, 1): etapas, perguntas, linhas de audiência e estruturas editoriais.
+- **Body** (400, 16–23px, 1.42–1.55): narrativa, explicações e conteúdo de formulário.
+- **Label** (650–700, 13–16px): navegação, rótulos, notas e ações.
+- **Footer Wordmark** (700, escala fluida de 116–295px, 0.73): palavra decorativa recortada; pode usar tracking de -0.08em porque não carrega conteúdo essencial.
 
-**The Two-Family Rule.** Instrument Sans fala em títulos e números de destaque; Inter explica, orienta e coleta dados. Não introduza uma terceira família para criar variedade.
+**The Minus Four Ceiling Rule.** Títulos legíveis não apertam além de -0.04em. O único desvio é o wordmark decorativo de rodapé em -0.08em.
 
-**The Disclaimer Is Content Rule.** Ressalvas e condições podem ser menores, mas devem manter contraste, espaçamento e comprimento de linha suficientes para leitura real.
+**The No Eyebrow Rule.** Não crie microtítulos em caixa alta para fabricar hierarquia. A própria frase, sua posição e a mudança de escala devem orientar a leitura.
 
 ## Layout
 
-O canvas usa um shell central de até 1184px. A margem lateral é de 18px no mobile e 32px a partir de 700px; seções respiram 72px no fluxo base e 96px em telas médias e grandes, com compactação específica abaixo de 430px. O sistema responde nos marcos observados de 430px, 700px, 980px e 1280px.
+O shell chega a 1280px com gutter fluido de 20–64px. Grandes frases trabalham sobre uma grade de 12 colunas com gap de 24px; imagens podem atravessar colunas, sair parcialmente do gutter ou ocupar uma faixa inteira. O vazio é ativo: separa argumentos e permite que cada abertura fotográfica funcione como pausa ou passagem.
 
-No desktop, a narrativa usa splits assimétricos, áreas editoriais abertas, fotografia em escala e painéis escuros concentrados. Linhas de processo atravessam colunas sem transformar cada etapa em card. A partir de 980px, navegação, Heros e formulários assumem grades de duas colunas; abaixo disso, a ordem vertical preserva o argumento antes da prova e a prova antes da ação.
+Os breakpoints são 980px para recompor grades editoriais, 860px para trocar a navegação e 760px para a composição móvel. No mobile, o gutter fixa em 20px, seções respiram 84px, CTAs ocupam a largura e a ordem argumento → imagem → prova → ação permanece clara. Alvos interativos têm pelo menos 44px.
 
-**The Own Mobile Composition Rule.** Mobile não é o desktop espremido: imagens, dossiês, etapas, modelos e formulários são reordenados como uma leitura vertical contínua, com CTAs ocupando a largura disponível e alvos de toque confortáveis.
+**The Sentence Is the Layout Rule.** Não encaixe o título em uma coluna ao lado de uma imagem. Faça a frase ocupar o campo e use a fotografia como palavra, interrupção ou abertura dentro dela.
 
-**The New Reason Rule.** Cada seção precisa introduzir uma nova razão para continuar — contexto, processo, evidência, confiança ou ação — e deve escolher uma geometria coerente com esse papel.
+**The Role Changes the Geometry Rule.** Processo, ledger, confiança, modelos e formulário não compartilham o mesmo container. Cada papel pede uma estrutura própria, mas todos obedecem à mesma grade e às mesmas linhas.
+
+**The Mobile Is Reauthored Rule.** Mobile preserva o gesto, não a miniatura do desktop: shutters estreitam, territórios empilham, linhas viram rails verticais e imagens podem romper um único lado do gutter.
 
 ## Elevation & Depth
 
-O sistema é plano por padrão e não usa `box-shadow`. Profundidade nasce do contraste tonal, de sobreposições controladas, de recortes de imagem, de abas de pasta e de um único deslocamento espacial quando ele explica hierarquia. Fundos escuros concentram dados e formulários; superfícies claras permanecem limpas.
+Não há gradientes nem `box-shadow`. Profundidade vem do shutter fotográfico, do parallax contido dentro de recortes, da alternância sutil entre Papel Quente e Branco e do encontro entre territórios planos de cor. Nenhuma superfície precisa parecer suspensa.
 
-**The Flat-by-Default Rule.** Não adicione sombras decorativas a botões, cards, FAQ ou campos. Use cor, borda implícita, recorte ou sobreposição somente quando houver uma relação espacial a explicar.
+**The Flat Architecture Rule.** Se uma relação não puder ser explicada por linha, vazio, recorte, contraste ou posição, não tente resolvê-la com sombra, glow ou glassmorphism.
 
 ## Shapes
 
-Retângulos suavizados de 12–16px formam botões, painéis e cartões de formulário. Campos usam 10px para parecerem precisos e acessíveis. Componentes editoriais especiais podem cortar um canto para 4px e manter os demais em 14–16px, evocando folhas e pastas sem virar ornamento temático. Círculos ficam restritos a ícones, marcadores de processo e estados; pills pertencem a badges compactos.
+O sistema é quase ortogonal. Campos usam raio de 1px; botões e controles, 2px. Imagens são shutters e portais de canto reto. Círculos aparecem somente no botão de informação e no estado de sucesso. Pills, chips e cantos generosos não pertencem a esta direção.
 
-**The Folder Edge Rule.** A assimetria de canto é uma assinatura reservada a camadas editoriais, fotografia e dossiês; componentes utilitários continuam regulares.
+**The One-or-Two Pixel Rule.** Toda superfície funcional permanece entre 1px e 2px de raio; arredondamento maior exige uma função circular explícita de informação ou sucesso.
 
 ## Components
 
 ### Buttons
 
-- **Primary:** bloco laranja, texto branco em peso 800, altura mínima de 50px, padding de 13px por 22px e cantos de 12px.
-- **Dark:** mesma geometria sobre azul Dossiê; usado quando a superfície ao redor já é laranja ou clara.
-- **Secondary:** link textual aberto, sem contorno ou fundo; acompanha uma ação principal sem competir com ela.
-- **States:** hover sobe 2px e muda o tom; active retorna e comprime levemente; `:focus-visible` recebe contorno laranja de 3px; disabled perde opacidade sem mover.
+- **Primary:** retângulo laranja, texto navy, peso 700, altura mínima de 50px, padding de 13px por 22px e raio de 2px.
+- **Dark:** mesma geometria em navy com texto branco.
+- **Text link:** sublinhado legível com seta laranja; acompanha a ação principal sem virar ghost button.
+- **States:** hover desloca 2px e escurece a cor; foco usa outline laranja translúcido de 3px; alvos móveis nunca ficam abaixo de 44px.
 
 ### Inputs / Fields
 
-- **Style:** superfície Papel Azul, altura mínima de 48px, cantos de 10px, sem borda em repouso.
-- **Focus:** fundo retorna ao Papel e contorno de 2px usa Azul Interativo.
-- **Error:** contorno Perigo e fundo vermelho muito claro, acompanhado de mensagem textual; cor nunca é o único sinal.
-- **Grouping:** formulário branco dentro de painel marinho, com rótulos fortes e respiro vertical regular.
+- **Style:** branco, borda navy translúcida de 1px, raio de 1px, altura mínima de 48px e padding de 11px por 12px.
+- **Focus / hover:** a borda ganha autoridade e o outline permanece visível; não há glow ou sombra.
+- **Error:** borda Perigo acompanhada de mensagem de 13px; cor nunca é o único sinal.
+- **Grouping:** formulário é uma superfície plana de Papel Quente ou Branco dentro de um território, nunca um card elevado.
 
 ### Navigation
 
-- **Desktop:** logo oficial, links compactos e CTA primário; hover dos links revela uma linha laranja curta.
-- **Sticky:** ao sair do Hero, vira barra branca compacta com logo colorido e entra por deslocamento vertical curto.
-- **Mobile:** botão circular de 48px abre uma camada marinho em tela cheia, preserva foco e bloqueia o scroll do fundo.
+- **Desktop:** logo oficial à esquerda, links compactos, sublinhado horizontal e CTA laranja à direita.
+- **Sticky:** Papel Quente quase opaco com blur discreto; a mudança serve apenas à persistência de navegação, sem efeito decorativo adicional.
+- **Mobile:** menu de 44px e painel plano sob o header, dividido por linhas; não abre um modal arredondado.
 
-### Dossier Panels
+### Sentence Aperture
 
-Painéis marinho agrupam números, modelos, formulários ou CTA final. Eles usam raio de 16px, títulos brancos, texto azul-claro e laranja apenas para decisão ou sinal. Não subdivida o painel em uma grade de cards iguais quando uma lista aberta ou divisão tonal resolver melhor.
+Uma faixa fotográfica substitui parte da frase no Hero. O recorte acompanha a altura de cap, abre por `clip-path` e contém um zoom/parallax leve. A imagem precisa acrescentar significado ao texto, não apenas preencher um vão.
 
-### Dossier Status Card
+### Process Stair / Relay
 
-O cartão branco sobre fotografia apresenta um estado, valor ou caminho resumido. A aba superior, o canto assimétrico e o medidor curto comunicam documento em andamento; conteúdo e números devem ser reais e já aprovados.
+Contadores usa três degraus deslocados com número laranja; Parceiros usa quatro passes em linhas de largura total. Ambos permanecem abertos, sem cards, e só recebem reveal curto na entrada.
 
-### Process Timeline
+### Financial Ledger
 
-Marcadores laranja e linha Névoa Azul conectam etapas abertas. A linha é vertical no mobile e horizontal no desktop; títulos e explicações permanecem fora de caixas.
+Simulações vivem em território navy com valores laranja, numerais tabulares e linhas horizontais. Cada caso é uma linha de ledger, não um pricing card. Ressalvas ficam no mesmo território e continuam legíveis.
+
+### Model Territories
+
+Os dois modelos de parceria são territórios completos: navy/branco para indicação simples e laranja/navy para operação estruturada. Não são cards e não recebem container externo, sombra ou raio promocional.
 
 ### FAQ
 
-Itens brancos usam cantos de 12px sobre Papel Azul. O ícone `+` gira para formar o estado aberto, e a resposta expande em grade sem deslocamento abrupto.
+Perguntas e respostas usam linhas de 2px, tipografia grande e `+` laranja. A expansão acontece no próprio fluxo e não cria caixa, fundo ou acordeão arredondado.
 
-**The State Must Explain Rule.** Todo movimento ou mudança visual deve explicar navegação, progresso, abertura, foco ou confirmação; a página precisa continuar completa no primeiro frame e com `prefers-reduced-motion`.
+### Footer Wordmark
+
+Uma palavra monumental e decorativa é recortada pelo fundo `footer-black`. Tracking de -0.08em é permitido somente aqui; o conteúdo institucional e legal permanece separado e plenamente legível.
+
+**The Motion Has a Job Rule.** Movimento é limitado ao Hero, ao processo e ao shutter/parallax fotográfico. Tudo continua presente no primeiro frame, e `prefers-reduced-motion` remove reveal, clip e transformação.
 
 ## Do's and Don'ts
 
 ### Do:
 
-- Do preserve a presença dominante de papel branco e usar azul-marinho como âncora concentrada.
-- Do criar fotografia específica para a mensagem de cada seção, com proveniência registrada, em vez de reciclar a mesma cena em contextos diferentes; cada imagem deve acrescentar um novo beat narrativo.
-- Do manter o CTA principal laranja imediatamente reconhecível e as ressalvas próximas da afirmação que qualificam.
-- Do variar a geometria conforme a função: lista aberta para processo, painel para evidência, formulário para coleta e faixa para fechamento.
-- Do verificar desktop e mobile, teclado, foco visível, primeiro frame e `prefers-reduced-motion`.
+- Do usar a frase como estrutura e inserir fotografia somente quando ela completar o sentido.
+- Do tratar imagens como shutters, portais, faixas ou travessias com proveniência registrada.
+- Do usar linha, vazio, escala e territórios planos para criar hierarquia.
+- Do manter tracking mínimo de -0.04em em títulos legíveis e reservar -0.08em ao wordmark decorativo.
+- Do garantir alvos de 44px no mobile, foco visível, primeiro frame completo e redução de movimento.
 
 ### Don't:
 
-- Don't criar gradientes, sombras decorativas ou glow para simular sofisticação.
-- Don't transformar todas as seções em cards arredondados repetidos ou alternar faixas de cor sem função narrativa.
-- Don't inventar números, provas, logos, depoimentos, instituições ou estados de sucesso.
-- Don't usar o laranja como preenchimento genérico quando ele não sinaliza ação, progresso ou ênfase aprovada.
-- Don't aproximar o logo, substituir as famílias tipográficas ou esconder condições importantes em texto ornamental.
+- Don't usar gradientes, sombras, glow, glassmorphism ou cards genéricos.
+- Don't criar eyebrows, pills, badges ou cantos arredondados para fabricar variedade.
+- Don't repetir o mesmo Hero, timeline, container ou formulário entre superfícies com papéis diferentes.
+- Don't transformar ledger ou modelos em pricing cards.
+- Don't inventar provas, números, instituições, logos, depoimentos ou estados de sucesso.

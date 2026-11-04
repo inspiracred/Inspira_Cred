@@ -1,86 +1,62 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-04T13:40:15.5820377Z",
+  "generatedAt": "2026-11-04T14:51:37.0305145Z",
   "title": "Design System: InspiraCred B2B Landing Pages",
   "extensions": {
     "colorMeta": {
-      "midnight-navy": {
-        "role": "primary",
-        "displayName": "Azul Meia-Noite",
-        "canonical": "#04132f",
-        "tonalRamp": ["#020817", "#04132f", "#071b42", "#0b2d72", "#16458d", "#5479ad", "#9eb3d2", "#edf2f9"]
+      "warm-paper": {
+        "role": "neutral",
+        "displayName": "Papel Quente",
+        "canonical": "#f4f2ec",
+        "tonalRamp": ["#1c1b18", "#393732", "#5f5c55", "#89857c", "#b5b1a8", "#d7d4cd", "#eae8e2", "#f4f2ec"]
       },
-      "dossier-navy": {
+      "white": {
+        "role": "neutral",
+        "displayName": "Branco Arquitetônico",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#171717", "#353535", "#5c5c5c", "#858585", "#adadad", "#d0d0d0", "#ececec", "#ffffff"]
+      },
+      "navy": {
         "role": "primary",
-        "displayName": "Azul Dossiê",
+        "displayName": "Navy Institucional",
         "canonical": "#071b42",
         "tonalRamp": ["#020817", "#04132f", "#071b42", "#0b2d72", "#16458d", "#5c80b5", "#a9bbd6", "#f1f4f9"]
       },
-      "institutional-blue": {
+      "navy-soft": {
         "role": "primary",
-        "displayName": "Azul Institucional",
-        "canonical": "#0b2d72",
-        "tonalRamp": ["#03102b", "#071b42", "#0b2d72", "#16458d", "#2f60a2", "#7395c4", "#b5c8e0", "#f2f6fb"]
+        "displayName": "Navy Suave",
+        "canonical": "#243858",
+        "tonalRamp": ["#07101f", "#13233b", "#243858", "#405777", "#6d809b", "#9eacc0", "#ced6e1", "#f2f5f8"]
       },
-      "interactive-blue": {
-        "role": "primary",
-        "displayName": "Azul Interativo",
-        "canonical": "#16458d",
-        "tonalRamp": ["#03102b", "#071b42", "#0b2d72", "#16458d", "#3970b3", "#82a4cf", "#c1d1e6", "#f2f6fb"]
-      },
-      "mist-blue": {
-        "role": "neutral",
-        "displayName": "Névoa Azul",
-        "canonical": "#e5edf9",
-        "tonalRamp": ["#07101f", "#17243a", "#35445d", "#677790", "#9dabc0", "#c9d4e4", "#e5edf9", "#f7f9fc"]
-      },
-      "paper-blue": {
-        "role": "neutral",
-        "displayName": "Papel Azul",
-        "canonical": "#f2f6fb",
-        "tonalRamp": ["#09111e", "#1c2738", "#3f4d62", "#748196", "#aab5c5", "#d2dbe7", "#e8eef6", "#f2f6fb"]
-      },
-      "action-orange": {
+      "orange": {
         "role": "secondary",
-        "displayName": "Laranja de Ação",
-        "canonical": "#c74600",
-        "tonalRamp": ["#2b0e00", "#5c1d00", "#8c2d00", "#c74600", "#f46b16", "#ff995c", "#ffc5a3", "#fff0e6"]
+        "displayName": "Laranja de Passagem",
+        "canonical": "#ff7a21",
+        "tonalRamp": ["#351400", "#702900", "#aa4100", "#df5c08", "#ff7a21", "#ffa060", "#ffc7a4", "#fff1e7"]
       },
-      "signal-orange": {
-        "role": "secondary",
-        "displayName": "Laranja de Sinal",
-        "canonical": "#f46b16",
-        "tonalRamp": ["#321000", "#6a2100", "#a43800", "#c74600", "#f46b16", "#ff9c61", "#ffc8a8", "#fff3eb"]
-      },
-      "soft-orange": {
-        "role": "secondary",
-        "displayName": "Laranja Suave",
-        "canonical": "#fff0e6",
-        "tonalRamp": ["#2c0f02", "#5e210d", "#913d20", "#c7663c", "#eb946a", "#f8bea0", "#ffe0cd", "#fff0e6"]
-      },
-      "ink": {
+      "muted": {
         "role": "neutral",
-        "displayName": "Tinta",
-        "canonical": "#0b1933",
-        "tonalRamp": ["#050b16", "#0b1933", "#24334f", "#4d5d77", "#7f8da3", "#b2bdcc", "#d9e0e9", "#f4f6f9"]
+        "displayName": "Cinza de Apoio",
+        "canonical": "#657189",
+        "tonalRamp": ["#0d121c", "#242d3d", "#465267", "#657189", "#8b96a9", "#b5bdca", "#dce1e8", "#f5f7f9"]
       },
-      "muted-ink": {
+      "near-black": {
         "role": "neutral",
-        "displayName": "Tinta Suave",
-        "canonical": "#44516a",
-        "tonalRamp": ["#0a0f19", "#1c2637", "#44516a", "#657188", "#8d98aa", "#b9c1ce", "#dde2e9", "#f5f7f9"]
+        "displayName": "Quase Preto",
+        "canonical": "#0b0c0f",
+        "tonalRamp": ["#050506", "#0b0c0f", "#24262b", "#4a4d54", "#777a82", "#aaacb1", "#d6d7da", "#f4f4f5"]
       },
-      "paper": {
+      "footer-black": {
         "role": "neutral",
-        "displayName": "Papel",
-        "canonical": "#ffffff",
-        "tonalRamp": ["#171717", "#353535", "#5c5c5c", "#858585", "#adadad", "#d0d0d0", "#ececec", "#ffffff"]
+        "displayName": "Preto de Rodapé",
+        "canonical": "#020817",
+        "tonalRamp": ["#01040b", "#020817", "#0a1630", "#1d2d4d", "#4a5c78", "#8290a5", "#bec6d2", "#eef1f5"]
       },
       "success": {
         "role": "tertiary",
         "displayName": "Sucesso",
-        "canonical": "#18794e",
-        "tonalRamp": ["#062318", "#0b432d", "#12623f", "#18794e", "#3b9a70", "#77b99a", "#b8dccb", "#eef8f3"]
+        "canonical": "#0a7f4f",
+        "tonalRamp": ["#032318", "#05442c", "#08643f", "#0a7f4f", "#339d70", "#73bb99", "#b5ddca", "#edf9f3"]
       },
       "danger": {
         "role": "tertiary",
@@ -90,24 +66,23 @@
       }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display", "purpose": "Títulos de primeira dobra e números de alta prioridade." },
-      "headline": { "displayName": "Headline", "purpose": "Títulos editoriais de seção com linhas equilibradas." },
-      "title": { "displayName": "Title", "purpose": "Etapas, modelos, públicos e títulos internos." },
-      "body": { "displayName": "Body", "purpose": "Narrativa, explicações e conteúdo regulatório legível." },
-      "label": { "displayName": "Label", "purpose": "Navegação, campos, badges, notas e ações compactas." }
+      "display": { "displayName": "Display", "purpose": "Frases de Hero em largura total com abertura fotográfica inline." },
+      "headline": { "displayName": "Headline", "purpose": "Grandes campos editoriais, territórios e fechamentos." },
+      "title": { "displayName": "Title", "purpose": "Etapas, perguntas, audiências e estruturas de leitura." },
+      "body": { "displayName": "Body", "purpose": "Narrativa, explicações, condições e formulários." },
+      "label": { "displayName": "Label", "purpose": "Navegação, campos, notas e ações compactas." },
+      "footer-wordmark": { "displayName": "Footer Wordmark", "purpose": "Palavra decorativa monumental recortada no rodapé." }
     },
     "shadows": [],
     "motion": [
-      { "name": "ease-out", "value": "cubic-bezier(.16, 1, .3, 1)", "purpose": "Entrada e deslocamento de elementos com desaceleração clara." },
-      { "name": "state-fast", "value": "180ms", "purpose": "Hover, active e mudanças rápidas de estado." },
-      { "name": "reveal", "value": "560ms", "purpose": "Revelação vertical curta de conteúdo ao entrar no viewport." },
-      { "name": "cta-pulse", "value": "2.6s ease-out infinite", "purpose": "Pulso reservado ao CTA final de parceiros; removido com redução de movimento." }
+      { "name": "hero-process-reveal", "value": "700ms cubic-bezier(.16, 1, .3, 1)", "purpose": "Reveal vertical limitado ao Hero e às seções de processo." },
+      { "name": "photo-shutter", "value": "clip-path + scroll progress", "purpose": "Abertura fotográfica inline que transforma a imagem em passagem dentro da frase." },
+      { "name": "photo-parallax", "value": "scroll progress, 8% to 12% travel", "purpose": "Movimento contido dentro de recortes fotográficos, sem mover a superfície." }
     ],
     "breakpoints": [
-      { "name": "phone-compact", "value": "430px" },
-      { "name": "tablet", "value": "700px" },
-      { "name": "desktop", "value": "980px" },
-      { "name": "wide", "value": "1280px" }
+      { "name": "mobile", "value": "760px" },
+      { "name": "navigation", "value": "860px" },
+      { "name": "editorial-grid", "value": "980px" }
     ]
   },
   "components": [
@@ -115,98 +90,112 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Ação principal laranja para solicitar avaliação ou iniciar cadastro.",
+      "description": "Ação principal em laranja para avaliação ou cadastro.",
       "html": "<button class=\"ds-btn-primary\">Solicitar avaliação</button>",
-      "css": ".ds-btn-primary { min-height: 50px; display: inline-flex; align-items: center; justify-content: center; padding: 13px 22px; border: 0; border-radius: 12px; background: var(--orange-600, #c74600); color: #fff; font: 800 0.9rem/1.2 Inter, system-ui, sans-serif; cursor: pointer; transition: transform 180ms cubic-bezier(.16,1,.3,1), background-color 180ms ease; } .ds-btn-primary:hover { background: #bd4300; transform: translateY(-2px); } .ds-btn-primary:active { transform: translateY(0) scale(.98); } .ds-btn-primary:focus-visible { outline: 3px solid var(--orange-500, #f46b16); outline-offset: 4px; }"
+      "css": ".ds-btn-primary { min-height: 50px; display: inline-flex; align-items: center; justify-content: center; padding: 13px 22px; border: 1px solid #ff7a21; border-radius: 2px; background: #ff7a21; color: #071b42; font: 700 15px/1.1 'Instrument Sans', Arial, sans-serif; cursor: pointer; transition: transform .25s ease, background-color .25s ease; } .ds-btn-primary:hover { transform: translateY(-2px); background: #e9640e; border-color: #e9640e; } .ds-btn-primary:focus-visible { outline: 3px solid rgba(255,122,33,.48); outline-offset: 3px; }"
     },
     {
       "name": "Dark Button",
       "kind": "button",
       "refersTo": "button-dark",
-      "description": "Ação escura sobre superfícies claras ou laranja.",
-      "html": "<button class=\"ds-btn-dark\">Quero fazer minha simulação</button>",
-      "css": ".ds-btn-dark { min-height: 50px; display: inline-flex; align-items: center; justify-content: center; padding: 13px 22px; border: 0; border-radius: 12px; background: var(--navy-900, #071b42); color: #fff; font: 800 0.9rem/1.2 Inter, system-ui, sans-serif; cursor: pointer; transition: transform 180ms cubic-bezier(.16,1,.3,1), background-color 180ms ease; } .ds-btn-dark:hover { background: var(--navy-700, #16458d); transform: translateY(-2px); } .ds-btn-dark:active { transform: translateY(0) scale(.98); } .ds-btn-dark:focus-visible { outline: 3px solid var(--orange-500, #f46b16); outline-offset: 4px; }"
+      "description": "Ação secundária sólida em navy sobre papel ou laranja.",
+      "html": "<button class=\"ds-btn-dark\">Solicitar avaliação de crédito</button>",
+      "css": ".ds-btn-dark { min-height: 50px; display: inline-flex; align-items: center; justify-content: center; padding: 13px 22px; border: 1px solid #071b42; border-radius: 2px; background: #071b42; color: #fff; font: 700 15px/1.1 'Instrument Sans', Arial, sans-serif; cursor: pointer; transition: transform .25s ease, background-color .25s ease; } .ds-btn-dark:hover { transform: translateY(-2px); background: #102d61; border-color: #102d61; } .ds-btn-dark:focus-visible { outline: 3px solid rgba(255,122,33,.48); outline-offset: 3px; }"
     },
     {
       "name": "Text Field",
       "kind": "input",
       "refersTo": "input",
-      "description": "Campo plano para formulários financeiros e profissionais.",
+      "description": "Campo ortogonal de alta legibilidade sem sombra.",
       "html": "<label class=\"ds-field\"><span>Nome completo</span><input type=\"text\" placeholder=\"Digite seu nome completo\"></label>",
-      "css": ".ds-field { display: grid; gap: 5px; color: var(--navy-900, #071b42); font: 800 0.86rem/1.4 Inter, system-ui, sans-serif; } .ds-field input { width: 100%; min-height: 48px; padding: 10px 12px; border: 0; border-radius: 10px; background: var(--blue-50, #f2f6fb); color: var(--ink, #0b1933); font: 400 1rem/1.4 Inter, system-ui, sans-serif; outline: 2px solid transparent; transition: outline-color 160ms ease, background-color 160ms ease; } .ds-field input:focus { background: #fff; outline-color: var(--navy-700, #16458d); } .ds-field input:focus-visible { outline: 2px solid var(--navy-700, #16458d); outline-offset: 0; }"
+      "css": ".ds-field { display: grid; gap: 5px; color: #071b42; font: 700 13px/1.25 'Instrument Sans', Arial, sans-serif; } .ds-field input { min-height: 48px; padding: 11px 12px; border: 1px solid rgba(7,27,66,.3); border-radius: 1px; background: #fff; color: #071b42; font: 400 16px/1.4 'Instrument Sans', Arial, sans-serif; } .ds-field input:hover { border-color: #071b42; } .ds-field input:focus-visible { outline: 3px solid rgba(255,122,33,.48); outline-offset: 3px; }"
     },
     {
-      "name": "Desktop Navigation Links",
+      "name": "Header Navigation",
       "kind": "nav",
-      "description": "Links compactos com CTA laranja e sublinhado progressivo.",
+      "description": "Navegação mínima com sublinhado e CTA ortogonal.",
       "html": "<nav class=\"ds-nav\" aria-label=\"Navegação principal\"><a href=\"#\">Como funciona</a><a href=\"#\">Modelos</a><a class=\"ds-nav-cta\" href=\"#\">Quero ser parceiro</a></nav>",
-      "css": ".ds-nav { display: flex; align-items: center; gap: 24px; color: var(--navy-900, #071b42); font: 700 0.92rem/1.2 Inter, system-ui, sans-serif; } .ds-nav a { position: relative; color: inherit; text-decoration: none; } .ds-nav a:not(.ds-nav-cta)::after { content: ''; position: absolute; left: 0; right: 100%; bottom: -7px; height: 2px; background: var(--orange-500, #f46b16); transition: right 220ms cubic-bezier(.16,1,.3,1); } .ds-nav a:not(.ds-nav-cta):hover::after, .ds-nav a:not(.ds-nav-cta):focus-visible::after { right: 0; } .ds-nav a:focus-visible { outline: 3px solid var(--orange-500, #f46b16); outline-offset: 4px; } .ds-nav-cta { min-height: 44px; display: inline-flex; align-items: center; padding: 10px 16px; border-radius: 12px; background: var(--orange-600, #c74600); color: #fff !important; }"
+      "css": ".ds-nav { display: flex; align-items: center; gap: 32px; color: #071b42; font: 650 14px/1.2 'Instrument Sans', Arial, sans-serif; } .ds-nav a { position: relative; color: inherit; text-decoration: none; } .ds-nav a:not(.ds-nav-cta)::after { content: ''; position: absolute; inset: auto 0 -6px; height: 2px; background: currentColor; transform: scaleX(0); transform-origin: right; transition: transform .25s ease; } .ds-nav a:not(.ds-nav-cta):hover::after, .ds-nav a:not(.ds-nav-cta):focus-visible::after { transform: scaleX(1); transform-origin: left; } .ds-nav a:focus-visible { outline: 3px solid rgba(255,122,33,.48); outline-offset: 3px; } .ds-nav-cta { min-height: 42px; display: inline-flex; align-items: center; padding: 10px 17px; border-radius: 2px; background: #ff7a21; }"
     },
     {
-      "name": "Signal Chip",
-      "kind": "chip",
-      "refersTo": "signal-chip",
-      "description": "Etiqueta compacta para estado ou modelo de atuação.",
-      "html": "<span class=\"ds-signal-chip\">Entrada simples</span>",
-      "css": ".ds-signal-chip { display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 999px; background: var(--orange-500, #f46b16); color: var(--navy-950, #04132f); font: 800 0.82rem/1.2 Inter, system-ui, sans-serif; }"
-    },
-    {
-      "name": "Dossier Status Card",
-      "kind": "card",
-      "description": "Resumo branco com aba de pasta, badge e medidor de progresso.",
-      "html": "<article class=\"ds-dossier-card\"><h3>Entrada</h3><span class=\"ds-dossier-badge\">Capital preservado</span><p>Você pode financiar apenas a parte necessária para avançar.</p><div class=\"ds-dossier-row\"><span>Caixa da empresa</span><strong>Mais liquidez</strong></div><div class=\"ds-dossier-meter\"><i></i></div></article>",
-      "css": ".ds-dossier-card { position: relative; width: min(360px, 100%); padding: 24px; border-radius: 16px 16px 16px 4px; background: #fff; color: var(--ink, #0b1933); font-family: Inter, system-ui, sans-serif; } .ds-dossier-card::before { content: ''; position: absolute; top: -24px; right: 24px; width: 42%; height: 26px; border-radius: 12px 12px 0 0; background: #fff; } .ds-dossier-card h3 { margin: 0 0 8px; font: 800 2rem/1 Instrument Sans, sans-serif; letter-spacing: -.03em; } .ds-dossier-card p { color: var(--muted, #44516a); line-height: 1.45; } .ds-dossier-badge { display: inline-block; padding: 5px 8px; border-radius: 999px; background: var(--orange-100, #fff0e6); color: #8c3200; font-weight: 800; font-size: .82rem; } .ds-dossier-row { display: flex; justify-content: space-between; gap: 16px; font-size: .82rem; } .ds-dossier-row strong { color: var(--navy-800, #0b2d72); } .ds-dossier-meter { height: 6px; margin-top: 7px; overflow: hidden; border-radius: 999px; background: var(--blue-100, #e5edf9); } .ds-dossier-meter i { display: block; width: 68%; height: 100%; background: var(--orange-500, #f46b16); } .ds-dossier-card:focus-within { outline: 3px solid var(--orange-500, #f46b16); outline-offset: 4px; }"
-    },
-    {
-      "name": "Process Step",
+      "name": "Sentence Aperture",
       "kind": "custom",
-      "description": "Etapa aberta conectada por linha, sem caixa de card.",
-      "html": "<article class=\"ds-process-step\"><h3>Avaliamos seu perfil</h3><p>Nossa equipe analisa o caso para buscar alternativas.</p></article>",
-      "css": ".ds-process-step { position: relative; padding: 28px 0 28px 34px; color: var(--ink, #0b1933); font-family: Inter, system-ui, sans-serif; } .ds-process-step::before { content: ''; position: absolute; left: 0; top: 34px; width: 12px; height: 12px; border-radius: 50%; background: var(--orange-500, #f46b16); } .ds-process-step::after { content: ''; position: absolute; left: 5px; top: 50px; bottom: -10px; width: 2px; background: var(--blue-100, #e5edf9); } .ds-process-step h3 { margin: 0 0 6px; color: var(--navy-900, #071b42); font: 800 1.35rem/1.2 Instrument Sans, sans-serif; letter-spacing: -.015em; } .ds-process-step p { margin: 0; color: var(--muted, #44516a); line-height: 1.62; }"
+      "description": "A fotografia funciona como palavra visual dentro do título.",
+      "html": "<h2 class=\"ds-sentence\">A frase abre <span class=\"ds-aperture\" aria-hidden=\"true\"></span> uma passagem.</h2>",
+      "css": ".ds-sentence { max-width: 980px; margin: 0; color: #071b42; font: 620 clamp(42px,5vw,72px)/.93 'Instrument Sans', Arial, sans-serif; letter-spacing: -.04em; } .ds-aperture { position: relative; display: inline-block; width: 2.08em; height: .72em; margin: 0 .1em; vertical-align: .02em; overflow: hidden; background: #243858; clip-path: inset(0); } .ds-aperture::before { content: ''; position: absolute; inset: 0 58% 0 34%; background: #f4f2ec; } .ds-aperture::after { content: ''; position: absolute; inset: 0 46% 0 48%; background: #ff7a21; }"
     },
     {
-      "name": "FAQ Item",
+      "name": "Process Stair",
       "kind": "custom",
-      "description": "Pergunta expansível branca sobre superfície azul-clara.",
-      "html": "<details class=\"ds-faq\"><summary>Preciso ter experiência com crédito?<span aria-hidden=\"true\">+</span></summary><p>Não. A equipe conduz as etapas conforme o modelo escolhido.</p></details>",
-      "css": ".ds-faq { border-radius: 12px; background: #fff; color: var(--navy-900, #071b42); font-family: Inter, system-ui, sans-serif; } .ds-faq summary { min-height: 60px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px; cursor: pointer; list-style: none; font-weight: 800; } .ds-faq summary::-webkit-details-marker { display: none; } .ds-faq summary span { font-size: 1.45rem; transition: transform 220ms cubic-bezier(.16,1,.3,1); } .ds-faq[open] summary span { transform: rotate(45deg); } .ds-faq p { margin: 0; padding: 0 18px 20px; color: var(--muted, #44516a); line-height: 1.62; } .ds-faq summary:hover { color: var(--navy-700, #16458d); } .ds-faq summary:focus-visible { outline: 3px solid var(--orange-500, #f46b16); outline-offset: 4px; border-radius: 12px; }"
+      "description": "Etapas abertas se deslocam como degraus, sem cards.",
+      "html": "<ol class=\"ds-process\"><li><span>01</span><div><h3>Preencha o formulário</h3><p>Conte seus dados e o valor que precisa.</p></div></li><li><span>02</span><div><h3>Avaliamos seu perfil</h3><p>A equipe busca alternativas adequadas.</p></div></li></ol>",
+      "css": ".ds-process { display: grid; margin: 0; padding: 0; color: #071b42; list-style: none; font-family: 'Instrument Sans', Arial, sans-serif; } .ds-process li { display: grid; grid-template-columns: 64px 1fr; gap: 24px; padding: 28px 0; border-top: 2px solid #071b42; } .ds-process li:nth-child(2) { width: 92%; margin-left: 8%; border-bottom: 2px solid #071b42; } .ds-process li > span { color: #ff7a21; font-weight: 700; } .ds-process h3 { margin: 0; font-size: 32px; font-weight: 560; line-height: 1; letter-spacing: -.04em; } .ds-process p { margin: 7px 0 0; color: #243858; }"
+    },
+    {
+      "name": "Financial Ledger",
+      "kind": "custom",
+      "description": "Valores e parcelas organizados como ledger aberto.",
+      "html": "<article class=\"ds-ledger\"><div><strong>R$ 250 mil</strong><span>Simulação de crédito</span></div><dl><div><dt>60 parcelas iniciais estimadas</dt><dd>R$ 6.491,67</dd></div><div><dt>120 parcelas iniciais estimadas</dt><dd>R$ 4.287,15</dd></div></dl></article>",
+      "css": ".ds-ledger { display: grid; grid-template-columns: .82fr 1.18fr; gap: 7vw; padding: 48px 0; border-top: 1px solid rgba(255,255,255,.22); border-bottom: 1px solid rgba(255,255,255,.22); background: #071b42; color: #fff; font-family: 'Instrument Sans', Arial, sans-serif; } .ds-ledger > div { display: flex; flex-direction: column; } .ds-ledger strong { color: #ff7a21; font-size: clamp(54px,7.4vw,108px); font-weight: 570; line-height: .8; letter-spacing: -.04em; } .ds-ledger span, .ds-ledger dt { color: rgba(255,255,255,.7); } .ds-ledger span { margin-top: 24px; } .ds-ledger dl { margin: 0; } .ds-ledger dl div { display: flex; justify-content: space-between; gap: 24px; padding: 15px 0; border-bottom: 1px solid rgba(255,255,255,.13); } .ds-ledger dd { margin: 0; font-size: 28px; font-weight: 620; }"
+    },
+    {
+      "name": "Model Territories",
+      "kind": "custom",
+      "description": "Dois modos de parceria ocupam territórios completos de cor.",
+      "html": "<div class=\"ds-models\"><article class=\"ds-model-simple\"><h3>Indicação simples</h3><p>A equipe conduz a operação.</p></article><article class=\"ds-model-structured\"><h3>Operação estruturada</h3><p>Você participa mais ativamente.</p></article></div>",
+      "css": ".ds-models { display: grid; grid-template-columns: 1fr 1fr; font-family: 'Instrument Sans', Arial, sans-serif; } .ds-models article { min-height: 420px; padding: 54px; } .ds-model-simple { background: #071b42; color: #fff; } .ds-model-structured { background: #ff7a21; color: #071b42; } .ds-models h3 { max-width: 540px; margin: 0; font-size: clamp(46px,5.6vw,82px); font-weight: 580; line-height: .92; letter-spacing: -.04em; } .ds-models p { max-width: 440px; margin-top: 25px; font-size: 18px; }"
+    },
+    {
+      "name": "Editorial FAQ Row",
+      "kind": "custom",
+      "description": "Pergunta expansível definida por linha e escala, sem caixa.",
+      "html": "<details class=\"ds-faq\"><summary>Preciso ter um imóvel quitado?<span aria-hidden=\"true\">+</span></summary><p>Não precisa. O caso continua sujeito à análise.</p></details>",
+      "css": ".ds-faq { border-top: 2px solid #071b42; border-bottom: 2px solid #071b42; color: #071b42; font-family: 'Instrument Sans', Arial, sans-serif; } .ds-faq summary { min-height: 70px; display: grid; grid-template-columns: 1fr 26px; gap: 20px; align-items: center; padding: 24px 0; list-style: none; cursor: pointer; font-size: 24px; font-weight: 590; line-height: 1.18; } .ds-faq summary::-webkit-details-marker { display: none; } .ds-faq summary span { color: #ff7a21; font-size: 31px; font-weight: 400; transition: transform .25s ease; } .ds-faq[open] summary span { transform: rotate(45deg); } .ds-faq p { max-width: 650px; margin: 0; padding: 0 45px 24px 0; color: #243858; } .ds-faq summary:focus-visible { outline: 3px solid rgba(255,122,33,.48); outline-offset: 3px; }"
+    },
+    {
+      "name": "Footer Wordmark",
+      "kind": "custom",
+      "description": "Palavra decorativa monumental recortada pelo rodapé.",
+      "html": "<div class=\"ds-footer-word\" aria-hidden=\"true\">INSPIRA</div>",
+      "css": ".ds-footer-word { height: clamp(80px,14vw,180px); overflow: hidden; background: #020817; color: rgba(255,255,255,.045); font: 700 clamp(116px,20vw,295px)/.73 'Instrument Sans', Arial, sans-serif; letter-spacing: -.08em; text-align: center; white-space: nowrap; }"
     }
   ],
   "narrative": {
-    "northStar": "Dossiê em Movimento",
-    "overview": "O sistema se comporta como um dossiê de crédito que ganha clareza conforme a leitura avança. A autoridade vem de hierarquia editorial, dados legíveis, ressalvas visíveis e fotografia profissional real — nunca de espetáculo financeiro, promessas visuais ou excesso de decoração.\n\nA composição alterna papel branco, névoa azul e âncoras de azul-marinho para organizar a narrativa sem cair em uma sequência de cartões idênticos. O laranja é um sinal controlado de ação, progresso e ênfase. Camadas de pasta, listas abertas, linhas de processo e campos planos dão ao conjunto uma linguagem própria, sóbria e direta.",
+    "northStar": "Arquitetura de Aberturas",
+    "overview": "O sistema transforma crédito e parceria em espaço editorial. A frase é o layout: grandes campos tipográficos organizam a leitura, e a fotografia entra por vãos inline, shutters e portais que tornam a oportunidade visível sem recorrer a mockups, cards flutuantes ou decoração financeira.\n\nCada mudança de papel ganha uma composição própria. Processo vira escada ou relay; simulação vira ledger; modelos viram territórios completos de cor; confiança aparece no encontro entre retrato, afirmação e linhas de evidência. A direção aprovada usa o seed `af46343b95cb4b52` e está liberada para ship.",
     "keyCharacteristics": [
-      "Editorial, seguro e objetivo.",
-      "Plano por padrão, com profundidade criada por cor, recorte e sobreposição.",
-      "Fotografia humana e profissional como prova de presença, não como ornamento.",
-      "Hierarquia tipográfica forte com texto regulatório sempre legível.",
-      "Movimento curto e funcional, com experiência completa sem animação.",
-      "Mobile recomposto como uma narrativa vertical própria."
+      "A frase ocupa o campo e determina a composição.",
+      "Fotografias naturais funcionam como aberturas, não como fundos decorativos.",
+      "Papel quente e branco arquitetônico dominam; navy e near-black criam territórios.",
+      "Laranja sinaliza ação, passagem ou contraste estrutural.",
+      "Linhas, vazios e recortes substituem cards, sombras e ornamentos.",
+      "Desktop e mobile preservam o gesto editorial com composições próprias."
     ],
     "rules": [
-      { "name": "The Controlled Orange Rule", "body": "O laranja pertence a ações decisivas, ênfases textuais, indicadores compactos e faixas de CTA intencionais; ele não alterna seções nem vira gradiente decorativo.", "section": "colors" },
-      { "name": "The One Dark Anchor Rule", "body": "Cada trecho de narrativa pode ter uma âncora azul-marinho forte, mas o entorno deve voltar ao papel ou à névoa para preservar ritmo e legibilidade.", "section": "colors" },
-      { "name": "The Two-Family Rule", "body": "Instrument Sans fala em títulos e números de destaque; Inter explica, orienta e coleta dados. Não introduza uma terceira família para criar variedade.", "section": "typography" },
-      { "name": "The Disclaimer Is Content Rule", "body": "Ressalvas e condições podem ser menores, mas devem manter contraste, espaçamento e comprimento de linha suficientes para leitura real.", "section": "typography" },
-      { "name": "The Own Mobile Composition Rule", "body": "Mobile não é o desktop espremido: imagens, dossiês, etapas, modelos e formulários são reordenados como uma leitura vertical contínua, com CTAs ocupando a largura disponível e alvos de toque confortáveis.", "section": "layout" },
-      { "name": "The New Reason Rule", "body": "Cada seção precisa introduzir uma nova razão para continuar — contexto, processo, evidência, confiança ou ação — e deve escolher uma geometria coerente com esse papel.", "section": "layout" },
-      { "name": "The Flat-by-Default Rule", "body": "Não adicione sombras decorativas a botões, cards, FAQ ou campos. Use cor, borda implícita, recorte ou sobreposição somente quando houver uma relação espacial a explicar.", "section": "elevation" },
-      { "name": "The Folder Edge Rule", "body": "A assimetria de canto é uma assinatura reservada a camadas editoriais, fotografia e dossiês; componentes utilitários continuam regulares.", "section": "shapes" },
-      { "name": "The State Must Explain Rule", "body": "Todo movimento ou mudança visual deve explicar navegação, progresso, abertura, foco ou confirmação; a página precisa continuar completa no primeiro frame e com `prefers-reduced-motion`.", "section": "components" }
+      { "name": "The Orange Is a Passage Rule", "body": "O laranja marca ação, valor ou travessia entre territórios; ele não cria gradientes, badges, eyebrows ou alternância cosmética de seções.", "section": "colors" },
+      { "name": "The Paper Has Two Temperatures Rule", "body": "Papel Quente sustenta a narrativa e Branco abre pausas arquitetônicas. A diferença é estrutural e deve permanecer sutil.", "section": "colors" },
+      { "name": "The Minus Four Ceiling Rule", "body": "Títulos legíveis não apertam além de -0.04em. O único desvio é o wordmark decorativo de rodapé em -0.08em.", "section": "typography" },
+      { "name": "The No Eyebrow Rule", "body": "Não crie microtítulos em caixa alta para fabricar hierarquia. A própria frase, sua posição e a mudança de escala devem orientar a leitura.", "section": "typography" },
+      { "name": "The Sentence Is the Layout Rule", "body": "Não encaixe o título em uma coluna ao lado de uma imagem. Faça a frase ocupar o campo e use a fotografia como palavra, interrupção ou abertura dentro dela.", "section": "layout" },
+      { "name": "The Role Changes the Geometry Rule", "body": "Processo, ledger, confiança, modelos e formulário não compartilham o mesmo container. Cada papel pede uma estrutura própria, mas todos obedecem à mesma grade e às mesmas linhas.", "section": "layout" },
+      { "name": "The Mobile Is Reauthored Rule", "body": "Mobile preserva o gesto, não a miniatura do desktop: shutters estreitam, territórios empilham, linhas viram rails verticais e imagens podem romper um único lado do gutter.", "section": "layout" },
+      { "name": "The Flat Architecture Rule", "body": "Se uma relação não puder ser explicada por linha, vazio, recorte, contraste ou posição, não tente resolvê-la com sombra, glow ou glassmorphism.", "section": "elevation" },
+      { "name": "The One-or-Two Pixel Rule", "body": "Toda superfície funcional permanece entre 1px e 2px de raio; arredondamento maior exige uma função circular explícita de informação ou sucesso.", "section": "shapes" },
+      { "name": "The Motion Has a Job Rule", "body": "Movimento é limitado ao Hero, ao processo e ao shutter/parallax fotográfico. Tudo continua presente no primeiro frame, e `prefers-reduced-motion` remove reveal, clip e transformação.", "section": "components" }
     ],
     "dos": [
-      "Do preserve a presença dominante de papel branco e usar azul-marinho como âncora concentrada.",
-      "Do usar fotografia real ou material de produção com proveniência para tornar confiança e contexto concretos.",
-      "Do manter o CTA principal laranja imediatamente reconhecível e as ressalvas próximas da afirmação que qualificam.",
-      "Do variar a geometria conforme a função: lista aberta para processo, painel para evidência, formulário para coleta e faixa para fechamento.",
-      "Do verificar desktop e mobile, teclado, foco visível, primeiro frame e `prefers-reduced-motion`."
+      "Do usar a frase como estrutura e inserir fotografia somente quando ela completar o sentido.",
+      "Do tratar imagens como shutters, portais, faixas ou travessias com proveniência registrada.",
+      "Do usar linha, vazio, escala e territórios planos para criar hierarquia.",
+      "Do manter tracking mínimo de -0.04em em títulos legíveis e reservar -0.08em ao wordmark decorativo.",
+      "Do garantir alvos de 44px no mobile, foco visível, primeiro frame completo e redução de movimento."
     ],
     "donts": [
-      "Don't criar gradientes, sombras decorativas ou glow para simular sofisticação.",
-      "Don't transformar todas as seções em cards arredondados repetidos ou alternar faixas de cor sem função narrativa.",
-      "Don't inventar números, provas, logos, depoimentos, instituições ou estados de sucesso.",
-      "Don't usar o laranja como preenchimento genérico quando ele não sinaliza ação, progresso ou ênfase aprovada.",
-      "Don't aproximar o logo, substituir as famílias tipográficas ou esconder condições importantes em texto ornamental."
+      "Don't usar gradientes, sombras, glow, glassmorphism ou cards genéricos.",
+      "Don't criar eyebrows, pills, badges ou cantos arredondados para fabricar variedade.",
+      "Don't repetir o mesmo Hero, timeline, container ou formulário entre superfícies com papéis diferentes.",
+      "Don't transformar ledger ou modelos em pricing cards.",
+      "Don't inventar provas, números, instituições, logos, depoimentos ou estados de sucesso."
     ]
   }
 }

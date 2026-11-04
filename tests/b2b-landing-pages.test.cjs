@@ -77,30 +77,32 @@ test("forms keep required semantics without visual asterisk noise", () => {
   }
 });
 
-test("pages avoid decorative section hats and keep the new visual rhythm", () => {
+test("pages avoid template patterns and keep the rebuilt editorial rhythm", () => {
   const counters = read("contadores", "index.html");
   const partners = read("parceiros", "index.html");
   for (const html of [counters, partners]) {
     assert.doesNotMatch(html, /hero-kicker|class="eyebrow/);
-    assert.match(html, /class="navy-panel/);
+    assert.doesNotMatch(html, /class="(?:navy-panel|step-card|audience-card|model-card|hero-grid)/);
+    assert.match(html, /lp-b2b-rebuild\.css/);
   }
-  assert.match(counters, /class="shell form-panel"/);
-  assert.match(partners, /class="hero partners-hero"/);
+  assert.match(counters, /class="hero hero-ledger"/);
+  assert.match(counters, /class="hero-aperture"/);
+  assert.match(counters, /class="process-stair"/);
+  assert.match(counters, /class="ledger-table"/);
+  assert.match(counters, /class="shell form-territory-grid"/);
+  assert.match(partners, /class="hero partner-sentence"/);
   assert.match(partners, /data-site-header/);
-  assert.match(partners, /class="partner-hero-image"/);
-  assert.match(partners, /class="section partner-faq-section"/);
+  assert.match(partners, /class="sentence-image"/);
+  assert.match(partners, /class="relay-process"/);
+  assert.match(partners, /class="audience-rows"/);
+  assert.match(partners, /class="model-split"/);
+  assert.match(partners, /class="faq-editorial partner-faq"/);
   assert.match(partners, /class="button cta-pulse"/);
-  assert.match(partners, /class="shell partner-form-panel"/);
-  assert.match(partners, /class="shell partner-final-cta-inner"/);
-  assert.match(counters, /class="hero-visual acquisition-dossier"/);
-  assert.match(counters, /class="wide-photo"/);
-  assert.match(partners, /class="panel-photo partner-network-photo"/);
+  assert.match(partners, /class="shell partner-form-grid"/);
   assert.doesNotMatch(counters + partners, /class="step-number"/);
-  assert.doesNotMatch(partners, /class="models-grid"[^>]*tabindex/);
   assert.ok(fs.existsSync(path.join(site, "assets", "img", "parceiros-hero-square-v4.webp")));
-  const css = read("assets", "css", "lp-b2b.css");
+  const css = read("assets", "css", "lp-b2b-rebuild.css");
   const script = read("assets", "js", "lp-b2b.js");
-  assert.doesNotMatch(css, /\.section\s*\{[^}]*overflow:\s*(?:clip|hidden)/);
   assert.match(css, /\.site-header\.is-sticky/);
   assert.match(css, /@keyframes header-drop/);
   assert.match(css, /@keyframes cta-pulse/);
@@ -121,7 +123,9 @@ test("B2B narratives use purpose-built imagery instead of shared site photograph
     "contadores-property-office-v1.webp",
     "contadores-closing-v1.webp",
     "contadores-advisory-team-v1.webp",
+    "contadores-new-office-v2.webp",
     "parceiros-opportunity-v1.webp",
+    "parceiros-introduction-v2.webp",
     "parceiros-trust-handoff-v1.webp",
   ];
 
@@ -134,7 +138,7 @@ test("B2B narratives use purpose-built imagery instead of shared site photograph
 
 test("secondary phone guidance is available on demand without reserving form space", () => {
   const html = read("contadores", "index.html");
-  const css = read("assets", "css", "lp-b2b.css");
+  const css = read("assets", "css", "lp-b2b-rebuild.css");
   assert.match(html, /class="field-info"/);
   assert.match(html, /role="tooltip"/);
   assert.doesNotMatch(html, /class="field-help"/);
