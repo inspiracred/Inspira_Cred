@@ -86,13 +86,13 @@ test("pages avoid template patterns and keep the rebuilt editorial rhythm", () =
     assert.match(html, /lp-b2b-rebuild\.css/);
   }
   assert.match(counters, /class="hero hero-ledger"/);
-  assert.match(counters, /class="hero-aperture"/);
+  assert.match(counters, /class="hero-emphasis"/);
   assert.match(counters, /class="process-stair"/);
   assert.match(counters, /class="ledger-table"/);
   assert.match(counters, /class="shell form-territory-grid"/);
   assert.match(partners, /class="hero partner-sentence"/);
   assert.match(partners, /data-site-header/);
-  assert.match(partners, /class="sentence-image"/);
+  assert.match(partners, /class="hero-emphasis"/);
   assert.match(partners, /class="relay-process"/);
   assert.match(partners, /class="audience-rows"/);
   assert.match(partners, /class="model-split"/);
@@ -114,7 +114,7 @@ test("pages avoid template patterns and keep the rebuilt editorial rhythm", () =
   assert.match(css, /prefers-reduced-motion/);
 });
 
-test("B2B narratives use purpose-built imagery instead of shared site photography", () => {
+test("B2B narratives use purpose-built scenes and the verified InspiraCred team photo", () => {
   const counters = read("contadores", "index.html");
   const partners = read("parceiros", "index.html");
   const generated = path.join(site, "assets", "img", "generated");
@@ -126,6 +126,7 @@ test("B2B narratives use purpose-built imagery instead of shared site photograph
     "contadores-new-office-v2.webp",
     "parceiros-opportunity-v1.webp",
     "parceiros-introduction-v2.webp",
+    "parceiros-hero-referral-v5.webp",
     "parceiros-trust-handoff-v1.webp",
   ];
 
@@ -133,7 +134,8 @@ test("B2B narratives use purpose-built imagery instead of shared site photograph
     assert.ok(fs.existsSync(path.join(generated, asset)), `missing purpose-built image: ${asset}`);
     assert.ok(fs.existsSync(path.join(generated, `${asset}.json`)), `missing image provenance: ${asset}`);
   }
-  assert.doesNotMatch(counters + partners, /home\/img\/(?:consultoria|equipe)\.webp|homeequity\/img\/(?:mansao2\.jpg|handshake\.webp)/);
+  assert.match(partners, /\.\.\/home\/img\/equipe\.webp/);
+  assert.doesNotMatch(counters + partners, /home\/img\/consultoria\.webp|homeequity\/img\/(?:mansao2\.jpg|handshake\.webp)/);
 });
 
 test("secondary phone guidance is available on demand without reserving form space", () => {
