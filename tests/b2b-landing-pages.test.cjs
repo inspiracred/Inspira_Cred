@@ -106,7 +106,8 @@ test("pages avoid template patterns and keep the rebuilt editorial rhythm", () =
   assert.match(css, /\.site-header\.is-sticky/);
   assert.match(css, /@keyframes header-drop/);
   assert.match(css, /@keyframes cta-pulse/);
-  assert.doesNotMatch(css, /linear-gradient|radial-gradient/);
+  assert.match(css, /\.partner-closing[^}]+linear-gradient/);
+  assert.equal((css.match(/linear-gradient|radial-gradient/g) || []).length, 1, "only the explicitly requested closing overlay may use a gradient");
   assert.match(script, /data-scroll-scene/);
   assert.match(script, /event\.key !== "Tab"/);
   assert.match(script, /closeMenu\(true\)/);
@@ -127,6 +128,7 @@ test("B2B narratives use purpose-built scenes and the verified InspiraCred team 
     "parceiros-opportunity-v1.webp",
     "parceiros-introduction-v2.webp",
     "parceiros-hero-referral-v5.webp",
+    "parceiros-closing-abstract-v1.webp",
     "parceiros-trust-handoff-v1.webp",
   ];
 
@@ -135,6 +137,7 @@ test("B2B narratives use purpose-built scenes and the verified InspiraCred team 
     assert.ok(fs.existsSync(path.join(generated, `${asset}.json`)), `missing image provenance: ${asset}`);
   }
   assert.match(partners, /\.\.\/home\/img\/equipe\.webp/);
+  assert.doesNotMatch(partners, /class="audience-band"/);
   assert.doesNotMatch(counters + partners, /home\/img\/consultoria\.webp|homeequity\/img\/(?:mansao2\.jpg|handshake\.webp)/);
 });
 
