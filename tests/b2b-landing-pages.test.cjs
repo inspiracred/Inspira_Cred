@@ -112,6 +112,26 @@ test("pages avoid decorative section hats and keep the new visual rhythm", () =>
   assert.match(css, /prefers-reduced-motion/);
 });
 
+test("B2B narratives use purpose-built imagery instead of shared site photography", () => {
+  const counters = read("contadores", "index.html");
+  const partners = read("parceiros", "index.html");
+  const generated = path.join(site, "assets", "img", "generated");
+  const requiredAssets = [
+    "contadores-hero-acquisition-v1.webp",
+    "contadores-property-office-v1.webp",
+    "contadores-closing-v1.webp",
+    "contadores-advisory-team-v1.webp",
+    "parceiros-opportunity-v1.webp",
+    "parceiros-trust-handoff-v1.webp",
+  ];
+
+  for (const asset of requiredAssets) {
+    assert.ok(fs.existsSync(path.join(generated, asset)), `missing purpose-built image: ${asset}`);
+    assert.ok(fs.existsSync(path.join(generated, `${asset}.json`)), `missing image provenance: ${asset}`);
+  }
+  assert.doesNotMatch(counters + partners, /home\/img\/(?:consultoria|equipe)\.webp|homeequity\/img\/(?:mansao2\.jpg|handshake\.webp)/);
+});
+
 test("secondary phone guidance is available on demand without reserving form space", () => {
   const html = read("contadores", "index.html");
   const css = read("assets", "css", "lp-b2b.css");

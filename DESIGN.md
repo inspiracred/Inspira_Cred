@@ -239,7 +239,7 @@ Itens brancos usam cantos de 12px sobre Papel Azul. O ícone `+` gira para forma
 ### Do:
 
 - Do preserve a presença dominante de papel branco e usar azul-marinho como âncora concentrada.
-- Do usar fotografia real ou material de produção com proveniência para tornar confiança e contexto concretos.
+- Do criar fotografia específica para a mensagem de cada seção, com proveniência registrada, em vez de reciclar a mesma cena em contextos diferentes; cada imagem deve acrescentar um novo beat narrativo.
 - Do manter o CTA principal laranja imediatamente reconhecível e as ressalvas próximas da afirmação que qualificam.
 - Do variar a geometria conforme a função: lista aberta para processo, painel para evidência, formulário para coleta e faixa para fechamento.
 - Do verificar desktop e mobile, teclado, foco visível, primeiro frame e `prefers-reduced-motion`.
