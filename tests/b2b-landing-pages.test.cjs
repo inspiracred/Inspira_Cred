@@ -92,12 +92,24 @@ test("pages avoid decorative section hats and keep the new visual rhythm", () =>
   assert.match(partners, /class="button cta-pulse"/);
   assert.match(partners, /class="shell partner-form-panel"/);
   assert.match(partners, /class="shell partner-final-cta-inner"/);
+  assert.match(counters, /class="hero-visual acquisition-dossier"/);
+  assert.match(counters, /class="wide-photo"/);
+  assert.match(partners, /class="panel-photo partner-network-photo"/);
+  assert.doesNotMatch(counters + partners, /class="step-number"/);
+  assert.doesNotMatch(partners, /class="models-grid"[^>]*tabindex/);
   assert.ok(fs.existsSync(path.join(site, "assets", "img", "parceiros-hero-square-v4.webp")));
   const css = read("assets", "css", "lp-b2b.css");
+  const script = read("assets", "js", "lp-b2b.js");
   assert.doesNotMatch(css, /\.section\s*\{[^}]*overflow:\s*(?:clip|hidden)/);
   assert.match(css, /\.site-header\.is-sticky/);
   assert.match(css, /@keyframes header-drop/);
   assert.match(css, /@keyframes cta-pulse/);
+  assert.doesNotMatch(css, /linear-gradient|radial-gradient/);
+  assert.match(script, /data-scroll-scene/);
+  assert.match(script, /event\.key !== "Tab"/);
+  assert.match(script, /closeMenu\(true\)/);
+  assert.match(css, /--scene-progress/);
+  assert.match(css, /prefers-reduced-motion/);
 });
 
 test("secondary phone guidance is available on demand without reserving form space", () => {

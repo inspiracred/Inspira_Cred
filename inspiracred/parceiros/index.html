@@ -2,11 +2,14 @@
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#ffffff" />
     <meta name="description" content="Conheça o programa de parceiros da InspiraCred e indique clientes que precisam de crédito com garantia de imóvel." />
     <meta name="robots" content="index,follow" />
     <title>Programa de parceiros | InspiraCred</title>
     <link rel="icon" href="../assets/icons/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="../assets/css/lp-b2b.css" />
   </head>
   <body class="page-parceiros">
@@ -15,7 +18,7 @@
     <header class="site-header" data-site-header>
       <div class="shell nav">
         <a class="brand" href="/" aria-label="InspiraCred — página inicial"><img class="brand-logo-light" src="../assets/img/landing-logo-ref.png" alt="InspiraCred" width="196" height="70" /><img class="brand-logo-color" src="../homeequity/img/logo-inspira.png" alt="" aria-hidden="true" width="255" height="71" /></a>
-        <button class="menu-button" type="button" aria-expanded="false" aria-controls="menu-principal" data-menu-button><span class="sr-only">Abrir menu</span><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+        <button class="menu-button" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="menu-principal" data-menu-button><span class="sr-only">Abrir menu</span><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
         <nav class="nav-links" id="menu-principal" aria-label="Navegação principal" data-nav-links>
           <a href="#como-funciona">Como funciona</a><a href="#quem-pode">Quem pode participar</a><a href="#modelos">Modelos</a><a class="button nav-cta" href="#cadastro">Quero ser parceiro</a>
         </nav>
@@ -23,8 +26,8 @@
     </header>
 
     <main id="conteudo">
-      <section class="hero partners-hero" data-section="hero">
-        <div class="partner-hero-image" role="img" aria-label="Quatro profissionais conversando em um escritório"></div>
+      <section class="hero partners-hero" data-section="hero" data-scroll-scene>
+        <div class="partner-hero-image" role="img" aria-label="Quatro profissionais conversando em um escritório"><span class="image-caption" aria-hidden="true">Relacionamentos que abrem oportunidades</span></div>
         <div class="shell hero-grid">
           <div class="hero-copy" data-reveal>
             <h1>Transforme oportunidades da sua carteira em uma nova fonte de <em>receita.</em></h1>
@@ -43,6 +46,7 @@
             <p>Com a InspiraCred, você amplia as soluções que oferece sem precisar conduzir a operação para começar. No modelo de indicação simples, basta apresentar o cliente à nossa equipe.</p>
           </div>
           <div class="highlight-panel opportunity-highlight" data-reveal><p>A InspiraCred assume o atendimento, a análise e o encaminhamento às instituições financeiras. Você mantém o relacionamento e pode receber comissões pelas operações concluídas e com crédito liberado.</p></div>
+          <figure class="wide-photo" data-reveal><img src="../home/img/consultoria.webp" alt="Conversa de orientação entre profissionais" width="900" height="900" loading="lazy" /></figure>
         </div>
       </section>
 
@@ -50,10 +54,10 @@
         <div class="shell">
           <div class="section-heading centered process-heading" data-reveal><h2 class="section-title">Veja como é simples começar a ganhar comissões indicando seus clientes.</h2><p class="section-copy">Conheça o caminho para se tornar parceiro e aproveitar oportunidades de crédito que já existem na sua carteira.</p></div>
           <div class="steps-grid">
-            <article class="step-card" data-reveal><span class="step-number">01</span><h3>Faça seu cadastro</h3><p>Preencha o formulário com seus dados profissionais.</p></article>
-            <article class="step-card" data-reveal><span class="step-number">02</span><h3>Passe pela avaliação</h3><p>Analisamos sua atuação para entender a compatibilidade com as oportunidades trabalhadas.</p></article>
-            <article class="step-card" data-reveal><span class="step-number">03</span><h3>Converse com a equipe</h3><p>Conheça os modelos, tire dúvidas e entenda como podemos trabalhar juntos.</p></article>
-            <article class="step-card" data-reveal><span class="step-number">04</span><h3>Comece a parceria</h3><p>Após o alinhamento e a formalização necessária, você poderá encaminhar oportunidades.</p></article>
+            <article class="step-card" data-reveal><h3>Faça seu cadastro</h3><p>Preencha o formulário com seus dados profissionais.</p></article>
+            <article class="step-card" data-reveal><h3>Passe pela avaliação</h3><p>Analisamos sua atuação para entender a compatibilidade com as oportunidades trabalhadas.</p></article>
+            <article class="step-card" data-reveal><h3>Converse com a equipe</h3><p>Conheça os modelos, tire dúvidas e entenda como podemos trabalhar juntos.</p></article>
+            <article class="step-card" data-reveal><h3>Comece a parceria</h3><p>Após o alinhamento e a formalização necessária, você poderá encaminhar oportunidades.</p></article>
           </div>
           <p class="section-copy process-outcome"><strong>Quando uma operação indicada é concluída e o crédito é liberado ao cliente, você recebe sua comissão conforme as condições acordadas.</strong></p>
         </div>
@@ -76,10 +80,11 @@
           <div class="navy-panel models-panel">
             <div class="section-heading centered" data-reveal><h2 class="section-title on-dark">Você escolhe como quer participar das oportunidades de crédito.</h2><p class="section-copy on-dark">Conheça as duas possibilidades e descubra qual se encaixa melhor na sua atuação.</p></div>
             <div class="models-grid">
-              <article class="model-card featured" data-reveal><span class="model-tag">Entrada simples</span><h3>Indicação simples</h3><p>Você identifica clientes que possuem imóvel e precisam de crédito. A InspiraCred assume o atendimento e a condução da operação.</p><ul><li>Menor envolvimento operacional</li><li>Equipe InspiraCred conduz as etapas</li><li>Receita adicional por operações elegíveis concluídas</li></ul></article>
-              <article class="model-card" data-reveal><span class="model-tag">Atuação ativa</span><h3>Operação estruturada</h3><p>Você apresenta a solução, reúne informações e documentos e organiza a proposta para encaminhamento à InspiraCred.</p><ul><li>Participação maior no processo</li><li>Indicado para quem já trabalha com crédito</li><li>Condições alinhadas com a equipe</li></ul></article>
+              <article class="model-card featured" data-reveal><h3>Indicação simples</h3><span class="model-tag">Entrada simples</span><p>Você identifica clientes que possuem imóvel e precisam de crédito. A InspiraCred assume o atendimento e a condução da operação.</p><ul><li>Menor envolvimento operacional</li><li>Equipe InspiraCred conduz as etapas</li><li>Receita adicional por operações elegíveis concluídas</li></ul></article>
+              <article class="model-card" data-reveal><h3>Operação estruturada</h3><span class="model-tag">Atuação ativa</span><p>Você apresenta a solução, reúne informações e documentos e organiza a proposta para encaminhamento à InspiraCred.</p><ul><li>Participação maior no processo</li><li>Indicado para quem já trabalha com crédito</li><li>Condições alinhadas com a equipe</li></ul></article>
             </div>
             <p class="legal-note">As condições de remuneração variam conforme o modelo de atuação e são apresentadas durante a conversa com a equipe. O cadastro não garante aprovação automática no programa.</p>
+            <figure class="panel-photo partner-network-photo" data-reveal><img src="../assets/img/parceiros-hero-network-v1.webp" alt="Profissionais conectados em uma rede de oportunidades" width="1752" height="897" loading="lazy" /></figure>
           </div>
         </div>
       </section>
@@ -87,7 +92,7 @@
       <section class="section" data-section="confianca">
         <div class="shell trust-grid">
           <figure class="team-frame" data-reveal><img src="../home/img/equipe.webp" alt="Equipe da InspiraCred reunida no escritório" width="1086" height="1448" loading="lazy" /></figure>
-          <div data-reveal><h2 class="section-title">Por que você pode confiar na InspiraCred.</h2><p class="section-copy">Ao indicar um cliente, você coloca sua reputação profissional em jogo. A InspiraCred reúne experiência no mercado financeiro e acesso a aproximadamente 30 instituições, entre bancos, fundos e fintechs.</p><div class="trust-points"><div class="trust-point"><i>01</i><div><strong>Atendimento assumido pela equipe</strong><span>Recebemos o cliente, entendemos a necessidade e orientamos as etapas.</span></div></div><div class="trust-point"><i>02</i><div><strong>Busca compatível com cada perfil</strong><span>Avaliamos alternativas nas instituições com as quais trabalhamos.</span></div></div><div class="trust-point"><i>03</i><div><strong>Relacionamento preservado</strong><span>Você segue próximo do cliente enquanto nossa estrutura conduz a operação.</span></div></div></div></div>
+          <div data-reveal><h2 class="section-title">Por que você pode confiar na InspiraCred.</h2><p class="section-copy">Ao indicar um cliente, você coloca sua reputação profissional em jogo. A InspiraCred reúne experiência no mercado financeiro e acesso a aproximadamente 30 instituições, entre bancos, fundos e fintechs.</p><div class="trust-points"><div class="trust-point"><div><strong>Atendimento assumido pela equipe</strong><span>Recebemos o cliente, entendemos a necessidade e orientamos as etapas.</span></div></div><div class="trust-point"><div><strong>Busca compatível com cada perfil</strong><span>Avaliamos alternativas nas instituições com as quais trabalhamos.</span></div></div><div class="trust-point"><div><strong>Relacionamento preservado</strong><span>Você segue próximo do cliente enquanto nossa estrutura conduz a operação.</span></div></div></div></div>
         </div>
       </section>
 
@@ -99,7 +104,7 @@
               <div class="form-head"><h3>Conheça o programa de parceiros</h3></div>
               <div class="form-fields">
                 <div class="field field-full"><label for="parceiro-nome">Nome completo</label><input id="parceiro-nome" name="name" type="text" autocomplete="name" placeholder="Digite seu nome completo" aria-describedby="erro-parceiro-nome" required /><p class="field-error" id="erro-parceiro-nome" data-error-for="name"></p></div>
-                <div class="field"><label for="parceiro-email">E-mail</label><input id="parceiro-email" name="email" type="email" autocomplete="email" placeholder="voce@empresa.com.br" aria-describedby="erro-parceiro-email" required /><p class="field-error" id="erro-parceiro-email" data-error-for="email"></p></div>
+                <div class="field"><label for="parceiro-email">E-mail</label><input id="parceiro-email" name="email" type="email" autocomplete="email" spellcheck="false" placeholder="voce@empresa.com.br" aria-describedby="erro-parceiro-email" required /><p class="field-error" id="erro-parceiro-email" data-error-for="email"></p></div>
                 <div class="field"><label for="parceiro-celular">Celular</label><div class="phone-control"><span class="phone-prefix">+55</span><input id="parceiro-celular" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(DDD) + celular" data-phone aria-describedby="erro-parceiro-celular" required /></div><p class="field-error" id="erro-parceiro-celular" data-error-for="phone"></p></div>
                 <div class="field field-full"><label for="parceiro-atuacao">Atuação</label><select id="parceiro-atuacao" name="partner_role" aria-describedby="erro-parceiro-atuacao" required><option value="">Selecione sua área</option><option>Contador</option><option>Advogado</option><option>Consultor financeiro</option><option>Correspondente bancário</option><option>Outra</option></select><p class="field-error" id="erro-parceiro-atuacao" data-error-for="partner_role"></p></div>
                 <div class="field field-full" data-other-role hidden><label for="parceiro-outra-atuacao">Qual é sua atuação?</label><input id="parceiro-outra-atuacao" name="partner_role_other" type="text" placeholder="Ex.: corretor de imóveis" aria-describedby="erro-parceiro-outra-atuacao" /><p class="field-error" id="erro-parceiro-outra-atuacao" data-error-for="partner_role_other"></p></div>
@@ -107,7 +112,7 @@
               <div class="form-action"><button class="button" type="submit">Quero conhecer a parceria</button></div>
               <p class="consent">Seus dados serão usados para apresentar o programa e entrar em contato, conforme nossa <a href="/politica-de-privacidade.html" target="_blank" rel="noopener noreferrer">Política de Privacidade</a>.</p><p class="form-status" role="alert" aria-live="polite" data-form-status></p>
             </form>
-            <div class="form-success" data-form-success hidden><div class="success-icon" aria-hidden="true">✓</div><h3>Recebemos seus dados.</h3><p>Obrigado pelo interesse em fazer parte da rede de parceiros. Nossa equipe entrará em contato para apresentar o funcionamento e conversar sobre as oportunidades da sua carteira de clientes.</p></div>
+            <div class="form-success" role="status" aria-live="polite" data-form-success hidden><div class="success-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4 4L19 7" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h3>Recebemos seus dados.</h3><p>Obrigado pelo interesse em fazer parte da rede de parceiros. Nossa equipe entrará em contato para apresentar o funcionamento e conversar sobre as oportunidades da sua carteira de clientes.</p></div>
           </div>
         </div></div>
       </section>
@@ -126,7 +131,7 @@
     </main>
 
     <footer class="footer">
-      <div class="shell footer-top"><div class="footer-brand"><img class="footer-logo" src="../assets/img/landing-logo-ref.png" alt="InspiraCred" /><p>Soluções de crédito para pessoas e empresas, com análise em diferentes instituições financeiras e acompanhamento do início ao fim.</p><div class="footer-seals"><img src="../assets/img/landing-seal-reclame.png" alt="Verificada no Reclame Aqui" /><img src="../assets/img/landing-seal-aneps.png" alt="Certificação ANEPS" /></div></div><div><h4>Contato</h4><ul class="footer-list"><li><a href="https://wa.me/5521977340731" target="_blank" rel="noopener noreferrer">+55 21 97734-0731</a></li><li><a href="mailto:contato@inspiracred.com.br">contato@inspiracred.com.br</a></li><li>R. Mem de Sá, 19 — Icaraí, Niterói/RJ</li></ul></div><div><h4>Navegação</h4><ul class="footer-list"><li><a href="#como-funciona">Como funciona</a></li><li><a href="#quem-pode">Quem pode participar</a></li><li><a href="#modelos">Modelos</a></li><li><a href="#cadastro">Cadastro</a></li></ul></div></div>
+      <div class="shell footer-top"><div class="footer-brand"><img class="footer-logo" src="../assets/img/landing-logo-ref.png" alt="InspiraCred" width="204" height="81" /><p>Soluções de crédito para pessoas e empresas, com análise em diferentes instituições financeiras e acompanhamento do início ao fim.</p><div class="footer-seals"><img src="../assets/img/landing-seal-reclame.png" alt="Verificada no Reclame Aqui" width="227" height="71" loading="lazy" /><img src="../assets/img/landing-seal-aneps.png" alt="Certificação ANEPS" width="227" height="71" loading="lazy" /></div></div><div><h4>Contato</h4><ul class="footer-list"><li><a href="https://wa.me/5521977340731" target="_blank" rel="noopener noreferrer">+55 21 97734-0731</a></li><li><a href="mailto:contato@inspiracred.com.br">contato@inspiracred.com.br</a></li><li>R. Mem de Sá, 19 — Icaraí, Niterói/RJ</li></ul></div><div><h4>Navegação</h4><ul class="footer-list"><li><a href="#como-funciona">Como funciona</a></li><li><a href="#quem-pode">Quem pode participar</a></li><li><a href="#modelos">Modelos</a></li><li><a href="#cadastro">Cadastro</a></li></ul></div></div>
       <div class="shell footer-bottom"><p>Correspondente bancário autorizado. Intermediadora de crédito com instituições parceiras reguladas pelo Banco Central. Operações sujeitas à aprovação de crédito.<br />© 2026 INSPIRA SOLUÇÕES E NEGÓCIOS LTDA — CNPJ 49.247.378/0001-83. Sede: Niterói/RJ.</p><div class="footer-legal"><a href="/politica-de-privacidade.html">Política de Privacidade</a><a href="/termos-de-uso.html">Termos de Uso</a></div></div>
     </footer>
 

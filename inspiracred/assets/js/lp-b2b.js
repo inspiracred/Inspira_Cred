@@ -2,6 +2,7 @@
   "use strict";
 
   var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!reduceMotion) document.documentElement.classList.add("js-motion");
 
   function qs(selector, root) { return (root || document).querySelector(selector); }
   function qsa(selector, root) { return Array.prototype.slice.call((root || document).querySelectorAll(selector)); }
@@ -9,18 +10,49 @@
   var menuButton = qs("[data-menu-button]");
   var navLinks = qs("[data-nav-links]");
   if (menuButton && navLinks) {
+    function closeMenu(restoreFocus) {
+      menuButton.setAttribute("aria-expanded", "false");
+      menuButton.setAttribute("aria-label", "Abrir menu");
+      navLinks.classList.remove("is-open");
+      document.body.classList.remove("is-locked");
+      if (restoreFocus) menuButton.focus();
+    }
     menuButton.addEventListener("click", function () {
       var open = menuButton.getAttribute("aria-expanded") !== "true";
       menuButton.setAttribute("aria-expanded", String(open));
+      menuButton.setAttribute("aria-label", open ? "Fechar menu" : "Abrir menu");
       navLinks.classList.toggle("is-open", open);
       document.body.classList.toggle("is-locked", open);
+      if (open) {
+        window.requestAnimationFrame(function () {
+          var firstLink = qs("a", navLinks);
+          if (firstLink) firstLink.focus();
+        });
+      }
     });
     qsa("a", navLinks).forEach(function (link) {
       link.addEventListener("click", function () {
-        menuButton.setAttribute("aria-expanded", "false");
-        navLinks.classList.remove("is-open");
-        document.body.classList.remove("is-locked");
+        closeMenu(true);
       });
+    });
+    document.addEventListener("keydown", function (event) {
+      if (menuButton.getAttribute("aria-expanded") !== "true") return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMenu(true);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      var focusable = [menuButton].concat(qsa("a", navLinks));
+      var first = focusable[0];
+      var last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     });
   }
 
@@ -62,6 +94,31 @@
     qsa("[data-reveal]").forEach(function (item) { revealObserver.observe(item); });
   } else {
     qsa("[data-reveal]").forEach(function (item) { item.classList.add("is-visible"); });
+  }
+
+  var scrollScenes = qsa("[data-scroll-scene]");
+  if (!reduceMotion && scrollScenes.length) {
+    var sceneTicking = false;
+    function updateScenes() {
+      var viewport = window.innerHeight || document.documentElement.clientHeight;
+      var progressValues = scrollScenes.map(function (scene) {
+        var rect = scene.getBoundingClientRect();
+        var span = Math.max(1, rect.height + viewport);
+        return Math.max(0, Math.min(1, (viewport - rect.top) / span));
+      });
+      scrollScenes.forEach(function (scene, index) {
+        scene.style.setProperty("--scene-progress", progressValues[index].toFixed(3));
+      });
+      sceneTicking = false;
+    }
+    function requestSceneUpdate() {
+      if (sceneTicking) return;
+      sceneTicking = true;
+      window.requestAnimationFrame(updateScenes);
+    }
+    window.addEventListener("scroll", requestSceneUpdate, { passive: true });
+    window.addEventListener("resize", requestSceneUpdate);
+    updateScenes();
   }
 
   function formatPhone(input) {
