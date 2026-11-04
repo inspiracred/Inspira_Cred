@@ -139,6 +139,7 @@ test("B2B narratives use purpose-built scenes and the verified InspiraCred team 
     "parceiros-introduction-v3.webp",
     "parceiros-hero-referral-v5.webp",
     "parceiros-hero-referral-v7.webp",
+    "parceiros-hero-referral-v8.webp",
     "parceiros-hero-portfolio-v6.webp",
     "parceiros-closing-abstract-v1.webp",
     "parceiros-trust-handoff-v1.webp",
