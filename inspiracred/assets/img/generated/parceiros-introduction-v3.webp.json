@@ -1,0 +1,8 @@
+{
+  "source": "OpenAI built-in image generation edit",
+  "date": "2026-11-04",
+  "use_case": "precise-object-edit",
+  "prompt_summary": "Expanded the existing partner introduction photograph with additional realistic office headroom and breathing room, preserving the same three professionals and scene while moving the group slightly right for responsive gradient overlays.",
+  "input": "inspiracred/assets/img/generated/parceiros-introduction-v2.webp",
+  "original": "C:/Users/Santiago/.codex/generated_images/01a1a1ab-2d4f-7910-adb4-26a544ff012d/exec-ba2b522a-c45c-415d-9076-5082ba856486.png"
+}

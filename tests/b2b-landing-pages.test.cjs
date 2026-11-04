@@ -107,6 +107,10 @@ test("pages avoid template patterns and keep the rebuilt editorial rhythm", () =
   assert.match(css, /\.page-parceiros \.site-header:not\(\.is-sticky\)[^}]+background: transparent/);
   assert.match(css, /\.nav-links \.button \{ color: #fff; \}/);
   assert.match(css, /parceiros-hero-portfolio-v6\.webp/);
+  assert.match(css, /--radius-panel: 24px;/);
+  assert.match(css, /--radius-media: 24px;/);
+  assert.match(css, /\.partner-hero-visual::before, \.partner-hero-visual::after, \.partner-hero-visual > span \{ display: none; \}/);
+  assert.doesNotMatch(css, /border-radius: 34px 10px|border-radius: 28px 8px|border-radius: 20px 6px/);
   assert.match(css, /@keyframes header-drop/);
   assert.match(css, /@keyframes cta-pulse/);
   assert.match(css, /\.partner-closing[^}]+linear-gradient/);
@@ -132,6 +136,7 @@ test("B2B narratives use purpose-built scenes and the verified InspiraCred team 
     "contadores-new-office-v2.webp",
     "parceiros-opportunity-v1.webp",
     "parceiros-introduction-v2.webp",
+    "parceiros-introduction-v3.webp",
     "parceiros-hero-referral-v5.webp",
     "parceiros-hero-referral-v7.webp",
     "parceiros-hero-portfolio-v6.webp",
