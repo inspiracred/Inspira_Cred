@@ -39,8 +39,8 @@
   <body>
     <header class="site-header">
       <div class="inner">
-        <a class="logo" href="/" target="_blank" rel="noopener noreferrer">Inspira<span class="o">Cred</span></a>
-        <a class="nav-back" href="/" target="_blank" rel="noopener noreferrer">Voltar ao site ↗</a>
+        <a class="logo" href="/" data-return-link>Inspira<span class="o">Cred</span></a>
+        <a class="nav-back" href="/" data-return-link>Voltar ao site</a>
       </div>
     </header>
 
@@ -104,8 +104,8 @@
         </div>
 
         <div class="doc-nav">
-          <a href="/termos-de-uso.html" target="_blank" rel="noopener noreferrer">Termos de Uso</a>
-          <a href="/" target="_blank" rel="noopener noreferrer">Voltar para a página inicial</a>
+          <a href="/termos-de-uso.html" data-legal-link>Termos de Uso</a>
+          <a href="/" data-return-link>Voltar ao site</a>
         </div>
       </div>
     </main>
@@ -113,5 +113,17 @@
     <footer class="site-footer">
       © 2026 InspiraCred – Correspondente Bancário · R. Mem de Sá, 19 – Icaraí, Niterói – RJ
     </footer>
+    <script>
+      (function () {
+        var requested = new URLSearchParams(window.location.search).get("return");
+        var destination = requested && requested.charAt(0) === "/" && requested.slice(0, 2) !== "//" && requested.indexOf("\\") === -1 ? requested : "/";
+        document.querySelectorAll("[data-return-link]").forEach(function (link) { link.setAttribute("href", destination); });
+        document.querySelectorAll("[data-legal-link]").forEach(function (link) {
+          var url = new URL(link.getAttribute("href"), window.location.origin);
+          url.searchParams.set("return", destination);
+          link.setAttribute("href", url.pathname + url.search);
+        });
+      }());
+    </script>
   </body>
 </html>

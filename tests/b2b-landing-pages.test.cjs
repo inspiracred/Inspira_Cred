@@ -89,7 +89,8 @@ test("pages avoid template patterns and keep the rebuilt editorial rhythm", () =
   assert.match(counters, /class="hero-emphasis"/);
   assert.match(counters, /class="contador-process-rail"/);
   assert.match(counters, /class="contador-simulation-board"/);
-  assert.match(counters, /class="shell form-territory-grid(?:\s|\")/);
+  assert.match(counters, /class="form-surface contador-process-form" id="avaliacao"/);
+  assert.ok(counters.indexOf('id="avaliacao"') < counters.indexOf('id="simulacoes"'), "contador form stays in the third fold before simulations");
   assert.match(partners, /class="hero partner-sentence"/);
   assert.match(partners, /data-site-header/);
   assert.match(partners, /class="hero-emphasis"/);
@@ -157,12 +158,27 @@ test("B2B narratives use purpose-built scenes and the verified InspiraCred team 
   }
   assert.match(partners, /\.\.\/home\/img\/equipe\.webp/);
   assert.match(counters, /contadores-entry-structure-v2\.webp/);
-  assert.match(counters, /contadores-proposal-comparison-v2\.webp/);
+  assert.match(counters, /\.\.\/home\/img\/equipe\.webp/);
   assert.doesNotMatch(counters, /contadores-(?:hero-acquisition|property-office|closing-v1|advisory-team|new-office-v2)\.webp/);
   assert.doesNotMatch(partners, /class="audience-band"/);
   assert.match(partners, /class="shell commission-overlay"/);
   assert.doesNotMatch(partners, /class="commission-line"/);
   assert.doesNotMatch(counters + partners, /home\/img\/consultoria\.webp|homeequity\/img\/(?:mansao2\.jpg|handshake\.webp)/);
+});
+
+test("contador page preserves the original acquisition argument and legal return path", () => {
+  const html = read("contadores", "index.html");
+  const privacy = read("politica-de-privacidade.html");
+  const terms = read("termos-de-uso.html");
+
+  assert.match(html, /O lucro gerado pelos novos clientes pode ajudar a pagar as parcelas do próprio crédito utilizado na aquisição\./);
+  assert.match(html, /politica-de-privacidade\.html\?return=%2Fcontadores%2F/);
+  assert.match(html, /termos-de-uso\.html\?return=%2Fcontadores%2F/);
+  for (const legal of [privacy, terms]) {
+    assert.match(legal, /data-return-link/);
+    assert.match(legal, /new URLSearchParams\(window\.location\.search\)\.get\("return"\)/);
+    assert.match(legal, /requested\.slice\(0, 2\) !== "\/\/"/);
+  }
 });
 
 test("secondary phone guidance is available on demand without reserving form space", () => {
