@@ -50,6 +50,22 @@ test("partner page preserves eligibility and commission conditions", () => {
   assert.doesNotMatch(server, /parceiros_lp:\s*\{\s*identificador/);
 });
 
+test("partner page keeps the original audience copy and early registration path", () => {
+  const html = read("parceiros", "index.html");
+
+  assert.match(html, /class="hero-lead-emphasis">ganhe comissões<\/strong>/);
+  assert.match(html, /class="opportunity-cards"/);
+  assert.match(html, /Essas demandas podem já existir entre os clientes que você atende todos os dias\./);
+  assert.match(html, /Você conhece a realidade financeira dos seus clientes/);
+  assert.match(html, /Você atende clientes que podem precisar de recursos/);
+  assert.match(html, /Você ajuda seus clientes a tomar decisões sobre dinheiro/);
+  assert.match(html, /Você já tem experiência com crédito e uma carteira de clientes/);
+  assert.match(html, /Você indica\. Nossa equipe conduz a operação\./);
+  assert.equal((html.match(/id="cadastro"/g) || []).length, 1);
+  assert.ok(html.indexOf('id="cadastro"') < html.indexOf('id="como-funciona"'), "partner form stays in the third fold before the process section");
+  assert.doesNotMatch(html, /[—–]/);
+});
+
 test("contador origin reuses the confirmed Home Equity RD identifier", () => {
   const server = read("functions", "analytics", "_app.js");
   assert.match(server, /contador_aquisicao_lp:\s*\{\s*identificador:\s*"Home Equity",\s*label:\s*"Contadores — Aquisição"/);
