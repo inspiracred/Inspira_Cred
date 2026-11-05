@@ -189,6 +189,7 @@ ul, ol { padding: 0; }
 .contador-acquisition-hero .hero-emphasis::after { content: ""; position: absolute; z-index: -1; left: 0; right: 0; bottom: .015em; height: .17em; border-radius: 99px; background: var(--orange); transform: scaleX(calc(.2 + (var(--scene-progress) * .8))); transform-origin: left; }
 .contador-acquisition-hero .hero-lead { max-width: 650px; margin-top: 34px; color: rgba(255,255,255,.78); font-size: clamp(18px, 1.45vw, 21px); }
 .contador-acquisition-hero .hero-actions { justify-content: flex-start; margin-top: 34px; }
+.contador-acquisition-hero .button { color: #fff; }
 .contador-acquisition-hero .text-link { color: #fff; }
 .contador-acquisition-hero .hero-note { max-width: 650px; margin-top: 38px; border-color: rgba(255,255,255,.18); color: rgba(255,255,255,.56); }
 .contador-hero-index { position: absolute; right: 0; bottom: 0; display: flex; gap: 15px; align-items: baseline; color: rgba(255,255,255,.62); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
@@ -388,10 +389,10 @@ ul, ol { padding: 0; }
   .trust-handoff figure { height: 520px; margin-right: 44px; }.trust-copy { margin-top: 38px; }.trust-rail { margin-top: 42px; }.trust-rail > div { grid-template-columns: 1fr; gap: 6px; }
   .partner-form-territory { background: #101113; }.partner-form-territory::before { inset: 0 0 52% 0; }.partner-form-copy { position: static; padding-right: 0; }.partner-form-surface { margin-top: 12px; }
   .partner-closing { min-height: 580px; background-position: 62% center; }
-  .contador-acquisition-hero { min-height: auto; padding: 98px 0 52px; background-position: 62% center; }
-  .contador-acquisition-hero::before { background: linear-gradient(to bottom, rgba(4,19,48,.86) 0%, rgba(4,19,48,.97) 62%, rgba(4,19,48,1) 100%); }
+  .contador-acquisition-hero { min-height: auto; padding: 90px 0 48px; background-color: var(--ink); background-position: 74% top; background-size: auto clamp(410px, 88vw, 480px); background-repeat: no-repeat; }
+  .contador-acquisition-hero::before { background: linear-gradient(to bottom, rgba(4,19,48,.18) 0%, rgba(4,19,48,.3) 24%, rgba(4,19,48,.88) 44%, var(--ink) 57%, var(--ink) 100%); }
   .contador-hero-stage { min-height: calc(100svh - 150px); align-items: flex-end; }
-  .contador-hero-copy { width: 100%; padding-top: 42vh; }
+  .contador-hero-copy { width: 100%; padding-top: clamp(270px, 65vw, 340px); }
   .contador-acquisition-hero h1 { width: 100%; max-width: none; font-size: clamp(36px, 9.8vw, 44px); text-wrap: balance; }
   .contador-acquisition-hero .hero-lead { margin-top: 24px; font-size: 17px; }
   .contador-acquisition-hero .hero-actions { width: 100%; margin-top: 28px; }
