@@ -7,14 +7,16 @@ related_targets: ["inspiracred/assets/css/lp-b2b-rebuild.css","inspiracred/asset
 
 ## Direction contract
 
-THESIS: A compra deixa de ser um “card de crédito” e vira uma abertura física: texto ocupa o campo inteiro e a fotografia aparece por vãos que se abrem. Recusa o Hero dividido em duas colunas, cards flutuantes, painéis repetidos e alternância previsível de faixas.
+THESIS: A compra de carteira vira uma mesa de aquisição em quatro atos — oportunidade, estrutura da entrada, números e decisão. A LP de parceiros define o nível de acabamento, não a composição: esta página recusa copiar a Hero com card fotográfico, os territórios de parceria e a sequência de seções da referência.
 
-OWN-WORLD: Branco arquitetônico como campo principal, navy institucional como tinta, laranja somente para ação. Cantos quase retos, fotografia natural em recortes amplos, tipografia em escala de pôster e dados financeiros tratados como ledger aberto, sem sombras, gradientes ou containers genéricos.
+OWN-WORLD: Navy institucional como campo de decisão, branco arquitetônico para explicação e laranja para ação e dados-chave. Cantos uniformes de 24px, tipografia Instrument Sans com escala controlada, linhas finas como documentos de negociação e fotografia editorial natural gerada exclusivamente para contadores. Sombras são neutras e restritas a mídia ou superfícies que precisam de elevação.
 
 STORY: O visitante reconhece a oportunidade de aquisição, entende que pode financiar a entrada com garantia de imóvel, vê processo e simulações reais, entende o papel consultivo da InspiraCred e conclui na avaliação. Copy, taxas, ressalvas e integração permanecem intactas.
 
-FIRST VIEWPORT: Navegação mínima sobre branco. O H1 ocupa toda a largura em duas grandes linhas no desktop; uma abertura fotográfica horizontal entra dentro da segunda linha. A ação primária e a ressalva fecham o primeiro viewport. Nenhum card, painel ou mockup de operação divide a Hero.
+FIRST VIEWPORT: Hero fotográfica full-bleed, sem card ou segunda fotografia. A negociação ocupa o fundo; um gradiente navy cria campo legível à esquerda para H1, lead, CTAs e ressalva. No mobile, a imagem abre o primeiro terço e a copy se apoia no gradiente inferior sem cortar os rostos.
 
-FORM: Arquitetura de aberturas; posição 6 da lista fundamentada. A direção Taste “The sentence is the layout” fornece a geometria, com a fotografia como palavra visual e shutter como gesto. SEED REFERENCE seed:af46343b95cb4b52.
+FORM: A avaliação é a etapa de decisão: copy em campo navy e formulário branco com elevação neutra, numa transição vertical para o fundo claro. Os campos, labels, IDs, validação, consentimento, WhatsApp, D1/RD e tracking permanecem intactos.
+
+IMAGERY: Quatro assets exclusivos e versionados — negociação da aquisição, estrutura de entrada, comparação de propostas e novo escritório. Nenhum asset narrativo de parceiros ou das versões anteriores é reutilizado na página publicada.
 
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance

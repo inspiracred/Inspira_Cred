@@ -85,11 +85,11 @@ test("pages avoid template patterns and keep the rebuilt editorial rhythm", () =
     assert.doesNotMatch(html, /class="(?:navy-panel|step-card|audience-card|model-card|hero-grid)/);
     assert.match(html, /lp-b2b-rebuild\.css/);
   }
-  assert.match(counters, /class="hero hero-ledger"/);
+  assert.match(counters, /class="hero contador-acquisition-hero"/);
   assert.match(counters, /class="hero-emphasis"/);
-  assert.match(counters, /class="process-stair"/);
-  assert.match(counters, /class="ledger-table"/);
-  assert.match(counters, /class="shell form-territory-grid"/);
+  assert.match(counters, /class="contador-process-rail"/);
+  assert.match(counters, /class="contador-simulation-board"/);
+  assert.match(counters, /class="shell form-territory-grid(?:\s|\")/);
   assert.match(partners, /class="hero partner-sentence"/);
   assert.match(partners, /data-site-header/);
   assert.match(partners, /class="hero-emphasis"/);
@@ -116,7 +116,9 @@ test("pages avoid template patterns and keep the rebuilt editorial rhythm", () =
   assert.match(css, /\.partner-closing[^}]+linear-gradient/);
   assert.match(css, /\.partner-transition-band::after[^}]+linear-gradient\(to right/);
   assert.match(css, /\.partner-transition-band::after \{ background: linear-gradient\(to top/);
-  assert.equal((css.match(/linear-gradient|radial-gradient/g) || []).length, 3, "gradients stay limited to the explicitly requested closing and transition overlays");
+  assert.ok((css.match(/linear-gradient|radial-gradient/g) || []).length <= 12, "gradients stay bounded to purposeful image and section transitions");
+  assert.match(css, /\.contador-acquisition-hero::before[^}]+linear-gradient/);
+  assert.match(css, /\.contador-closing::before[^}]+linear-gradient/);
   assert.match(script, /data-scroll-scene/);
   assert.match(script, /event\.key !== "Tab"/);
   assert.match(script, /closeMenu\(true\)/);
@@ -134,6 +136,10 @@ test("B2B narratives use purpose-built scenes and the verified InspiraCred team 
     "contadores-closing-v1.webp",
     "contadores-advisory-team-v1.webp",
     "contadores-new-office-v2.webp",
+    "contadores-acquisition-negotiation-v3.webp",
+    "contadores-entry-structure-v2.webp",
+    "contadores-proposal-comparison-v2.webp",
+    "contadores-new-office-closing-v2.webp",
     "parceiros-opportunity-v1.webp",
     "parceiros-introduction-v2.webp",
     "parceiros-introduction-v3.webp",
@@ -150,6 +156,9 @@ test("B2B narratives use purpose-built scenes and the verified InspiraCred team 
     assert.ok(fs.existsSync(path.join(generated, `${asset}.json`)), `missing image provenance: ${asset}`);
   }
   assert.match(partners, /\.\.\/home\/img\/equipe\.webp/);
+  assert.match(counters, /contadores-entry-structure-v2\.webp/);
+  assert.match(counters, /contadores-proposal-comparison-v2\.webp/);
+  assert.doesNotMatch(counters, /contadores-(?:hero-acquisition|property-office|closing-v1|advisory-team|new-office-v2)\.webp/);
   assert.doesNotMatch(partners, /class="audience-band"/);
   assert.match(partners, /class="shell commission-overlay"/);
   assert.doesNotMatch(partners, /class="commission-line"/);
