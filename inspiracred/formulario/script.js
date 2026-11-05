@@ -780,7 +780,7 @@
       (cfg.lead ? '<p class="thank-you-lead">' + escapeHtml(cfg.lead) + '</p>' : '') +
       steps +
       '<div class="thank-you-cta">' + cta + '</div>' +
-      '<p class="thank-you-fine"><a href="/politica-de-privacidade.html" target="_blank" rel="noopener noreferrer">Política de Privacidade</a> · <a href="/termos-de-uso.html" target="_blank" rel="noopener noreferrer">Termos de Uso</a></p>' +
+      '<p class="thank-you-fine"><a href="/politica-de-privacidade.html?return=%2Fformulario%2F" target="_blank" rel="noopener noreferrer">Política de Privacidade</a> · <a href="/termos-de-uso.html?return=%2Fformulario%2F" target="_blank" rel="noopener noreferrer">Termos de Uso</a></p>' +
       '</section>';
 
     try {

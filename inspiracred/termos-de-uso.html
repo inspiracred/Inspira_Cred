@@ -104,7 +104,14 @@
     <script>
       (function () {
         var requested = new URLSearchParams(window.location.search).get("return");
-        var destination = requested && requested.charAt(0) === "/" && requested.slice(0, 2) !== "//" && requested.indexOf("\\") === -1 ? requested : "/";
+        var isSafePath = function (value) { return value && value.charAt(0) === "/" && value.slice(0, 2) !== "//" && value.indexOf("\\") === -1; };
+        var referrerDestination = "";
+        try {
+          var referrer = document.referrer ? new URL(document.referrer) : null;
+          var isLegalPage = referrer && /\/(?:politica-de-privacidade|termos-de-uso)\.html$/.test(referrer.pathname);
+          if (referrer && referrer.origin === window.location.origin && !isLegalPage) referrerDestination = referrer.pathname + referrer.search + referrer.hash;
+        } catch (error) { referrerDestination = ""; }
+        var destination = isSafePath(requested) ? requested : (isSafePath(referrerDestination) ? referrerDestination : "/");
         document.querySelectorAll("[data-return-link]").forEach(function (link) { link.setAttribute("href", destination); });
         document.querySelectorAll("[data-legal-link]").forEach(function (link) {
           var url = new URL(link.getAttribute("href"), window.location.origin);

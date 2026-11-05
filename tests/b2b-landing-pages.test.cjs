@@ -180,7 +180,36 @@ test("contador page preserves the original acquisition argument and legal return
     assert.match(legal, /Voltar ao site/);
     assert.match(legal, /position:fixed/);
     assert.match(legal, /new URLSearchParams\(window\.location\.search\)\.get\("return"\)/);
-    assert.match(legal, /requested\.slice\(0, 2\) !== "\/\/"/);
+    assert.match(legal, /value\.slice\(0, 2\) !== "\/\/"/);
+    assert.match(legal, /document\.referrer/);
+    assert.match(legal, /referrer\.origin === window\.location\.origin/);
+    assert.match(legal, /politica-de-privacidade\|termos-de-uso/);
+  }
+});
+
+test("every active InspiraCred route preserves its own origin in legal links", () => {
+  const routes = [
+    [["index.html"], "/"],
+    [["contadores", "index.html"], "/contadores/"],
+    [["parceiros", "index.html"], "/parceiros/"],
+    [["formulario", "index.html"], "/formulario/"],
+    [["formulario", "script.js"], "/formulario/"],
+    [["home", "index.html"], "/home/"],
+    [["homeequity", "index.html"], "/homeequity/"],
+    [["obrigado", "auto", "index.html"], "/obrigado/auto/"],
+    [["obrigado", "formulario", "index.html"], "/obrigado/formulario/"],
+    [["obrigado", "home", "index.html"], "/obrigado/home/"],
+    [["obrigado", "home-equity", "index.html"], "/obrigado/home-equity/"],
+    [["obrigado", "simulacao", "index.html"], "/obrigado/simulacao/"],
+    [["obrigado", "home-nao-elegivel", "index.html"], "/obrigado/home-nao-elegivel/"],
+    [["obrigado", "nao-elegivel", "index.html"], "/obrigado/nao-elegivel/"],
+  ];
+
+  for (const [segments, route] of routes) {
+    const source = read(...segments);
+    const links = [...source.matchAll(/href="\/(?:politica-de-privacidade|termos-de-uso)\.html([^"#]*)"/g)];
+    assert.ok(links.length > 0, `missing legal link in ${segments.join("/")}`);
+    for (const link of links) assert.equal(link[1], `?return=${encodeURIComponent(route)}`, `wrong legal return in ${segments.join("/")}`);
   }
 });
 
