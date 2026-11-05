@@ -176,6 +176,9 @@ test("contador page preserves the original acquisition argument and legal return
   assert.match(html, /termos-de-uso\.html\?return=%2Fcontadores%2F/);
   for (const legal of [privacy, terms]) {
     assert.match(legal, /data-return-link/);
+    assert.match(legal, /class="floating-back"/);
+    assert.match(legal, /Voltar ao site/);
+    assert.match(legal, /position:fixed/);
     assert.match(legal, /new URLSearchParams\(window\.location\.search\)\.get\("return"\)/);
     assert.match(legal, /requested\.slice\(0, 2\) !== "\/\/"/);
   }

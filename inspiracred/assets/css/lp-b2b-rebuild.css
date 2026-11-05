@@ -202,7 +202,7 @@ ul, ol { padding: 0; }
 .contador-entry-heading { position: relative; z-index: 2; grid-column: 1 / 11; }
 .contador-entry-heading h2, .contador-process-heading h2, .contador-simulation-heading h2, .contador-expert-copy h2 { font-size: clamp(36px, 4vw, 58px); font-weight: 620; letter-spacing: -.035em; line-height: 1.04; text-wrap: balance; }
 .contador-entry-photo { grid-column: 1 / 8; grid-row: 2 / span 2; height: clamp(500px, 54vw, 690px); margin-top: 62px; overflow: hidden; border-radius: var(--radius-media); box-shadow: 0 28px 70px rgba(2,8,23,.12); }
-.contador-entry-photo img { width: 100%; height: 112%; object-fit: cover; object-position: 40% center; transform: translateY(calc((var(--scene-progress) - .5) * -8%)); }
+.contador-entry-photo img { width: 100%; height: 112%; object-fit: cover; object-position: 28% center; transform: translateY(calc((var(--scene-progress) - .5) * -8%)); }
 .contador-entry-copy { grid-column: 9 / 13; grid-row: 2; display: grid; gap: 24px; margin-top: 106px; font-size: clamp(18px, 1.45vw, 21px); }
 .contador-entry-copy p { text-wrap: pretty; }.contador-entry-copy p:last-child { color: var(--ink-soft); }
 .contador-entry-highlight { display: inline-flex; padding: .04em .34em .1em; border-radius: 8px; color: #fff; background: var(--orange); font-weight: 720; line-height: 1.1; }
