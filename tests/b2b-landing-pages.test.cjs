@@ -172,6 +172,8 @@ test("contador page preserves the original acquisition argument and legal return
   const terms = read("termos-de-uso.html");
 
   assert.match(html, /O lucro gerado pelos novos clientes pode ajudar a pagar as parcelas do próprio crédito utilizado na aquisição\./);
+  assert.match(html, /<span class="no-break">Custo Efetivo Total \(CET\)<\/span>/);
+  assert.match(read("assets", "css", "lp-b2b-rebuild.css"), /\.contador-simulation-foot \.no-break \{ white-space: nowrap; \}/);
   assert.match(html, /politica-de-privacidade\.html\?return=%2Fcontadores%2F/);
   assert.match(html, /termos-de-uso\.html\?return=%2Fcontadores%2F/);
   for (const legal of [privacy, terms]) {
