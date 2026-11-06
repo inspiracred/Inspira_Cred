@@ -239,3 +239,16 @@ test("secondary phone guidance is available on demand without reserving form spa
   assert.doesNotMatch(html, /class="field-help"/);
   assert.match(css, /\.field-info-wrap:focus-within \.field-tooltip/);
 });
+
+test("latest ClickUp refinements keep the B2B forms focused and connect successful leads to WhatsApp", () => {
+  const counters = read("contadores", "index.html");
+  const partners = read("parceiros", "index.html");
+  const script = read("assets", "js", "lp-b2b.js");
+
+  assert.doesNotMatch(counters, /class="contador-process-action"/);
+  assert.doesNotMatch(partners, /Dados usados apenas para retorno sobre a parceria|Cadastro sujeito à avaliação de perfil/);
+  assert.match(partners, /data-partner-whatsapp-success/);
+  assert.match(partners, /https:\/\/wa\.me\/5521977340731/);
+  assert.match(script, /data-partner-whatsapp-success/);
+  assert.match(script, /Acabei de me cadastrar no programa de parceiros da InspiraCred/);
+});

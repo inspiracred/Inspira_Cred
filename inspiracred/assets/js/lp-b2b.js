@@ -377,6 +377,14 @@
           return;
         }
         track("partner_signup_complete", { source: "parceiros_lp", partner_role: roleValue });
+        var partnerSuccessLink = qs("[data-partner-whatsapp-success]", partnersForm.parentNode);
+        if (partnerSuccessLink) {
+          var partnerMessage = [
+            "Olá! Acabei de me cadastrar no programa de parceiros da InspiraCred.",
+            "Minha área de atuação: " + roleValue + "."
+          ].join("\n");
+          partnerSuccessLink.href = "https://wa.me/5521977340731?text=" + encodeURIComponent(partnerMessage);
+        }
         showSuccess(partnersForm);
       });
     });
