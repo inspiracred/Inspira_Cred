@@ -92,6 +92,14 @@ export async function onRequest(context) {
   return new Response("Not Found", { status: 404 });
 }
 
+// Codigos tecnicos privados: nunca devolver SQL, credenciais ou dados de leads.
+function d1FailureCode(error) {
+  const detail = [error && error.message, error && error.cause && error.cause.message].filter(Boolean).join(" ");
+  if (/daily|quota|rows read|rows written|read limit|write limit/i.test(detail)) return "d1_daily_limit";
+  if (/no such (?:table|column)/i.test(detail)) return "d1_schema_pending";
+  return "d1_unavailable";
+}
+
 // Relatorios agregados: cache privado curto no KV existente, sempre apos o guard
 // de autenticacao. Leads, jornadas e vendas com dados pessoais NUNCA entram aqui.
 // Nao usa caches.default/CDN: uma resposta autenticada jamais vira cache publico.
@@ -2106,7 +2114,7 @@ async function handleHealth(request, env) {
        FROM leads ${WHERE}`
     ).bind(...b).first();
   } catch (e) {
-    return json({ range: { start, end }, page: page || "all", pendente: true, totals: {}, by_fbp_source: [], by_browser: [], by_bot: [] });
+    return json({ range: { start, end }, page: page || "all", pendente: true, error_code: d1FailureCode(e), totals: {}, by_fbp_source: [], by_browser: [], by_bot: [] }, 503, { "Cache-Control": "private, no-store" });
   }
 
   let by_fbp_source = [], by_browser = [], by_bot = [];

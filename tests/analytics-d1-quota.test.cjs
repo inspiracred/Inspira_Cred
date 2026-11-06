@@ -106,3 +106,11 @@ test('captura dos seis formularios persiste em SQLite local e respeita CORS sem 
   assert.equal(db.prepare('SELECT count(*) n FROM leads').get().n,6);
   db.close();
 });
+
+test('diagnostico privado distingue quota e schema sem vazar mensagens', () => {
+  const h=harness();
+  assert.equal(h.context.d1FailureCode(new Error('D1_ERROR: daily rows read limit exceeded')), 'd1_daily_limit');
+  assert.equal(h.context.d1FailureCode(new Error('D1_ERROR',{cause:new Error('Your account has exceeded daily quota')})), 'd1_daily_limit');
+  assert.equal(h.context.d1FailureCode(new Error('no such column: x')), 'd1_schema_pending');
+  assert.equal(h.context.d1FailureCode(new Error('private content')), 'd1_unavailable');
+});
