@@ -72,14 +72,14 @@ export async function onRequest(context) {
     return unauthorized();
   }
 
-  if (sub === "/api/overview" && request.method === "GET") return handleOverview(request, env);
+  if (sub === "/api/overview" && request.method === "GET") return cachedReport(request, env, handleOverview);
   if (sub === "/api/sales" && request.method === "GET") return handleSales(request, env);
   if (sub === "/api/leads" && request.method === "GET") return handleLeads(request, env);
   if (sub === "/api/journey" && request.method === "GET") return handleJourney(request, env);
-  if (sub === "/api/heatmap" && request.method === "GET") return handleHeatmap(request, env);
-  if (sub === "/api/pagemap" && request.method === "GET") return handlePageMap(request, env);
-  if (sub === "/api/campaigns" && request.method === "GET") return handleCampaigns(request, env);
-  if (sub === "/api/health" && request.method === "GET") return handleHealth(request, env);
+  if (sub === "/api/heatmap" && request.method === "GET") return cachedReport(request, env, handleHeatmap);
+  if (sub === "/api/pagemap" && request.method === "GET") return cachedReport(request, env, handlePageMap);
+  if (sub === "/api/campaigns" && request.method === "GET") return cachedReport(request, env, handleCampaigns);
+  if (sub === "/api/health" && request.method === "GET") return cachedReport(request, env, handleHealth);
   if (sub === "/api/meta-test" && request.method === "GET") return handleMetaTest(request, env);
   // já logado tentando abrir a tela de login: manda direto pro painel
   if (sub === "/login" && request.method === "GET") {
@@ -90,6 +90,41 @@ export async function onRequest(context) {
   }
 
   return new Response("Not Found", { status: 404 });
+}
+
+// Relatorios agregados: cache privado curto no KV existente, sempre apos o guard
+// de autenticacao. Leads, jornadas e vendas com dados pessoais NUNCA entram aqui.
+// Nao usa caches.default/CDN: uma resposta autenticada jamais vira cache publico.
+const REPORT_CACHE_TTL_SECONDS = 60;
+async function cachedReport(request, env, handler) {
+  if (!env.KV || typeof env.KV.get !== "function" || typeof env.KV.put !== "function") {
+    return handler(request, env);
+  }
+  const url = new URL(request.url);
+  url.searchParams.delete("_"); // cache-buster antigo do dashboard, nao um filtro
+  url.searchParams.sort();
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(url.toString()));
+  const key = "analytics-report:v1:" + Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+  const headers = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "private, no-store" };
+  try {
+    const saved = await env.KV.get(key, "json");
+    const age = saved ? Date.now() - saved.createdAt : -1;
+    if (saved && typeof saved.body === "string" && age >= 0 && age < REPORT_CACHE_TTL_SECONDS * 1000) {
+      return new Response(saved.body, { headers: { ...headers, "X-Analytics-Cache": "hit" } });
+    }
+  } catch (_) { /* cache indisponivel: consulta normal, sem derrubar o painel */ }
+  const response = await handler(request, env);
+  if (!response.ok) return response;
+  const body = await response.clone().text();
+  // Nao armazenar respostas que sinalizam falha ou pendencia.
+  let data;
+  try { data = JSON.parse(body); } catch (_) { return response; }
+  if (data.error || data.pendente || data.meta_insights_ok === false) return response;
+  if (body.length <= 500000) {
+    try { await env.KV.put(key, JSON.stringify({ createdAt: Date.now(), body }), { expirationTtl: REPORT_CACHE_TTL_SECONDS }); }
+    catch (_) { /* falha de cache nunca bloqueia o resultado original */ }
+  }
+  return new Response(body, { status: response.status, headers: { ...headers, "X-Analytics-Cache": "miss" } });
 }
 
 /* ---- AUTH ----
@@ -1748,25 +1783,25 @@ async function handleOverview(request, env) {
   const many = async (sql, b) => (await env.DB.prepare(sql).bind(...b).all()).results || [];
 
   const [visitors, simStart, simComplete, leadsN, pages, forms, clicks, sources, daily, eventRows, leadKindRows] = await Promise.all([
-    one(`SELECT COUNT(DISTINCT session_id) n FROM page_views WHERE DATE(created_at) BETWEEN ? AND ?${pv}`, bp),
-    one(`SELECT COUNT(DISTINCT session_id) n FROM events WHERE event_name='simulation_start' AND DATE(created_at) BETWEEN ? AND ?${pv}`, bp),
-    one(`SELECT COUNT(DISTINCT session_id) n FROM events WHERE event_name='simulation_complete' AND DATE(created_at) BETWEEN ? AND ?${pv}`, bp),
-    one(`SELECT COUNT(*) n FROM leads WHERE DATE(created_at) BETWEEN ? AND ?${sc}`, bs),
-    many(`SELECT page_name, COUNT(*) views, COUNT(DISTINCT session_id) uniques FROM page_views WHERE DATE(created_at) BETWEEN ? AND ?${pv} GROUP BY page_name ORDER BY views DESC`, bp),
-    many(`SELECT page_name, COUNT(*) n FROM form_submissions WHERE success=1 AND DATE(created_at) BETWEEN ? AND ?${pv} GROUP BY page_name`, bp),
-    many(`SELECT page_name, element_id, element_text, COUNT(*) clicks FROM clicks WHERE DATE(created_at) BETWEEN ? AND ?${pv} GROUP BY page_name, element_id, element_text ORDER BY clicks DESC`, bp),
-    many(`SELECT COALESCE(NULLIF(utm_source,''),'direto') source, COUNT(*) n FROM leads WHERE DATE(created_at) BETWEEN ? AND ?${sc} GROUP BY source ORDER BY n DESC`, bs),
+    one(`SELECT COUNT(DISTINCT session_id) n FROM page_views WHERE created_at >= ? AND created_at < datetime(?,'+1 day')${pv}`, bp),
+    one(`SELECT COUNT(DISTINCT session_id) n FROM events WHERE event_name='simulation_start' AND created_at >= ? AND created_at < datetime(?,'+1 day')${pv}`, bp),
+    one(`SELECT COUNT(DISTINCT session_id) n FROM events WHERE event_name='simulation_complete' AND created_at >= ? AND created_at < datetime(?,'+1 day')${pv}`, bp),
+    one(`SELECT COUNT(*) n FROM leads WHERE created_at >= ? AND created_at < datetime(?,'+1 day')${sc}`, bs),
+    many(`SELECT page_name, COUNT(*) views, COUNT(DISTINCT session_id) uniques FROM page_views WHERE created_at >= ? AND created_at < datetime(?,'+1 day')${pv} GROUP BY page_name ORDER BY views DESC`, bp),
+    many(`SELECT page_name, COUNT(*) n FROM form_submissions WHERE success=1 AND created_at >= ? AND created_at < datetime(?,'+1 day')${pv} GROUP BY page_name`, bp),
+    many(`SELECT page_name, element_id, element_text, COUNT(*) clicks FROM clicks WHERE created_at >= ? AND created_at < datetime(?,'+1 day')${pv} GROUP BY page_name, element_id, element_text ORDER BY clicks DESC`, bp),
+    many(`SELECT COALESCE(NULLIF(utm_source,''),'direto') source, COUNT(*) n FROM leads WHERE created_at >= ? AND created_at < datetime(?,'+1 day')${sc} GROUP BY source ORDER BY n DESC`, bs),
     many(`
       SELECT d, SUM(v) v, SUM(l) l FROM (
         SELECT DATE(created_at) d, COUNT(DISTINCT session_id) v, 0 l
-        FROM page_views WHERE DATE(created_at) BETWEEN ? AND ?${pv} GROUP BY d
+        FROM page_views WHERE created_at >= ? AND created_at < datetime(?,'+1 day')${pv} GROUP BY d
         UNION ALL
         SELECT DATE(created_at) d, 0 v, COUNT(*) l
-        FROM leads WHERE DATE(created_at) BETWEEN ? AND ?${sc} GROUP BY d
+        FROM leads WHERE created_at >= ? AND created_at < datetime(?,'+1 day')${sc} GROUP BY d
       ) GROUP BY d ORDER BY d
     `, bp.concat(bs)),
-    many(`SELECT event_type, event_name, COUNT(*) n, COUNT(DISTINCT session_id) sessions FROM events WHERE DATE(created_at) BETWEEN ? AND ?${pv} GROUP BY event_type, event_name ORDER BY n DESC`, bp),
-    many(`SELECT COALESCE(NULLIF(lead_kind,''),'sem_classificacao') kind, COUNT(*) n, SUM(CASE WHEN rd_status='ok' THEN 1 ELSE 0 END) rd_ok, SUM(CASE WHEN meta_status='ok' THEN 1 ELSE 0 END) meta_ok, SUM(CASE WHEN meta_status='nao_enviado' THEN 1 ELSE 0 END) meta_skip, SUM(COALESCE(credit_value,0)) credit FROM leads WHERE DATE(created_at) BETWEEN ? AND ?${sc} GROUP BY kind ORDER BY n DESC`, bs),
+    many(`SELECT event_type, event_name, COUNT(*) n, COUNT(DISTINCT session_id) sessions FROM events WHERE created_at >= ? AND created_at < datetime(?,'+1 day')${pv} GROUP BY event_type, event_name ORDER BY n DESC`, bp),
+    many(`SELECT COALESCE(NULLIF(lead_kind,''),'sem_classificacao') kind, COUNT(*) n, SUM(CASE WHEN rd_status='ok' THEN 1 ELSE 0 END) rd_ok, SUM(CASE WHEN meta_status='ok' THEN 1 ELSE 0 END) meta_ok, SUM(CASE WHEN meta_status='nao_enviado' THEN 1 ELSE 0 END) meta_skip, SUM(COALESCE(credit_value,0)) credit FROM leads WHERE created_at >= ? AND created_at < datetime(?,'+1 day')${sc} GROUP BY kind ORDER BY n DESC`, bs),
   ]);
 
   const formsByPage = {};
@@ -1793,7 +1828,7 @@ async function handleOverview(request, env) {
       const evBinds = [start, end].concat(page || []).concat(src);
       const r = await env.DB.prepare(
         `SELECT COUNT(DISTINCT session_id) n FROM events
-         WHERE event_name='simulation_start' AND DATE(created_at) BETWEEN ? AND ?${pv} AND ${inCond(EVSRC, src)}`
+         WHERE event_name='simulation_start' AND created_at >= ? AND created_at < datetime(?,'+1 day')${pv} AND ${inCond(EVSRC, src)}`
       ).bind(...evBinds).first();
       ss = (r && r.n) || 0;
       const since = await env.DB.prepare(
@@ -1802,7 +1837,7 @@ async function handleOverview(request, env) {
       eventsSrcSince = (since && since.d) || null;
     } catch (e) { ss = null; }
     try {
-      const sw = `WHERE DATE(created_at,'unixepoch') BETWEEN ? AND ? AND ${inCond(SRC_EXPR, src)}`;
+      const sw = `WHERE created_at >= unixepoch(?) AND created_at < unixepoch(?,'+1 day') AND ${inCond(SRC_EXPR, src)}`;
       const sb = [start, end].concat(src);
       const sv = await env.DB.prepare(`SELECT COUNT(*) n FROM sessions ${sw}`).bind(...sb).first();
       v = (sv && sv.n) || 0;
@@ -1846,7 +1881,7 @@ async function handleLeads(request, env) {
   const QUAL = `, imovel_quitado, documentacao_ok, situacao_imovel, saldo_devedor, possui_imovel, possui_matricula, faixa_credito, city, lead_kind, fbp_source, fbc_source`;
   const conds = [];
   const binds = [start, end];
-  conds.push(`DATE(created_at) BETWEEN ? AND ?`);
+  conds.push(`created_at >= ? AND created_at < datetime(?,'+1 day')`);
   if (page) { conds.push(inCond("source", page)); binds.push(...page); }
   { const { src } = params(request.url); if (src) { conds.push(inCond(SRC_EXPR, src)); binds.push(...src); } }
   if (kind === "nao_qualificado") conds.push(`lead_kind IN ('baixo_valor','descarte','rural')`);
@@ -1911,9 +1946,9 @@ async function handleCampaigns(request, env) {
   const CID = "COALESCE(NULLIF(meta_campaign_id,''),'')";
   const SID = "COALESCE(NULLIF(meta_adset_id,''),'')";
   const AID = "COALESCE(NULLIF(meta_ad_id,''),'')";
-  const WHERE = `WHERE DATE(created_at) BETWEEN ? AND ?${sc}`;
+  const WHERE = `WHERE created_at >= ? AND created_at < datetime(?,'+1 day')${sc}`;
   // sessions.created_at é INTEGER (unix seconds) — precisa do 'unixepoch'.
-  const SWHERE = `WHERE DATE(created_at,'unixepoch') BETWEEN ? AND ?`;
+  const SWHERE = `WHERE created_at >= unixepoch(?) AND created_at < unixepoch(?,'+1 day')`;
   const AGG = `COUNT(*) leads,
                SUM(CASE WHEN lead_kind='home_equity_mql' THEN 1 ELSE 0 END) mql,
                SUM(CASE WHEN lead_kind IN ('baixo_valor','descarte','rural') THEN 1 ELSE 0 END) desq,
@@ -1939,7 +1974,7 @@ async function handleCampaigns(request, env) {
     [visits, daily_visits, visits_since] = await Promise.all([
       manyS(`SELECT ${SRC} src, ${CAMP} camp, ${MED} med, ${CONT} cont, ${CID} meta_campaign_id, ${SID} meta_adset_id, ${AID} meta_ad_id, COUNT(*) n FROM sessions ${SWHERE} GROUP BY src,camp,med,cont,meta_campaign_id,meta_adset_id,meta_ad_id`),
       manyS(`SELECT DATE(created_at,'unixepoch') d, ${CAMP} camp, ${SRC} src, ${CID} meta_campaign_id, COUNT(*) n FROM sessions ${SWHERE} GROUP BY d, camp, src, meta_campaign_id ORDER BY d`),
-      env.DB.prepare(`SELECT MIN(DATE(created_at,'unixepoch')) d FROM sessions`).first().then((r) => (r && r.d) || null),
+      env.DB.prepare(`SELECT DATE(MIN(created_at),'unixepoch') d FROM sessions`).first().then((r) => (r && r.d) || null),
     ]);
   } catch (e) { /* sessions ainda não criada */ }
 
@@ -2004,7 +2039,7 @@ async function handlePageMap(request, env) {
   const end = p.get("end") || today;
   const b = [pageName, start, end];
   const many = async (sql) => (await env.DB.prepare(sql).bind(...b).all()).results || [];
-  const RANGE = `page_name=? AND DATE(created_at) BETWEEN ? AND ?`;
+  const RANGE = `page_name=? AND created_at >= ? AND created_at < datetime(?,'+1 day')`;
 
   const [sess, scroll, sections, elements, steps, choices, leads] = await Promise.all([
     env.DB.prepare(`SELECT COUNT(DISTINCT session_id) n, COUNT(*) views FROM page_views WHERE ${RANGE}`).bind(...b).first(),
@@ -2028,7 +2063,7 @@ async function handlePageMap(request, env) {
     // Quem converteu de verdade: lead gravado com origem NESTA página. Fecha o mapa
     // (rolagem/cliques/etapas) com o resultado, que antes só existia na aba geral.
     env.DB.prepare(`SELECT COUNT(*) n, COUNT(DISTINCT session_id) s FROM leads
-                    WHERE source=? AND DATE(created_at) BETWEEN ? AND ?`).bind(...b).first(),
+                    WHERE source=? AND created_at >= ? AND created_at < datetime(?,'+1 day')`).bind(...b).first(),
   ]);
 
   const s = sess || {};
@@ -2050,7 +2085,7 @@ async function handleHealth(request, env) {
   const { start, end, page, src } = params(request.url);
   const sc = (page ? ` AND ${inCond("source", page)}` : "") + (src ? ` AND ${inCond(SRC_EXPR, src)}` : "");
   const b = [start, end].concat(page || []).concat(src || []);
-  const WHERE = `WHERE DATE(created_at) BETWEEN ? AND ?${sc}`;
+  const WHERE = `WHERE created_at >= ? AND created_at < datetime(?,'+1 day')${sc}`;
   const many = async (sql) => (await env.DB.prepare(sql).bind(...b).all()).results || [];
 
   let totals = {};
@@ -2422,11 +2457,11 @@ async function handleSales(request, env) {
               SUM(CASE WHEN won=1 AND matched_lead_id IS NOT NULL THEN 1 ELSE 0 END) vendas_casadas,
               SUM(CASE WHEN won=1 AND meta_status='ok' THEN 1 ELSE 0 END) meta_purchase_ok,
               SUM(CASE WHEN won=1 AND COALESCE(meta_status,'')<>'ok' THEN 1 ELSE 0 END) meta_purchase_pendente
-       FROM rd_sales WHERE DATE(received_at) BETWEEN ? AND ?`
+       FROM rd_sales WHERE received_at >= ? AND received_at < datetime(?,'+1 day')`
     ).bind(start, end).first();
     const recent = (await env.DB.prepare(
       `SELECT id, deal_name, stage, value, won, contact_email, matched_lead_id, meta_status, received_at
-       FROM rd_sales WHERE DATE(received_at) BETWEEN ? AND ? ORDER BY received_at DESC LIMIT 50`
+       FROM rd_sales WHERE received_at >= ? AND received_at < datetime(?,'+1 day') ORDER BY received_at DESC LIMIT 50`
     ).bind(start, end).all()).results || [];
     return json({ range: { start, end }, pendente: false, totals: totals || {}, recent });
   } catch (e) {
@@ -2508,7 +2543,7 @@ async function handleHeatmap(request, env) {
 
   const rows = (await env.DB.prepare(
     `SELECT x_pct, y_pct, element_id FROM heatmap_taps
-     WHERE page_name=? AND DATE(created_at) BETWEEN ? AND ? AND ${deviceVwCond(device)} LIMIT 20000`
+     WHERE page_name=? AND created_at >= ? AND created_at < datetime(?,'+1 day') AND ${deviceVwCond(device)} LIMIT 20000`
   ).bind(page, start, end).all()).results || [];
 
   // distribuição por device (todos os taps da página no período) — pra saber quanto
@@ -2518,7 +2553,7 @@ async function handleHeatmap(request, env) {
        SUM(CASE WHEN vw < 768 THEN 1 ELSE 0 END) mobile,
        SUM(CASE WHEN vw >= 768 AND vw < 1024 THEN 1 ELSE 0 END) tablet,
        SUM(CASE WHEN vw >= 1024 THEN 1 ELSE 0 END) desktop
-     FROM heatmap_taps WHERE page_name=? AND DATE(created_at) BETWEEN ? AND ?`
+     FROM heatmap_taps WHERE page_name=? AND created_at >= ? AND created_at < datetime(?,'+1 day')`
   ).bind(page, start, end).first()) || {};
 
   return json({
@@ -2902,7 +2937,7 @@ const DASHBOARD_HTML = `<!doctype html>
       <span style="color:var(--muted);font-size:12px">até</span>
       <input type="date" id="dateTo" title="Data final">
     </span>
-    <button id="refresh" class="primary">Atualizar</button>
+    <button id="refresh" title="Metricas agregadas atualizadas em ate 60 segundos; lista de leads em tempo real" class="primary">Atualizar</button>
     <button id="saveFilter" title="Guardar página, origem e período como padrão deste navegador">☆ Salvar filtro</button>
     <a href="/analytics/logout" class="btn-sm" style="text-decoration:none;display:inline-flex;align-items:center">Sair</a>
     <button id="openPage" title="Abrir a página selecionada em nova aba">Abrir página ↗</button>
