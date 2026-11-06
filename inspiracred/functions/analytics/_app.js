@@ -2117,14 +2117,16 @@ async function handleHealth(request, env) {
     return json({ range: { start, end }, page: page || "all", pendente: true, error_code: d1FailureCode(e), totals: {}, by_fbp_source: [], by_browser: [], by_bot: [] }, 503, { "Cache-Control": "private, no-store" });
   }
 
-  let by_fbp_source = [], by_browser = [], by_bot = [];
+  let by_fbp_source = [], by_browser = [], by_bot = [], partialError = null;
   try {
     by_fbp_source = await many(`SELECT COALESCE(NULLIF(fbp_source,''),'(nulo)') k, COUNT(*) n FROM leads ${WHERE} GROUP BY k ORDER BY n DESC`);
     by_browser = await many(`SELECT COALESCE(NULLIF(browser,''),'(nulo)') k, COUNT(*) n FROM leads ${WHERE} GROUP BY k ORDER BY n DESC`);
     by_bot = await many(`SELECT COALESCE(NULLIF(bot_reason,''),'(humano)') k, COUNT(*) n FROM leads ${WHERE} GROUP BY k ORDER BY n DESC`);
-  } catch (e) { /* ok */ }
+  } catch (e) { partialError = d1FailureCode(e); }
 
-  return json({ range: { start, end }, page: page || "all", totals: totals || {}, by_fbp_source, by_browser, by_bot });
+  return json({ range: { start, end }, page: page || "all", pendente: !!partialError, error_code: partialError,
+    totals: totals || {}, by_fbp_source, by_browser, by_bot }, partialError ? 503 : 200,
+    { "Cache-Control": "private, no-store" });
 }
 
 /* ---- WEBHOOK DO RD STATION CRM: venda ganha -> faturamento ----

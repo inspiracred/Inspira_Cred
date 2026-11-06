@@ -114,3 +114,15 @@ test('diagnostico privado distingue quota e schema sem vazar mensagens', () => {
   assert.equal(h.context.d1FailureCode(new Error('no such column: x')), 'd1_schema_pending');
   assert.equal(h.context.d1FailureCode(new Error('private content')), 'd1_unavailable');
 });
+
+
+test('saude parcial nao mascara indisponibilidade D1 como sucesso nem entra no cache', async () => {
+  const h=harness();
+  const RealDate=Date;
+  h.context.Date=RealDate;
+  h.env.DB={prepare(){return {bind(){return this},async first(){return{total:12}},async all(){throw new Error('D1 daily rows read limit exceeded')}}}};
+  const response=await h.context.cachedReport(new Request('https://nova.inspiracred.com.br/analytics/api/health'),h.env,h.context.handleHealth);
+  assert.equal(response.status,503);
+  const body=await response.json();assert.equal(body.pendente,true);assert.equal(body.error_code,'d1_daily_limit');
+  assert.equal(h.stats().writes,0);
+});
