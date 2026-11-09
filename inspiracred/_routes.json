@@ -20,7 +20,6 @@
     "/termos-de-uso",
     "/termos-de-uso.html",
     "/analytics",
-    "/analytics/",
     "/analytics/*"
   ],
   "exclude": [
