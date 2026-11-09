@@ -490,6 +490,7 @@ const RD_PAGE_CONFIG = {
   // Reutiliza o identificador Home Equity já confirmado no RD. A origem específica
   // permanece legível no campo Formulário de Origem e nas tags.
   contador_aquisicao_lp: { identificador: "Home Equity", label: "Contadores — Aquisição" },
+  parceiros_lp: { identificador: "Home Equity", label: "Parceiros" },
   // Home institucional (/home/): reutiliza o identificador histórico já ligado ao fluxo
   // que cria a Negociação. A origem continua separada por label, tag e UTMs.
   home_institucional: { identificador: "landing-nova-raiz", label: "Site Institucional" },
@@ -602,7 +603,8 @@ function sanitizeMetaSourceUrl(value) {
 
 function shouldSendLeadToRD(kind) {
   return kind === "home_equity" || kind === "home_equity_mql" || kind === "auto" ||
-    kind === "baixo_valor" || kind === "institucional" || kind === "rural" || kind === "descarte";
+    kind === "baixo_valor" || kind === "institucional" || kind === "rural" || kind === "descarte" ||
+    kind === "parceiro";
 }
 
 async function markLeadStatus(env, leadId, column, status) {
@@ -632,8 +634,9 @@ function rdTags(event) {
     if (event.solucao) tags.push(String(event.solucao).toLowerCase().slice(0, 60));
   }
   if (event.source === "contador_aquisicao_lp") {
-    tags.push("lp contadores", "aquisição carteira contábil");
+    tags.push("contabilidade", "lp contadores", "aquisição carteira contábil");
   }
+  if (event.source === "parceiros_lp") tags.push("parceiro");
   return tags.length ? tags : undefined;
 }
 

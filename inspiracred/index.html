@@ -64,11 +64,17 @@
               </div>
 
               <div class="form-rows">
-                <div class="form-row form-row-3">
+                <div class="form-row form-row-4">
                   <div class="field">
                     <label for="contact-name">Nome completo <span class="req">*</span></label>
                     <input class="input" id="contact-name" name="name" type="text" placeholder="Digite seu nome completo" autocomplete="name" />
                     <p class="field-error" data-error="name"></p>
+                  </div>
+
+                  <div class="field">
+                    <label for="contact-email">E-mail <span class="req">*</span></label>
+                    <input class="input" id="contact-email" name="email" type="email" placeholder="Digite seu e-mail" autocomplete="email" />
+                    <p class="field-error" data-error="email"></p>
                   </div>
 
                   <div class="field">
@@ -609,6 +615,7 @@
           function validate(data) {
             var ok = true;
             if (data.name.length < 3) { setError("name", "Informe seu nome completo."); ok = false; }
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) { setError("email", "Informe um e-mail válido."); ok = false; }
             if (!/^[0-9]{10,11}$/.test(digits(data.phone))) { setError("phone", "Informe um celular com DDD."); ok = false; }
             if (!data.propertyType) { setError("property_type", "Selecione o tipo de imóvel."); ok = false; }
             if (data.propertyValue <= 0) { setError("property_value", "Informe o valor do imóvel."); ok = false; }
@@ -626,6 +633,7 @@
 
             var data = {
               name: document.getElementById("contact-name").value.trim(),
+              email: document.getElementById("contact-email").value.trim(),
               phone: document.getElementById("contact-phone").value.trim(),
               propertyType: document.getElementById("property-type").value,
               propertyValue: parseMoney(document.getElementById("property-value").value),
@@ -672,6 +680,7 @@
                   form_type: "home_equity_simulator",
                   lead_kind: kind,
                   name: data.name,
+                  email: data.email,
                   phone: "+55" + phoneDigits,
                   property_type: data.propertyType.toLowerCase(),
                   property_value: data.propertyValue,

@@ -225,6 +225,18 @@
       success.setAttribute("tabindex", "-1");
       success.focus();
     }
+    scheduleWhatsappRedirect(form);
+  }
+
+  function scheduleWhatsappRedirect(form) {
+    if (!form || form.dataset.whatsappRedirectScheduled === "true") return false;
+    var link = qs("[data-whatsapp-success], [data-partner-whatsapp-success]", form.parentNode);
+    if (!link || !link.href) return false;
+    form.dataset.whatsappRedirectScheduled = "true";
+    window.setTimeout(function () {
+      window.location.href = link.href;
+    }, 3000);
+    return true;
   }
 
   function formStatus(form, message) {
@@ -269,7 +281,9 @@
       formStatus(countersForm, "");
       var valid = true;
       valid = requireField(countersForm, "name", "Informe seu nome completo.") && valid;
+      valid = requireField(countersForm, "email", "Informe seu e-mail.") && valid;
       valid = requireField(countersForm, "phone", "Informe seu número de celular.") && valid;
+      if (countersForm.elements.email.value && !countersForm.elements.email.validity.valid) { showError(countersForm.elements.email, "Informe um e-mail válido."); valid = false; }
       if (countersForm.elements.phone.value && !phoneIsValid(countersForm.elements.phone.value)) { showError(countersForm.elements.phone, "Use um número com DDD."); valid = false; }
       valid = requireField(countersForm, "property_type", "Selecione o tipo de imóvel.") && valid;
       valid = requireField(countersForm, "property_value", "Informe o valor aproximado do imóvel.") && valid;
@@ -292,6 +306,7 @@
       var payload = Object.assign({
         source: "contador_aquisicao_lp",
         name: countersForm.elements.name.value.trim(),
+        email: countersForm.elements.email.value.trim(),
         phone: countersForm.elements.phone.value,
         property_type: countersForm.elements.property_type.value,
         property_value: propertyValue,

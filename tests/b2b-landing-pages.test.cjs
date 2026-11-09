@@ -2,6 +2,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const vm = require("node:vm");
 
 const site = path.resolve(__dirname, "../inspiracred");
 const read = (...parts) => fs.readFileSync(path.join(site, ...parts), "utf8");
@@ -47,7 +48,9 @@ test("partner page preserves eligibility and commission conditions", () => {
   assert.match(script, /lead_kind:\s*"parceiro"/);
   assert.match(server, /event\.source === "parceiros_lp"\) return "parceiro"/);
   assert.match(server, /UPDATE leads SET partner_role/);
-  assert.doesNotMatch(server, /parceiros_lp:\s*\{\s*identificador/);
+  assert.match(server, /parceiros_lp:\s*\{\s*identificador:\s*"Home Equity",\s*label:\s*"Parceiros"/);
+  assert.match(server, /kind === "parceiro"/);
+  assert.match(server, /event\.source === "parceiros_lp"\) tags\.push\("parceiro"\)/);
 });
 
 test("partner page keeps the original audience copy and early registration path", () => {
@@ -69,7 +72,7 @@ test("partner page keeps the original audience copy and early registration path"
 test("contador origin reuses the confirmed Home Equity RD identifier", () => {
   const server = read("functions", "analytics", "_app.js");
   assert.match(server, /contador_aquisicao_lp:\s*\{\s*identificador:\s*"Home Equity",\s*label:\s*"Contadores — Aquisição"/);
-  assert.match(server, /tags\.push\("lp contadores", "aquisição carteira contábil"\)/);
+  assert.match(server, /tags\.push\("contabilidade", "lp contadores", "aquisição carteira contábil"\)/);
   assert.match(server, /contador_aquisicao_lp:\s*"Contadores — Aquisição"/);
 });
 
@@ -89,6 +92,7 @@ test("forms keep required semantics without visual asterisk noise", () => {
     assert.doesNotMatch(html, /Campos com/i);
     assert.doesNotMatch(html, /class="required"/);
     assert.match(html, /name="name"[^>]*required/);
+    assert.match(html, /name="email"[^>]*required/);
     assert.match(html, /name="phone"[^>]*required/);
   }
 });
@@ -251,4 +255,52 @@ test("latest ClickUp refinements keep the B2B forms focused and connect successf
   assert.match(partners, /https:\/\/wa\.me\/5521977340731/);
   assert.match(script, /data-partner-whatsapp-success/);
   assert.match(script, /Acabei de me cadastrar no programa de parceiros da InspiraCred/);
+  for (const html of [counters, partners]) {
+    assert.match(html, /Entre em contato pelo Whatsapp com a nossa equipe\./);
+  }
+  assert.match(script, /scheduleWhatsappRedirect\(form\)/);
+  assert.match(script, /window\.setTimeout\([\s\S]*?window\.location\.href = link\.href;[\s\S]*?3000\);/);
+});
+
+test("B2B WhatsApp redirect waits three seconds, runs only after success and cannot duplicate", () => {
+  const script = read("assets", "js", "lp-b2b.js");
+  const start = script.indexOf("function scheduleWhatsappRedirect");
+  const end = script.indexOf("\n  function formStatus", start);
+  assert.ok(start >= 0 && end > start, "redirect helper is extractable");
+
+  const timers = [];
+  const context = vm.createContext({
+    window: {
+      location: { href: "https://nova.inspiracred.com.br/parceiros/" },
+      setTimeout(callback, delay) { timers.push({ callback, delay }); }
+    },
+    qs(selector, root) { return root.querySelector(selector); }
+  });
+  vm.runInContext(`${script.slice(start, end)};globalThis.scheduleWhatsappRedirect=scheduleWhatsappRedirect;`, context);
+
+  const link = { href: "https://wa.me/5521977340731?text=teste-local" };
+  const form = { dataset: {}, parentNode: { querySelector: () => link } };
+  assert.equal(context.scheduleWhatsappRedirect(form), true);
+  assert.equal(context.scheduleWhatsappRedirect(form), false, "duplicate success does not schedule twice");
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].delay, 3000);
+  assert.equal(context.window.location.href, "https://nova.inspiracred.com.br/parceiros/");
+  timers[0].callback();
+  assert.equal(context.window.location.href, link.href);
+
+  const failedForm = { dataset: {}, parentNode: { querySelector: () => null } };
+  assert.equal(context.scheduleWhatsappRedirect(failedForm), false, "missing success destination does not redirect");
+  assert.equal(timers.length, 1);
+});
+
+test("root simulator and contador form collect and forward the real email", () => {
+  const root = read("index.html");
+  const counters = read("contadores", "index.html");
+  const script = read("assets", "js", "lp-b2b.js");
+
+  assert.match(root, /id="contact-email"[^>]+name="email"[^>]+type="email"/);
+  assert.match(root, /email:\s*document\.getElementById\("contact-email"\)\.value\.trim\(\)/);
+  assert.match(root, /email:\s*data\.email/);
+  assert.match(counters, /id="contador-email"[^>]+name="email"[^>]+type="email"[^>]+required/);
+  assert.match(script, /email:\s*countersForm\.elements\.email\.value\.trim\(\)/);
 });
