@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "include": [
+    "/",
+    "/home",
+    "/home/",
+    "/homeequity",
+    "/homeequity/",
+    "/formulario",
+    "/formulario/",
+    "/links",
+    "/links/",
+    "/parceiros",
+    "/parceiros/",
+    "/contadores",
+    "/contadores/",
+    "/obrigado/*",
+    "/politica-de-privacidade",
+    "/politica-de-privacidade.html",
+    "/termos-de-uso",
+    "/termos-de-uso.html",
+    "/analytics",
+    "/analytics/",
+    "/analytics/*"
+  ],
+  "exclude": [
+    "/obrigado/style.css"
+  ]
+}

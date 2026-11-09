@@ -281,7 +281,29 @@ const LOGIN_HTML = `<!doctype html>
 /* ---- COLETA ---- */
 async function handleTrack(request, env, cors, context) {
   try {
-    const event = await request.json();
+    const payload = await request.json();
+    if (Array.isArray(payload)) {
+      if (!payload.length || payload.length > 20) {
+        return json({ error: "lote deve conter entre 1 e 20 eventos" }, 413, cors);
+      }
+      const allowedBatchEvents = new Set(["scroll_depth", "section_view"]);
+      for (const event of payload) {
+        const allowed = event && (
+          event.type === "tap" ||
+          (event.type === "event" && allowedBatchEvents.has(event.event_name))
+        );
+        if (!allowed) return json({ error: "tipo não permitido em lote" }, 400, cors);
+        const nestedRequest = new Request(request.url, {
+          method: "POST",
+          headers: request.headers,
+          body: JSON.stringify(event),
+        });
+        const nestedResponse = await handleTrack(nestedRequest, env, cors, context);
+        if (!nestedResponse.ok) return nestedResponse;
+      }
+      return json({ success: true, accepted: payload.length }, 200, cors);
+    }
+    const event = payload;
     if (!event.type) return json({ error: "type obrigatório" }, 400, cors);
     // Lead NUNCA é recusado por falta de sessão (ex.: envio de reserva de página sem o
     // track.js e sem localStorage): gera um id aqui. Os outros tipos continuam exigindo.
@@ -2218,11 +2240,18 @@ async function handleRdWebhook(request, env, context) {
     ? `rd:${String(dealId)}:${metaEventName}`
     : (dig(body, ["transaction_uuid", "event_id"]) || undefined);
 
-  // crm_deal_updated dispara em qualquer edição. Uma mesma etapa deve chegar à Meta
-  // apenas uma vez; alterações de nota, responsável ou valor não são avanço de funil.
+  // crm_deal_updated dispara várias vezes em sequência para a mesma edição. Repetições
+  // da mesma etapa em até 60s são ruído operacional: não repetem consulta de contato,
+  // sincronização ou escrita no D1. Purchase com falha continua elegível a retry; só
+  // uma Purchase já confirmada (`meta_status='ok'`) é deduplicada sem janela.
   if (dealId) {
     try {
-      const dup = await env.DB.prepare(`SELECT id FROM rd_sales WHERE deal_id=? AND COALESCE(stage,'')=COALESCE(?,'') AND meta_status='ok' LIMIT 1`).bind(String(dealId), stage ? String(stage) : null).first();
+      const duplicateWhere = metaEventName
+        ? ` AND meta_status='ok'`
+        : ` AND received_at >= datetime('now','-60 seconds')`;
+      const dup = await env.DB.prepare(
+        `SELECT id FROM rd_sales WHERE deal_id=? AND COALESCE(stage,'')=COALESCE(?,'')${duplicateWhere} LIMIT 1`
+      ).bind(String(dealId), stage ? String(stage) : null).first();
       if (dup) return json({ ok: true, dedup: true, meta_crm: { ok: true, status: "duplicate_stage" } });
     } catch (e) { /* tabela pode não existir ainda */ }
   }

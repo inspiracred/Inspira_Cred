@@ -15,6 +15,8 @@
   var ENDPOINT = "https://nova.inspiracred.com.br/analytics/track";
   var PAGE = window.IC_PAGE || "other";
   var KEY = "ic_sid";
+  var LOW_PRIORITY_BATCH_MAX = 20;
+  var LOW_PRIORITY_BATCH_WAIT_MS = 5000;
 
   var sid = null;
   try { sid = localStorage.getItem(KEY); } catch (e) {}
@@ -89,7 +91,7 @@
     return "https://nova.inspiracred.com.br/";
   }
 
-  function send(payload) {
+  function preparePayload(payload) {
     payload.session_id = sid;
     if (!payload.page_name) payload.page_name = PAGE;
     // Carimba a ORIGEM dentro das properties de todo evento (simulação iniciada,
@@ -112,6 +114,10 @@
         }
       } catch (e) {}
     }
+    return payload;
+  }
+
+  function transmit(payload) {
     try {
       var body = JSON.stringify(payload);
       // text/plain evita preflight CORS em requisições cross-subdomain (links -> nova)
@@ -121,6 +127,37 @@
         .then(function (response) { return response.ok; }, function () { return false; });
     } catch (e) { return false; }
   }
+
+  function send(payload) {
+    return transmit(preparePayload(payload));
+  }
+
+  // Eventos de alto volume e baixa urgência viajam em lote. Isso preserva cada linha
+  // no D1, mas troca vários POSTs por uma única invocação da Pages Function.
+  // Leads, formulários, page_view e cliques continuam imediatos.
+  var lowPriorityBatch = [];
+  var lowPriorityTimer = null;
+  function flushLowPriorityBatch() {
+    if (lowPriorityTimer) {
+      clearTimeout(lowPriorityTimer);
+      lowPriorityTimer = null;
+    }
+    if (!lowPriorityBatch.length) return true;
+    var batch = lowPriorityBatch.splice(0, LOW_PRIORITY_BATCH_MAX);
+    var sent = transmit(batch);
+    if (lowPriorityBatch.length) lowPriorityTimer = setTimeout(flushLowPriorityBatch, 0);
+    return sent;
+  }
+  function sendLowPriority(payload) {
+    lowPriorityBatch.push(preparePayload(payload));
+    if (lowPriorityBatch.length >= LOW_PRIORITY_BATCH_MAX) return flushLowPriorityBatch();
+    if (!lowPriorityTimer) lowPriorityTimer = setTimeout(flushLowPriorityBatch, LOW_PRIORITY_BATCH_WAIT_MS);
+    return true;
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") flushLowPriorityBatch();
+  });
+  window.addEventListener("pagehide", flushLowPriorityBatch);
 
   // Formulários que encaminham direto ao WhatsApp precisam saber se a Cloudflare
   // realmente recebeu o lead antes de sair da página. Diferente de `send`, este
@@ -174,7 +211,7 @@
       var docH = document.documentElement.scrollHeight || 1;
       var t = e.target;
       var idEl = t && t.closest ? t.closest("[id]") : null;
-      send({
+      sendLowPriority({
         type: "tap",
         x_pct: +((e.clientX) / (window.innerWidth || 1)).toFixed(4),
         y_pct: +(((window.scrollY || window.pageYOffset || 0) + e.clientY) / docH).toFixed(4),
@@ -196,7 +233,7 @@
     scrollMarks.forEach(function (m) {
       if (pct >= m && !scrollHit[m]) {
         scrollHit[m] = 1;
-        send({ type: "event", event_name: "scroll_depth", properties: { pct: m } });
+        sendLowPriority({ type: "event", event_name: "scroll_depth", properties: { pct: m } });
       }
     });
   }
@@ -212,7 +249,7 @@
           if (en.isIntersecting) {
             var name = en.target.getAttribute("data-section");
             secObs.unobserve(en.target);
-            if (name) send({ type: "event", event_name: "section_view", properties: { section: name } });
+            if (name) sendLowPriority({ type: "event", event_name: "section_view", properties: { section: name } });
           }
         });
       }, { threshold: 0.25 }); // baixo p/ seções altas (>2x viewport nunca atingiriam 0.5)

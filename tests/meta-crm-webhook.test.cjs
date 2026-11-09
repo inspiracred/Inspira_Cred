@@ -359,6 +359,43 @@ test("ignores a deal outside the Purchase stage even when the webhook opts in", 
   assert.equal(capturedRdRequest, null);
 });
 
+test("deduplicates a burst from the same non-purchase deal stage before external work", async () => {
+  capturedRequest = null;
+  capturedRdRequest = null;
+  const queries = [];
+  const db = {
+    prepare(sql) {
+      queries.push(sql);
+      return {
+        bind() { return this; },
+        async first() {
+          if (sql.includes("FROM rd_sales")) return { id: 99 };
+          return null;
+        },
+        async run() { throw new Error("duplicate must return before writes"); },
+      };
+    },
+  };
+  const response = await backend.handleRdWebhook(webhookRequest("&meta_crm=1", {
+    event_name: "crm_deal_updated",
+    document: {
+      id: "rd-deal-burst",
+      deal_pipeline: { id: "6a8c96abcbaeaf0020f79f42", name: "Projeto Piloto" },
+      deal_stage: { name: "Em Cadência" },
+    },
+  }), {
+    RD_WEBHOOK_TOKEN: "secret",
+    RD_CRM_API_TOKEN: "rd-api-token",
+    DB: db,
+  });
+  const result = await response.json();
+  assert.equal(result.dedup, true);
+  assert.equal(result.meta_crm.status, "duplicate_stage");
+  assert.ok(queries.some((sql) => sql.includes("received_at >= datetime('now','-60 seconds')")));
+  assert.equal(capturedRdRequest, null);
+  assert.equal(capturedRequest, null);
+});
+
 test("sends one Purchase for an eligible matched site lead at Crédito Liberado", async () => {
   capturedRequest = null;
   const writes = [];
