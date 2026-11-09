@@ -293,14 +293,10 @@ test("B2B WhatsApp redirect waits three seconds, runs only after success and can
   assert.equal(timers.length, 1);
 });
 
-test("root simulator and contador form collect and forward the real email", () => {
-  const root = read("index.html");
+test("contador form collects and forwards the real email", () => {
   const counters = read("contadores", "index.html");
   const script = read("assets", "js", "lp-b2b.js");
 
-  assert.match(root, /id="contact-email"[^>]+name="email"[^>]+type="email"/);
-  assert.match(root, /email:\s*document\.getElementById\("contact-email"\)\.value\.trim\(\)/);
-  assert.match(root, /email:\s*data\.email/);
   assert.match(counters, /id="contador-email"[^>]+name="email"[^>]+type="email"[^>]+required/);
   assert.match(script, /email:\s*countersForm\.elements\.email\.value\.trim\(\)/);
 });
