@@ -48,9 +48,12 @@ test("partner page preserves eligibility and commission conditions", () => {
   assert.match(script, /lead_kind:\s*"parceiro"/);
   assert.match(server, /event\.source === "parceiros_lp"\) return "parceiro"/);
   assert.match(server, /UPDATE leads SET partner_role/);
-  assert.match(server, /parceiros_lp:\s*\{\s*identificador:\s*"Home Equity",\s*label:\s*"Parceiros"/);
+  assert.match(server, /parceiros_lp:\s*\{\s*identificador:\s*"Parceiros LP",\s*label:\s*"Parceiros"/);
   assert.match(server, /kind === "parceiro"/);
   assert.match(server, /event\.source === "parceiros_lp"\) tags\.push\("parceiro"\)/);
+  assert.match(server, /RD_PARTNER_PIPELINE_NAME = "Parceiros"/);
+  assert.match(server, /RD_PARTNER_STAGE_NAME = "Novo lead"/);
+  assert.match(server, /createPartnerDealInRD\(event, env, leadId, phoneDigits\)/);
 });
 
 test("partner page keeps the original audience copy and early registration path", () => {

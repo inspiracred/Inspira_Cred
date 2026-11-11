@@ -509,10 +509,12 @@ const RD_PAGE_CONFIG = {
   landing_page: { identificador: "Simulação", label: "Simulação" },
   home_equity_lp: { identificador: "Home Equity", label: "Home Equity" },
   home_equity_form: { identificador: "Typeform", label: "Typeform" },
-  // Reutiliza o identificador Home Equity já confirmado no RD. A origem específica
-  // permanece legível no campo Formulário de Origem e nas tags.
+  // Contadores permanece no fluxo Home Equity/Projeto Piloto já validado em produção.
   contador_aquisicao_lp: { identificador: "Home Equity", label: "Contadores — Aquisição" },
-  parceiros_lp: { identificador: "Home Equity", label: "Parceiros" },
+  // Parceiros NÃO pode reutilizar Home Equity: esse identificador aciona a automação
+  // financeira que cria negociações no Projeto Piloto. A conversão de Marketing mantém
+  // tag/origem próprias e a negociação é criada explicitamente no funil Parceiros.
+  parceiros_lp: { identificador: "Parceiros LP", label: "Parceiros" },
   // Home institucional (/home/): reutiliza o identificador histórico já ligado ao fluxo
   // que cria a Negociação. A origem continua separada por label, tag e UTMs.
   home_institucional: { identificador: "landing-nova-raiz", label: "Site Institucional" },
@@ -664,7 +666,9 @@ function rdTags(event) {
 
 async function sendLeadToRD(event, env, leadId) {
   const cfg = RD_PAGE_CONFIG[event.source];
-  if (!cfg || !env.RD_STATION_TOKEN) return; // fonte desconhecida ou token não configurado
+  const isPartner = event.source === "parceiros_lp";
+  if (!cfg) return;
+  if (!env.RD_STATION_TOKEN && !(isPartner && env.RD_CRM_API_TOKEN)) return;
 
   // Contrato RD: telefone internacional e cf_whatsapp_com_ddd nacional.
   // Remove DDIs 55 excedentes sem confundir o DDD 55 e omite entradas inválidas.
@@ -781,22 +785,137 @@ async function sendLeadToRD(event, env, leadId) {
   };
   Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
 
-  let status = "erro";
-  try {
-    const res = await fetch("https://www.rdstation.com.br/api/1.3/conversions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    status = res.ok ? "ok" : `http_${res.status}`;
-  } catch (e) {
-    status = "fetch_error";
+  let marketingStatus = "no_token";
+  if (env.RD_STATION_TOKEN) {
+    try {
+      const res = await fetch("https://www.rdstation.com.br/api/1.3/conversions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      marketingStatus = res.ok ? "ok" : `http_${res.status}`;
+    } catch (e) {
+      marketingStatus = "fetch_error";
+    }
+  }
+
+  // Só novos cadastros de Parceiros entram nesta rota. Não há busca, reenvio ou
+  // movimentação de leads/negociações históricas. O funil e a etapa são resolvidos por
+  // nome exato na API para não hardcodar IDs não confirmados da conta do cliente.
+  let status = marketingStatus;
+  if (isPartner) {
+    const crmStatus = await createPartnerDealInRD(event, env, leadId, phoneDigits);
+    status = marketingStatus === "ok" && crmStatus === "ok"
+      ? "ok"
+      : `marketing_${marketingStatus}|crm_${crmStatus}`.slice(0, 120);
   }
   try {
     await env.DB.prepare(`UPDATE leads SET rd_status = ? WHERE id = ?`).bind(status, leadId).run();
   } catch (e) {
     // não deixa uma falha de log derrubar o fan-out
   }
+}
+
+const RD_PARTNER_PIPELINE_NAME = "Parceiros";
+const RD_PARTNER_STAGE_NAME = "Novo lead";
+let rdPartnerDestinationCache = null;
+
+function normalizeRDName(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function rdListFromResponse(body, keys) {
+  if (Array.isArray(body)) return body;
+  for (const key of keys) {
+    if (body && Array.isArray(body[key])) return body[key];
+  }
+  if (body && body.data) return rdListFromResponse(body.data, keys);
+  return [];
+}
+
+async function rdCrmRequest(path, token, options) {
+  const join = path.includes("?") ? "&" : "?";
+  const res = await fetch(`https://crm.rdstation.com/api/v1/${path}${join}token=${encodeURIComponent(token)}`, options);
+  let body = null;
+  try { body = await res.json(); } catch (e) { /* resposta sem JSON */ }
+  return { ok: res.ok, status: res.status, body };
+}
+
+function exactRDMatch(items, expectedName) {
+  const expected = normalizeRDName(expectedName);
+  const matches = items.filter((item) => normalizeRDName(item && item.name) === expected);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+async function resolvePartnerRDDestination(token) {
+  const now = Date.now();
+  if (rdPartnerDestinationCache && rdPartnerDestinationCache.expiresAt > now) {
+    return rdPartnerDestinationCache.value;
+  }
+
+  const pipelinesResponse = await rdCrmRequest("deal_pipelines?limit=200", token);
+  if (!pipelinesResponse.ok) return { status: `pipelines_http_${pipelinesResponse.status}` };
+  const pipelines = rdListFromResponse(pipelinesResponse.body, ["deal_pipelines", "pipelines"]);
+  const pipeline = exactRDMatch(pipelines, RD_PARTNER_PIPELINE_NAME);
+  if (!pipeline || !pipeline.id) return { status: "pipeline_missing_or_ambiguous" };
+
+  const stagesResponse = await rdCrmRequest(
+    `deal_stages?deal_pipeline_id=${encodeURIComponent(pipeline.id)}&limit=12`,
+    token
+  );
+  if (!stagesResponse.ok) return { status: `stages_http_${stagesResponse.status}` };
+  const stages = rdListFromResponse(stagesResponse.body, ["deal_stages", "stages"]);
+  const stage = exactRDMatch(stages, RD_PARTNER_STAGE_NAME);
+  if (!stage || !stage.id) return { status: "stage_missing_or_ambiguous" };
+
+  const value = { pipelineId: pipeline.id, stageId: stage.id };
+  rdPartnerDestinationCache = { value, expiresAt: now + 5 * 60 * 1000 };
+  return value;
+}
+
+async function createPartnerDealInRD(event, env, leadId, phoneDigits) {
+  if (!env.RD_CRM_API_TOKEN) return "no_token";
+  let destination;
+  try {
+    destination = await resolvePartnerRDDestination(env.RD_CRM_API_TOKEN);
+  } catch (e) {
+    return "destination_fetch_error";
+  }
+  if (destination.status) return destination.status;
+
+  const contact = { name: event.name || "Novo parceiro" };
+  if (event.email) contact.emails = [{ email: String(event.email) }];
+  if (phoneDigits) contact.phones = [{ phone: `+55${phoneDigits}`, type: "work" }];
+  const body = {
+    deal: {
+      name: `Parceria | ${event.name || "Novo cadastro"} | Lead ${leadId}`,
+      deal_stage_id: destination.stageId,
+    },
+    contacts: [contact],
+  };
+
+  let created;
+  try {
+    created = await rdCrmRequest("deals", env.RD_CRM_API_TOKEN, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    return "create_fetch_error";
+  }
+  if (!created.ok) return `create_http_${created.status}`;
+
+  const deal = created.body && (created.body.deal || created.body);
+  const returnedStageId = deal && (deal.deal_stage_id || (deal.deal_stage && deal.deal_stage.id));
+  const returnedPipelineId = deal && (deal.deal_pipeline_id || (deal.deal_stage && deal.deal_stage.deal_pipeline_id));
+  if (!returnedStageId || String(returnedStageId) !== String(destination.stageId)) return "destination_unverified";
+  if (returnedPipelineId && String(returnedPipelineId) !== String(destination.pipelineId)) return "pipeline_mismatch";
+  return "ok";
 }
 
 /* ---- META CAPI (server-side, sem Pixel no navegador) ----
