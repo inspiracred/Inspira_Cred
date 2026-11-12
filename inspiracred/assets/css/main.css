@@ -323,8 +323,8 @@ img {
 
 .form-progress {
   display: grid;
+  flex: 1 1 420px;
   gap: 10px;
-  margin: -4px 0 28px;
 }
 
 .form-progress-summary {
@@ -395,16 +395,21 @@ img {
 
 .form-step-actions {
   display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.form-step-actions.is-end {
-  justify-content: flex-end;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 22px 34px;
 }
 
 .form-continue-btn {
+  flex: 0 0 auto;
   min-width: 210px;
+}
+
+.form-step-buttons {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 14px;
 }
 
 .form-continue-btn,
@@ -569,14 +574,7 @@ img {
   align-items: center;
   justify-content: space-between;
   gap: 16px 28px;
-  margin-top: 26px;
-}
-
-.form-foot-left {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 14px 22px;
+  margin-top: 0;
 }
 
 .form-submit-btn {
@@ -1589,29 +1587,34 @@ img {
     width: 100%;
   }
 
-  .form-step-actions,
-  .form-step-actions.is-end {
+  .form-step-actions {
+    flex-direction: column;
+    align-items: stretch;
     justify-content: stretch;
+    gap: 18px;
   }
 
-  .form-continue-btn,
-  .form-back-btn {
+  .form-progress {
+    flex-basis: auto;
+    width: 100%;
+    max-width: none;
+  }
+
+  .form-step-buttons {
+    display: grid;
+    grid-template-columns: 1fr;
     width: 100%;
   }
 
-  .form-foot-left {
-    display: grid;
-    grid-template-columns: 1fr;
+  .form-continue-btn,
+  .form-back-btn,
+  .form-submit-btn {
     width: 100%;
   }
 
   .form-note {
     max-width: none;
     text-align: center;
-  }
-
-  .form-foot-left {
-    align-items: center;
   }
 
   .form-trust {

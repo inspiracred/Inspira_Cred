@@ -20,6 +20,14 @@ test("simulation form exposes two accessible steps without visible required mark
   assert.doesNotMatch(form, /class="req"|obrigat[oó]ri|\*/i);
 });
 
+test("progress uses the action row instead of reserving a separate line", () => {
+  const firstStep = form.slice(form.indexOf('data-form-step="1"'), form.indexOf('data-form-step="2"'));
+  const secondStep = form.slice(form.indexOf('data-form-step="2"'));
+  assert.match(firstStep, /class="form-step-actions">[\s\S]*class="form-progress"[\s\S]*class="button button-lg form-continue-btn"/);
+  assert.match(secondStep, /class="form-step-actions">[\s\S]*class="form-progress"[\s\S]*class="form-step-buttons"/);
+  assert.doesNotMatch(form.slice(0, form.indexOf('data-form-step="1"')), /class="form-progress"/);
+});
+
 test("contact validation gates step two and the final payload carries the real email", () => {
   assert.match(landing, /function validateContact\(data\)/);
   assert.match(landing, /if \(currentStep === 1\)[\s\S]*validateContact\(contactData\(\)\)[\s\S]*showStep\(2, true\)/);
