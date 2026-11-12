@@ -28,6 +28,12 @@ test("progress uses the action row instead of reserving a separate line", () => 
   assert.doesNotMatch(form.slice(0, form.indexOf('data-form-step="1"')), /class="form-progress"/);
 });
 
+test("both steps keep the same reassurance and handoff guidance", () => {
+  assert.equal((form.match(/Após registrar sua simulação, abriremos o WhatsApp/g) || []).length, 2);
+  assert.equal((form.match(/>Dados protegidos<\/span>/g) || []).length, 2);
+  assert.equal((form.match(/>Atendimento consultivo<\/span>/g) || []).length, 2);
+});
+
 test("contact validation gates step two and the final payload carries the real email", () => {
   assert.match(landing, /function validateContact\(data\)/);
   assert.match(landing, /if \(currentStep === 1\)[\s\S]*validateContact\(contactData\(\)\)[\s\S]*showStep\(2, true\)/);
