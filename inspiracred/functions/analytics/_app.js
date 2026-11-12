@@ -332,6 +332,9 @@ async function handleTrack(request, env, cors, context) {
           event.success === false ? 0 : 1, event.completion_time_ms || null, event.page_name || "other").run();
         break;
       case "lead": {
+        const contactError = validateSimulationContact(event);
+        if (contactError) return json({ error: contactError }, 422, cors);
+
         const valueLimitError = validateLeadValueLimits(event);
         if (valueLimitError) return json({ error: valueLimitError }, 422, cors);
 
@@ -544,6 +547,20 @@ function isRuralPropertyType(value) {
 
 const MAX_PROPERTY_VALUE = 20000000;
 const MAX_CREDIT_VALUE = 12000000;
+
+function validateSimulationContact(event) {
+  if (!event || event.source !== "landing_page") return "";
+
+  const name = String(event.name || "").trim();
+  const email = String(event.email || "").trim();
+  let phone = String(event.phone || "").replace(/\D/g, "");
+  while (phone.length > 11 && phone.startsWith("55")) phone = phone.slice(2);
+
+  if (name.length < 3) return "Informe seu nome completo.";
+  if (!/^[0-9]{10,11}$/.test(phone)) return "Informe um celular com DDD.";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Informe um e-mail válido.";
+  return "";
+}
 
 function validateLeadValueLimits(event) {
   const credit = Number(event && event.credit_value);
@@ -1062,8 +1079,10 @@ async function createPartnerDealInRD(event, env, leadId, phoneDigits) {
 
 /* ---- META CAPI (server-side, sem Pixel no navegador) ----
  * DORME até os secrets META_PIXEL_ID + META_ACCESS_TOKEN existirem no Pages —
- * sem eles, retorna cedo e nada é enviado. PII (email/telefone/nome) vai em
- * SHA-256 (Advanced Matching). fbp/fbc são resolvidos pela cadeia body -> cookie
+ * sem eles, retorna cedo e nada é enviado. PII permitida por origem vai em SHA-256
+ * (Advanced Matching). A landing de Simulação preserva o comportamento anterior e
+ * não acrescenta o novo e-mail ao payload Meta; o dado segue completo ao D1/RD.
+ * fbp/fbc são resolvidos pela cadeia body -> cookie
  * first-party de edge -> sessão D1. Cada conversão recebe event_id próprio para
  * idempotência no destino, embora não exista uma cópia client-side para deduplicar.
  * O modo CAPI-only é deliberado para o dataset financeiro da InspiraCred.
@@ -1344,7 +1363,10 @@ async function sendLeadToMeta(event, env, leadId, ctx) {
   // fbc: cookie do Pixel/edge quando existir; senao sintetiza a partir do fbclid CRU,
   // datado pelo CLIQUE (sessions.created_at), nao pelo momento do lead.
   const fbc = buildFbc({ fbc: event.fbc, fbclid: event.fbclid, clickTs: event.click_ts });
-  const userData = await buildUserData(event, ctx, fbc);
+  // O e-mail passou a ser coletado na Simulação para D1/RD. Isso não autoriza ampliar
+  // o Advanced Matching da Meta nessa origem: telefone/nome/cookies continuam iguais.
+  const matchingEvent = event.source === "landing_page" ? { ...event, email: "" } : event;
+  const userData = await buildUserData(matchingEvent, ctx, fbc);
 
   const eventTime = Math.floor(Date.now() / 1000);
   const eventSourceUrl = sanitizeMetaSourceUrl(ctx.sourceUrl);

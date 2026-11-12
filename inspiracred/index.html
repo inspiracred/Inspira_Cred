@@ -63,27 +63,59 @@
                 <p class="sub">Sem compromisso. Preencha seus dados e veja uma estimativa preliminar.</p>
               </div>
 
-              <div class="form-rows">
+              <div class="form-progress" aria-label="Progresso do formulário">
+                <div class="form-progress-summary" aria-live="polite">
+                  <strong id="form-step-label">Etapa 1 de 2</strong>
+                  <span id="form-step-context">Seus dados</span>
+                </div>
+                <div class="form-progress-track" aria-hidden="true">
+                  <span class="is-active" data-progress-segment="1"></span>
+                  <span data-progress-segment="2"></span>
+                </div>
+              </div>
+
+              <section class="form-step" data-form-step="1" aria-labelledby="contact-step-title">
+                <div class="form-step-heading">
+                  <span>01</span>
+                  <h3 id="contact-step-title">Seus dados de contato</h3>
+                </div>
                 <div class="form-row form-row-3">
                   <div class="field">
-                    <label for="contact-name">Nome completo <span class="req">*</span></label>
-                    <input class="input" id="contact-name" name="name" type="text" placeholder="Digite seu nome completo" autocomplete="name" />
-                    <p class="field-error" data-error="name"></p>
+                    <label for="contact-name">Nome completo</label>
+                    <input class="input" id="contact-name" name="name" type="text" placeholder="Digite seu nome completo" autocomplete="name" aria-required="true" aria-describedby="name-error" />
+                    <p class="field-error" id="name-error" data-error="name"></p>
                   </div>
 
                   <div class="field">
-                    <label for="contact-phone">Número de celular <span class="req">*</span></label>
+                    <label for="contact-phone">Número de celular</label>
                     <div class="phone-field">
                       <span class="phone-prefix">+55</span>
-                      <input class="input" id="contact-phone" name="phone" type="tel" inputmode="tel" placeholder="(DDD) + celular" autocomplete="tel" />
+                      <input class="input" id="contact-phone" name="phone" type="tel" inputmode="tel" placeholder="(DDD) + celular" autocomplete="tel" aria-required="true" aria-describedby="phone-hint phone-error" />
                     </div>
-                    <p class="field-hint">Utilizamos o WhatsApp como uma das nossas formas de contato.</p>
-                    <p class="field-error" data-error="phone"></p>
+                    <p class="field-hint" id="phone-hint">Utilizamos o WhatsApp como uma das nossas formas de contato.</p>
+                    <p class="field-error" id="phone-error" data-error="phone"></p>
                   </div>
 
                   <div class="field">
-                    <label for="property-type">Tipo de imóvel <span class="req">*</span></label>
-                    <select class="select" id="property-type" name="property_type">
+                    <label for="contact-email">E-mail</label>
+                    <input class="input" id="contact-email" name="email" type="email" inputmode="email" placeholder="voce@exemplo.com.br" autocomplete="email" aria-required="true" aria-describedby="email-error" />
+                    <p class="field-error" id="email-error" data-error="email"></p>
+                  </div>
+                </div>
+                <div class="form-step-actions is-end">
+                  <button class="button button-lg form-continue-btn" type="submit">Continuar</button>
+                </div>
+              </section>
+
+              <section class="form-step" data-form-step="2" aria-labelledby="property-step-title" aria-hidden="true" hidden>
+                <div class="form-step-heading">
+                  <span>02</span>
+                  <h3 id="property-step-title">Imóvel e valor desejado</h3>
+                </div>
+                <div class="form-row form-row-4">
+                  <div class="field">
+                    <label for="property-type">Tipo de imóvel</label>
+                    <select class="select" id="property-type" name="property_type" aria-required="true" aria-describedby="property-type-error">
                       <option value="" disabled selected>Selecione</option>
                       <option value="Residencial">Residencial</option>
                       <option value="Comercial">Comercial</option>
@@ -91,60 +123,59 @@
                       <option value="Rural">Rural</option>
                       <option value="Outro">Outro</option>
                     </select>
-                    <p class="field-error" data-error="property_type"></p>
-                  </div>
-                </div>
-
-                <div class="form-row form-row-4">
-                  <div class="field">
-                    <label for="property-value">Valor do imóvel <span class="req">*</span></label>
-                    <input class="input money" id="property-value" name="property_value" type="text" inputmode="numeric" placeholder="Valor mínimo R$ 400.000" />
-                    <p class="field-error" data-error="property_value"></p>
+                    <p class="field-error" id="property-type-error" data-error="property_type"></p>
                   </div>
 
                   <div class="field">
-                    <label for="property-paid">Seu imóvel está quitado? <span class="req">*</span></label>
-                    <select class="select filled" id="property-paid" name="imovel_quitado">
+                    <label for="property-value">Valor do imóvel</label>
+                    <input class="input money" id="property-value" name="property_value" type="text" inputmode="numeric" placeholder="Valor mínimo R$ 400.000" aria-required="true" aria-describedby="property-value-error" />
+                    <p class="field-error" id="property-value-error" data-error="property_value"></p>
+                  </div>
+
+                  <div class="field">
+                    <label for="property-paid">Seu imóvel está quitado?</label>
+                    <select class="select filled" id="property-paid" name="imovel_quitado" aria-required="true" aria-describedby="property-paid-error">
                       <option value="Sim" selected>Sim</option>
                       <option value="Não">Não</option>
                     </select>
-                    <p class="field-error" data-error="imovel_quitado"></p>
+                    <p class="field-error" id="property-paid-error" data-error="imovel_quitado"></p>
                   </div>
 
                   <div class="field">
-                    <label for="docs-ok">Documentação regularizada? <span class="req">*</span></label>
-                    <select class="select filled" id="docs-ok" name="documentacao_ok">
+                    <label for="docs-ok">Documentação regularizada?</label>
+                    <select class="select filled" id="docs-ok" name="documentacao_ok" aria-required="true" aria-describedby="docs-ok-error">
                       <option value="Sim" selected>Sim</option>
                       <option value="Não">Não</option>
                     </select>
-                    <p class="field-error" data-error="documentacao_ok"></p>
+                    <p class="field-error" id="docs-ok-error" data-error="documentacao_ok"></p>
                   </div>
 
                   <div class="field">
-                    <label for="credit-value">Valor desejado <span class="req">*</span></label>
-                    <input class="input money" id="credit-value" name="credit_value" type="text" inputmode="numeric" placeholder="Mínimo R$ 200.000" />
-                    <p class="field-error" data-error="credit_value"></p>
+                    <label for="credit-value">Valor desejado</label>
+                    <input class="input money" id="credit-value" name="credit_value" type="text" inputmode="numeric" placeholder="Mínimo R$ 200.000" aria-required="true" aria-describedby="credit-value-error" />
+                    <p class="field-error" id="credit-value-error" data-error="credit_value"></p>
                   </div>
 
                   <div class="field is-hidden debt-field" id="debt-field" aria-hidden="true">
-                    <label for="debt-balance">Quanto ainda falta pagar? <span class="req">*</span></label>
-                    <input class="input money" id="debt-balance" name="saldo_devedor" type="text" inputmode="numeric" placeholder="Saldo devedor aproximado" />
-                    <p class="field-error" data-error="saldo_devedor"></p>
+                    <label for="debt-balance">Quanto ainda falta pagar?</label>
+                    <input class="input money" id="debt-balance" name="saldo_devedor" type="text" inputmode="numeric" placeholder="Saldo devedor aproximado" aria-describedby="debt-balance-error" />
+                    <p class="field-error" id="debt-balance-error" data-error="saldo_devedor"></p>
                   </div>
                 </div>
-              </div>
+                <div class="form-foot">
+                  <div class="form-foot-left">
+                    <button class="button button-lg button-secondary form-back-btn" type="button">Voltar</button>
+                    <button class="button button-lg form-submit-btn" type="submit" data-final-submit>Enviar e falar no WhatsApp</button>
+                    <p class="form-note">Após registrar sua simulação, abriremos o WhatsApp para você iniciar o atendimento.</p>
+                  </div>
+                  <div class="form-trust">
+                    <span><svg class="tr-lock" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Dados protegidos</span>
+                    <span><svg class="tr-shield" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>Atendimento consultivo</span>
+                  </div>
+                </div>
+              </section>
 
-              <p class="form-message" id="form-message"></p>
-              <div class="form-foot">
-                <div class="form-foot-left">
-                  <button class="button button-lg form-submit-btn" type="submit">Enviar e falar no WhatsApp</button>
-                  <p class="form-note">Após registrar sua simulação, abriremos o WhatsApp para você iniciar o atendimento.</p>
-                </div>
-                <div class="form-trust">
-                  <span><svg class="tr-lock" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Dados protegidos</span>
-                  <span><svg class="tr-shield" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>Atendimento consultivo</span>
-                </div>
-              </div>
+              <p class="form-message" id="form-message" role="alert" aria-live="polite"></p>
             </form>
 
             <div class="form-card is-dark result-panel is-hidden" id="result-panel">
@@ -452,7 +483,14 @@
         var form = document.getElementById("simulation-form");
         var resultPanel = document.getElementById("result-panel");
         var formMessage = document.getElementById("form-message");
-        var submitBtn = form ? form.querySelector("button[type='submit']") : null;
+        var submitBtn = form ? form.querySelector("[data-final-submit]") : null;
+        var backBtn = form ? form.querySelector(".form-back-btn") : null;
+        var formSteps = form ? form.querySelectorAll("[data-form-step]") : [];
+        var progressSegments = form ? form.querySelectorAll("[data-progress-segment]") : [];
+        var stepLabel = document.getElementById("form-step-label");
+        var stepContext = document.getElementById("form-step-context");
+        var currentStep = 1;
+        var isSubmitting = false;
 
         var MIN_CREDIT = 200000;
         var MIN_PROPERTY = 400000;
@@ -517,7 +555,10 @@
             error.textContent = message;
             error.classList.add("is-visible");
           }
-          if (input) input.classList.add("is-invalid");
+          if (input) {
+            input.classList.add("is-invalid");
+            input.setAttribute("aria-invalid", "true");
+          }
         }
 
         function clearError(name) {
@@ -527,7 +568,10 @@
             error.textContent = "";
             error.classList.remove("is-visible");
           }
-          if (input) input.classList.remove("is-invalid");
+          if (input) {
+            input.classList.remove("is-invalid");
+            input.removeAttribute("aria-invalid");
+          }
         }
 
         function showMessage(message, type) {
@@ -540,6 +584,69 @@
           if (creditValue < MIN_CREDIT || propertyValue < MIN_PROPERTY) return "baixo_valor";
           if (creditValue >= MQL_CREDIT && propertyValue >= MQL_PROPERTY) return "home_equity_mql";
           return "home_equity";
+        }
+
+        function validEmail(value) {
+          return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+        }
+
+        function showStep(step, moveFocus) {
+          currentStep = step === 2 ? 2 : 1;
+          Array.prototype.forEach.call(formSteps, function (panel) {
+            var active = Number(panel.getAttribute("data-form-step")) === currentStep;
+            panel.hidden = !active;
+            panel.setAttribute("aria-hidden", String(!active));
+          });
+          Array.prototype.forEach.call(progressSegments, function (segment) {
+            var segmentStep = Number(segment.getAttribute("data-progress-segment"));
+            segment.classList.toggle("is-active", segmentStep <= currentStep);
+          });
+          if (stepLabel) stepLabel.textContent = "Etapa " + currentStep + " de 2";
+          if (stepContext) stepContext.textContent = currentStep === 1 ? "Seus dados" : "Imóvel e valores";
+          showMessage("", "error");
+          if (moveFocus) {
+            var target = currentStep === 1
+              ? document.getElementById("contact-name")
+              : document.getElementById("property-type");
+            if (target) target.focus();
+          }
+        }
+
+        function focusFirstInvalid(step) {
+          var panel = form.querySelector('[data-form-step="' + step + '"]');
+          var invalid = panel && panel.querySelector(".is-invalid");
+          if (invalid) invalid.focus();
+        }
+
+        function contactData() {
+          return {
+            name: document.getElementById("contact-name").value.trim(),
+            phone: document.getElementById("contact-phone").value.trim(),
+            email: document.getElementById("contact-email").value.trim()
+          };
+        }
+
+        function validateContact(data) {
+          var ok = true;
+          if (data.name.length < 3) { setError("name", "Informe seu nome completo."); ok = false; }
+          if (!/^[0-9]{10,11}$/.test(digits(data.phone))) { setError("phone", "Informe um celular com DDD."); ok = false; }
+          if (!validEmail(data.email)) { setError("email", "Informe um e-mail válido."); ok = false; }
+          return ok;
+        }
+
+        function simulationData() {
+          var contact = contactData();
+          return {
+            name: contact.name,
+            phone: contact.phone,
+            email: contact.email,
+            propertyType: document.getElementById("property-type").value,
+            propertyValue: parseMoney(document.getElementById("property-value").value),
+            creditValue: parseMoney(document.getElementById("credit-value").value),
+            financed: document.getElementById("property-paid").value === "Não",
+            debtBalance: parseMoney(document.getElementById("debt-balance").value),
+            docsOk: document.getElementById("docs-ok").value === "Sim"
+          };
         }
 
         if (form) {
@@ -606,10 +713,8 @@
           form.addEventListener("input", markSimStart, true);
           form.addEventListener("change", markSimStart, true);
 
-          function validate(data) {
+          function validateProperty(data) {
             var ok = true;
-            if (data.name.length < 3) { setError("name", "Informe seu nome completo."); ok = false; }
-            if (!/^[0-9]{10,11}$/.test(digits(data.phone))) { setError("phone", "Informe um celular com DDD."); ok = false; }
             if (!data.propertyType) { setError("property_type", "Selecione o tipo de imóvel."); ok = false; }
             if (data.propertyValue <= 0) { setError("property_value", "Informe o valor do imóvel."); ok = false; }
             else if (data.propertyValue > MAX_PROPERTY) { setError("property_value", "O valor do imóvel deve ser de até R$ 20.000.000."); ok = false; }
@@ -619,27 +724,43 @@
             return ok;
           }
 
+          if (backBtn) {
+            backBtn.addEventListener("click", function () {
+              if (isSubmitting) return;
+              showStep(1, true);
+            });
+          }
+
           form.addEventListener("submit", async function (event) {
             event.preventDefault();
-            if (submitBtn && submitBtn.disabled) return;
+            if (isSubmitting) return;
             showMessage("", "error");
 
-            var data = {
-              name: document.getElementById("contact-name").value.trim(),
-              phone: document.getElementById("contact-phone").value.trim(),
-              propertyType: document.getElementById("property-type").value,
-              propertyValue: parseMoney(document.getElementById("property-value").value),
-              creditValue: parseMoney(document.getElementById("credit-value").value),
-              financed: document.getElementById("property-paid").value === "Não",
-              debtBalance: parseMoney(document.getElementById("debt-balance").value),
-              docsOk: document.getElementById("docs-ok").value === "Sim"
-            };
-
-            if (!validate(data)) {
-              showMessage("Revise os campos destacados para ver sua simulação.", "error");
+            if (currentStep === 1) {
+              if (!validateContact(contactData())) {
+                showMessage("Revise os campos destacados para continuar.", "error");
+                focusFirstInvalid(1);
+                return;
+              }
+              showStep(2, true);
               return;
             }
 
+            var data = simulationData();
+            if (!validateContact(data)) {
+              showStep(1, false);
+              showMessage("Revise seus dados de contato para continuar.", "error");
+              focusFirstInvalid(1);
+              return;
+            }
+            if (!validateProperty(data)) {
+              showMessage("Revise os campos destacados para ver sua simulação.", "error");
+              focusFirstInvalid(2);
+              return;
+            }
+
+            isSubmitting = true;
+            form.setAttribute("aria-busy", "true");
             if (submitBtn) {
               submitBtn.disabled = true;
               submitBtn.textContent = "Enviando…";
@@ -673,6 +794,7 @@
                   lead_kind: kind,
                   name: data.name,
                   phone: "+55" + phoneDigits,
+                  email: data.email,
                   property_type: data.propertyType.toLowerCase(),
                   property_value: data.propertyValue,
                   credit_value: data.creditValue,
@@ -688,6 +810,8 @@
             } catch (e) {}
 
             if (!accepted) {
+              isSubmitting = false;
+              form.removeAttribute("aria-busy");
               if (submitBtn) {
                 submitBtn.disabled = false;
                 submitBtn.textContent = "Enviar e falar no WhatsApp";
