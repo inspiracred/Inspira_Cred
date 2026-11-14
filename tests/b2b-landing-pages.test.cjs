@@ -53,6 +53,9 @@ test("partner page preserves eligibility and commission conditions", () => {
   assert.match(server, /event\.source === "parceiros_lp"\) tags\.push\("parceiro"\)/);
   assert.match(server, /RD_PARTNER_PIPELINE_NAME = "Parceiros"/);
   assert.match(server, /RD_PARTNER_STAGE_NAME = "Novo lead"/);
+  assert.match(server, /RD_PARTNER_ROLE_FIELD_LABEL = "Área de atuação"/);
+  assert.match(server, /contact_custom_fields: \[\{ custom_field_id: roleFields\.contactFieldId, value: partnerRole \}\]/);
+  assert.match(server, /deal_custom_fields: \[\{ custom_field_id: roleFields\.dealFieldId, value: partnerRole \}\]/);
   assert.match(server, /createPartnerDealInRD\(event, env, leadId, phoneDigits\)/);
 });
 

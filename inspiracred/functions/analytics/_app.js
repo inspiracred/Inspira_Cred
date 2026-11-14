@@ -818,7 +818,9 @@ async function sendLeadToRD(event, env, leadId) {
 
 const RD_PARTNER_PIPELINE_NAME = "Parceiros";
 const RD_PARTNER_STAGE_NAME = "Novo lead";
+const RD_PARTNER_ROLE_FIELD_LABEL = "Área de atuação";
 let rdPartnerDestinationCache = null;
+let rdPartnerRoleFieldsCache = null;
 
 function normalizeRDName(value) {
   return String(value || "")
@@ -877,8 +879,76 @@ async function resolvePartnerRDDestination(token) {
   return value;
 }
 
+async function listRDCustomFields(token, entity) {
+  const response = await rdCrmRequest(`custom_fields?for=${encodeURIComponent(entity)}`, token);
+  if (!response.ok) return { status: `${entity}_fields_http_${response.status}` };
+  return { fields: rdListFromResponse(response.body, ["custom_fields", "fields"]) };
+}
+
+async function createRDCustomField(token, entity) {
+  const response = await rdCrmRequest("custom_fields", token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      custom_field: {
+        label: RD_PARTNER_ROLE_FIELD_LABEL,
+        type: "text",
+        for: entity,
+        required: false,
+        unique: false,
+        visible: true,
+      },
+    }),
+  });
+  if (!response.ok) return { status: `${entity}_field_create_http_${response.status}` };
+  const field = response.body && (response.body.custom_field || response.body);
+  if (!field || !field.id) return { status: `${entity}_field_create_unverified` };
+  return { field };
+}
+
+async function resolveOrCreateRDCustomField(token, entity) {
+  const listed = await listRDCustomFields(token, entity);
+  if (listed.status) return listed;
+  const matches = listed.fields.filter(
+    (field) => normalizeRDName(field && field.name || field && field.label) === normalizeRDName(RD_PARTNER_ROLE_FIELD_LABEL)
+  );
+  if (matches.length > 1) return { status: `${entity}_field_ambiguous` };
+  if (matches.length === 1 && matches[0].id) return { field: matches[0] };
+
+  const created = await createRDCustomField(token, entity);
+  if (!created.status) return created;
+
+  // Se duas requisições criarem o mesmo campo ao mesmo tempo, a API pode rejeitar uma
+  // delas. Relista uma vez e aceita apenas um resultado exato; nunca escolhe por aproximação.
+  const relisted = await listRDCustomFields(token, entity);
+  if (relisted.status) return created;
+  const relistedMatches = relisted.fields.filter(
+    (field) => normalizeRDName(field && field.name || field && field.label) === normalizeRDName(RD_PARTNER_ROLE_FIELD_LABEL)
+  );
+  return relistedMatches.length === 1 && relistedMatches[0].id
+    ? { field: relistedMatches[0] }
+    : created;
+}
+
+async function resolvePartnerRoleFields(token) {
+  const now = Date.now();
+  if (rdPartnerRoleFieldsCache && rdPartnerRoleFieldsCache.expiresAt > now) {
+    return rdPartnerRoleFieldsCache.value;
+  }
+
+  const contact = await resolveOrCreateRDCustomField(token, "contact");
+  if (contact.status) return { status: contact.status };
+  const deal = await resolveOrCreateRDCustomField(token, "deal");
+  if (deal.status) return { status: deal.status };
+  const value = { contactFieldId: contact.field.id, dealFieldId: deal.field.id };
+  rdPartnerRoleFieldsCache = { value, expiresAt: now + 5 * 60 * 1000 };
+  return value;
+}
+
 async function createPartnerDealInRD(event, env, leadId, phoneDigits) {
   if (!env.RD_CRM_API_TOKEN) return "no_token";
+  const partnerRole = String(event.partner_role || "").trim();
+  if (!partnerRole) return "role_missing";
   let destination;
   try {
     destination = await resolvePartnerRDDestination(env.RD_CRM_API_TOKEN);
@@ -887,13 +957,25 @@ async function createPartnerDealInRD(event, env, leadId, phoneDigits) {
   }
   if (destination.status) return destination.status;
 
-  const contact = { name: event.name || "Novo parceiro" };
+  let roleFields;
+  try {
+    roleFields = await resolvePartnerRoleFields(env.RD_CRM_API_TOKEN);
+  } catch (e) {
+    return "role_fields_fetch_error";
+  }
+  if (roleFields.status) return roleFields.status;
+
+  const contact = {
+    name: event.name || "Novo parceiro",
+    contact_custom_fields: [{ custom_field_id: roleFields.contactFieldId, value: partnerRole }],
+  };
   if (event.email) contact.emails = [{ email: String(event.email) }];
   if (phoneDigits) contact.phones = [{ phone: `+55${phoneDigits}`, type: "work" }];
   const body = {
     deal: {
       name: `Parceria | ${event.name || "Novo cadastro"} | Lead ${leadId}`,
       deal_stage_id: destination.stageId,
+      deal_custom_fields: [{ custom_field_id: roleFields.dealFieldId, value: partnerRole }],
     },
     contacts: [contact],
   };
