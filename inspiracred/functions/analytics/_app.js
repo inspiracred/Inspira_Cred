@@ -913,6 +913,31 @@ async function createRDCustomField(token, entity) {
   return { field };
 }
 
+async function ensureRDCustomFieldVisible(token, entity, field) {
+  if (field && field.visible === true) return { field };
+  if (!field || !field.id) return { status: `${entity}_field_id_missing` };
+  const response = await rdCrmRequest(`custom_fields/${encodeURIComponent(field.id)}`, token, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      custom_field: {
+        label: RD_PARTNER_ROLE_FIELD_LABEL,
+        type: "text",
+        for: entity,
+        required: false,
+        unique: false,
+        visible: true,
+      },
+    }),
+  });
+  if (!response.ok) return { status: `${entity}_field_visibility_http_${response.status}` };
+  const updated = response.body && (response.body.custom_field || response.body);
+  if (!updated || !updated.id || updated.visible !== true) {
+    return { status: `${entity}_field_visibility_unverified` };
+  }
+  return { field: updated };
+}
+
 async function resolveOrCreateRDCustomField(token, entity) {
   const listed = await listRDCustomFields(token, entity);
   if (listed.status) return listed;
@@ -920,10 +945,12 @@ async function resolveOrCreateRDCustomField(token, entity) {
     (field) => normalizeRDName(field && field.name || field && field.label) === normalizeRDName(RD_PARTNER_ROLE_FIELD_LABEL)
   );
   if (matches.length > 1) return { status: `${entity}_field_ambiguous` };
-  if (matches.length === 1 && matches[0].id) return { field: matches[0] };
+  if (matches.length === 1 && matches[0].id) {
+    return ensureRDCustomFieldVisible(token, entity, matches[0]);
+  }
 
   const created = await createRDCustomField(token, entity);
-  if (!created.status) return created;
+  if (!created.status) return ensureRDCustomFieldVisible(token, entity, created.field);
 
   // Se duas requisições criarem o mesmo campo ao mesmo tempo, a API pode rejeitar uma
   // delas. Relista uma vez e aceita apenas um resultado exato; nunca escolhe por aproximação.
@@ -933,7 +960,7 @@ async function resolveOrCreateRDCustomField(token, entity) {
     (field) => normalizeRDName(field && field.name || field && field.label) === normalizeRDName(RD_PARTNER_ROLE_FIELD_LABEL)
   );
   return relistedMatches.length === 1 && relistedMatches[0].id
-    ? { field: relistedMatches[0] }
+    ? ensureRDCustomFieldVisible(token, entity, relistedMatches[0])
     : created;
 }
 

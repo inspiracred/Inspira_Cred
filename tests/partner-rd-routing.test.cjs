@@ -57,7 +57,7 @@ test("novos parceiros usam conversão própria e entram em Parceiros / Novo lead
       }
       if (String(url).includes("/custom_fields") && options.method === "POST") {
         const entity = request.body.custom_field.for;
-        return response({ id: `field-${entity}`, label: "Área de atuação", for: entity }, 201);
+        return response({ id: `field-${entity}`, label: "Área de atuação", for: entity, visible: true }, 201);
       }
       if (String(url).includes("/deals")) {
         if (String(url).includes("/contacts")) {
@@ -141,10 +141,10 @@ test("não marca sucesso quando o RD omite Área de atuação após criar a nego
         return response({ deal_stages: [{ id: "stage-novo", name: "Novo lead" }] });
       }
       if (String(url).includes("for=contact")) {
-        return response([{ id: "field-contact", label: "Área de atuação" }]);
+        return response([{ id: "field-contact", label: "Área de atuação", visible: true }]);
       }
       if (String(url).includes("for=deal")) {
-        return response([{ id: "field-deal", label: "Área de atuação" }]);
+        return response([{ id: "field-deal", label: "Área de atuação", visible: true }]);
       }
       if (String(url).includes("/deals/deal-created/contacts")) {
         return response({ contacts: [{ contact_custom_fields: [] }] });
@@ -181,10 +181,10 @@ test("reaproveita os dois campos Área de atuação já existentes sem duplicá-
     fetch: async (url, options = {}) => {
       requests.push({ url: String(url), options });
       if (String(url).includes("for=contact")) {
-        return response([{ id: "contact-existing", label: "Área de atuação", for: "contact" }]);
+        return response([{ id: "contact-existing", label: "Área de atuação", for: "contact", visible: true }]);
       }
       if (String(url).includes("for=deal")) {
-        return response([{ id: "deal-existing", label: "Área de atuação", for: "deal" }]);
+        return response([{ id: "deal-existing", label: "Área de atuação", for: "deal", visible: true }]);
       }
       throw new Error(`unexpected URL: ${url}`);
     },
@@ -196,6 +196,32 @@ test("reaproveita os dois campos Área de atuação já existentes sem duplicá-
   assert.equal(fields.dealFieldId, "deal-existing");
   assert.equal(requests.length, 2);
   assert.equal(requests.some((request) => request.options.method === "POST"), false);
+});
+
+test("torna visível um campo Área de atuação existente mas oculto", async () => {
+  const requests = [];
+  const context = vm.createContext({
+    Date,
+    encodeURIComponent,
+    fetch: async (url, options = {}) => {
+      const request = { url: String(url), options };
+      if (options.body) request.body = JSON.parse(options.body);
+      requests.push(request);
+      if (!options.method) {
+        return response([{ id: "hidden-contact", label: "Área de atuação", for: "contact", visible: false }]);
+      }
+      return response({ id: "hidden-contact", label: "Área de atuação", for: "contact", visible: true });
+    },
+  });
+  vm.runInContext(rdCode, context);
+
+  const result = await context.resolveOrCreateRDCustomField("crm-token", "contact");
+  assert.equal(result.field.id, "hidden-contact");
+  assert.equal(result.field.visible, true);
+  assert.equal(requests.length, 2);
+  assert.match(requests[1].url, /custom_fields\/hidden-contact\?token=/);
+  assert.equal(requests[1].options.method, "PUT");
+  assert.equal(requests[1].body.custom_field.visible, true);
 });
 
 test("rota de parceiros falha fechada quando o funil é ausente ou ambíguo", async () => {
