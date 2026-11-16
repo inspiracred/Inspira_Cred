@@ -60,6 +60,20 @@ test("novos parceiros usam conversão própria e entram em Parceiros / Novo lead
         return response({ id: `field-${entity}`, label: "Área de atuação", for: entity }, 201);
       }
       if (String(url).includes("/deals")) {
+        if (String(url).includes("/contacts")) {
+          return response({ contacts: [{
+            id: "contact-created",
+            contact_custom_fields: [{ custom_field_id: "field-contact", value: "Contador" }],
+          }] });
+        }
+        if (!options.method) {
+          return response({
+            id: "deal-created",
+            deal_stage_id: "stage-novo",
+            deal_pipeline_id: "pipeline-parceiros",
+            deal_custom_fields: [{ custom_field_id: "field-deal", value: "Contador" }],
+          });
+        }
         return response({ deal: {
           id: "deal-created",
           deal_stage_id: "stage-novo",
@@ -84,7 +98,7 @@ test("novos parceiros usam conversão própria e entram em Parceiros / Novo lead
     DB: database(updates),
   }, 4321);
 
-  assert.equal(requests.length, 8);
+  assert.equal(requests.length, 10);
   assert.equal(requests[0].body.identificador, "Parceiros LP");
   assert.deepEqual(Array.from(requests[0].body.tags), ["parceiro"]);
   assert.equal(requests[0].body.cf_formulario_de_origem, "Parceiros");
@@ -108,7 +122,55 @@ test("novos parceiros usam conversão própria e entram em Parceiros / Novo lead
   assert.deepEqual(requests[7].body.contacts[0].contact_custom_fields[0], {
     custom_field_id: "field-contact", value: "Contador",
   });
+  assert.match(requests[8].url, /\/deals\/deal-created\?token=/);
+  assert.match(requests[9].url, /\/deals\/deal-created\/contacts\?limit=200&token=/);
   assert.deepEqual(updates[0].values, ["ok", 4321]);
+});
+
+test("não marca sucesso quando o RD omite Área de atuação após criar a negociação", async () => {
+  const requests = [];
+  const context = vm.createContext({
+    Date,
+    encodeURIComponent,
+    fetch: async (url, options = {}) => {
+      requests.push({ url: String(url), options });
+      if (String(url).includes("/deal_pipelines")) {
+        return response({ deal_pipelines: [{ id: "pipeline-parceiros", name: "Parceiros" }] });
+      }
+      if (String(url).includes("/deal_stages")) {
+        return response({ deal_stages: [{ id: "stage-novo", name: "Novo lead" }] });
+      }
+      if (String(url).includes("for=contact")) {
+        return response([{ id: "field-contact", label: "Área de atuação" }]);
+      }
+      if (String(url).includes("for=deal")) {
+        return response([{ id: "field-deal", label: "Área de atuação" }]);
+      }
+      if (String(url).includes("/deals/deal-created/contacts")) {
+        return response({ contacts: [{ contact_custom_fields: [] }] });
+      }
+      if (String(url).includes("/deals/deal-created")) {
+        return response({ id: "deal-created", deal_custom_fields: [] });
+      }
+      if (String(url).includes("/deals") && options.method === "POST") {
+        return response({
+          id: "deal-created",
+          deal_stage_id: "stage-novo",
+          deal_pipeline_id: "pipeline-parceiros",
+        });
+      }
+      throw new Error(`unexpected URL: ${url}`);
+    },
+  });
+  vm.runInContext(rdCode, context);
+
+  const status = await context.createPartnerDealInRD(
+    { name: "QA", email: "qa@example.invalid", partner_role: "Advogado" },
+    { RD_CRM_API_TOKEN: "crm-token" },
+    100,
+    ""
+  );
+  assert.equal(status, "deal_role_unverified");
 });
 
 test("reaproveita os dois campos Área de atuação já existentes sem duplicá-los", async () => {

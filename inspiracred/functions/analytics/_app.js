@@ -853,6 +853,13 @@ function exactRDMatch(items, expectedName) {
   return matches.length === 1 ? matches[0] : null;
 }
 
+function rdCustomFieldHasValue(items, fieldId, expectedValue) {
+  return (Array.isArray(items) ? items : []).some((item) =>
+    String(item && item.custom_field_id || "") === String(fieldId) &&
+    String(item && item.value || "").trim() === String(expectedValue || "").trim()
+  );
+}
+
 async function resolvePartnerRDDestination(token) {
   const now = Date.now();
   if (rdPartnerDestinationCache && rdPartnerDestinationCache.expiresAt > now) {
@@ -993,10 +1000,36 @@ async function createPartnerDealInRD(event, env, leadId, phoneDigits) {
   if (!created.ok) return `create_http_${created.status}`;
 
   const deal = created.body && (created.body.deal || created.body);
+  const dealId = deal && (deal.id || deal._id);
   const returnedStageId = deal && (deal.deal_stage_id || (deal.deal_stage && deal.deal_stage.id));
   const returnedPipelineId = deal && (deal.deal_pipeline_id || (deal.deal_stage && deal.deal_stage.deal_pipeline_id));
   if (!returnedStageId || String(returnedStageId) !== String(destination.stageId)) return "destination_unverified";
   if (returnedPipelineId && String(returnedPipelineId) !== String(destination.pipelineId)) return "pipeline_mismatch";
+  if (!dealId) return "deal_id_unverified";
+
+  let persistedDeal;
+  let persistedContacts;
+  try {
+    persistedDeal = await rdCrmRequest(`deals/${encodeURIComponent(dealId)}`, env.RD_CRM_API_TOKEN);
+    persistedContacts = await rdCrmRequest(
+      `deals/${encodeURIComponent(dealId)}/contacts?limit=200`,
+      env.RD_CRM_API_TOKEN
+    );
+  } catch (e) {
+    return "role_verify_fetch_error";
+  }
+  if (!persistedDeal.ok) return `deal_verify_http_${persistedDeal.status}`;
+  if (!persistedContacts.ok) return `contact_verify_http_${persistedContacts.status}`;
+
+  const verifiedDeal = persistedDeal.body && (persistedDeal.body.deal || persistedDeal.body);
+  if (!rdCustomFieldHasValue(verifiedDeal && verifiedDeal.deal_custom_fields, roleFields.dealFieldId, partnerRole)) {
+    return "deal_role_unverified";
+  }
+  const verifiedContacts = rdListFromResponse(persistedContacts.body, ["contacts"]);
+  const contactVerified = verifiedContacts.some((item) =>
+    rdCustomFieldHasValue(item && item.contact_custom_fields, roleFields.contactFieldId, partnerRole)
+  );
+  if (!contactVerified) return "contact_role_unverified";
   return "ok";
 }
 
