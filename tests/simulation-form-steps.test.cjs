@@ -7,6 +7,7 @@ const { webcrypto } = require("node:crypto");
 
 const root = path.resolve(__dirname, "../inspiracred");
 const landing = fs.readFileSync(path.join(root, "index.html"), "utf8");
+const styles = fs.readFileSync(path.join(root, "assets/css/main.css"), "utf8");
 const server = fs.readFileSync(path.join(root, "functions/analytics/_app.js"), "utf8");
 const form = landing.slice(landing.indexOf('<form class="form-card is-dark form-floating"'), landing.indexOf("</form>", landing.indexOf('id="simulation-form"')));
 
@@ -26,6 +27,15 @@ test("progress uses the action row instead of reserving a separate line", () => 
   assert.match(firstStep, /class="form-step-actions">[\s\S]*class="form-progress"[\s\S]*class="button button-lg form-continue-btn"/);
   assert.match(secondStep, /class="form-step-actions">[\s\S]*class="form-progress"[\s\S]*class="form-step-buttons"/);
   assert.doesNotMatch(form.slice(0, form.indexOf('data-form-step="1"')), /class="form-progress"/);
+});
+
+test("property step keeps its five fixed fields on one compact desktop row", () => {
+  const secondStep = form.slice(form.indexOf('data-form-step="2"'));
+  assert.match(landing, /assets\/css\/main\.css\?v=20261117-2/);
+  assert.match(secondStep, /class="form-row form-row-5"/);
+  assert.match(styles, /\.form-row-5\s*\{[\s\S]*grid-template-columns:\s*[\s\S]*minmax\(0, 1fr\)[\s\S]*minmax\(0, 1\.2fr\)[\s\S]*minmax\(0, 1\.08fr\)[\s\S]*minmax\(0, 1\.18fr\)[\s\S]*minmax\(0, 1\.05fr\);[\s\S]*gap:\s*18px 12px;/);
+  assert.match(styles, /@media \(max-width: 1023px\)[\s\S]*\.form-row-5\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,/);
+  assert.match(styles, /@media \(max-width: 640px\)[\s\S]*\.form-row-5,[\s\S]*grid-template-columns:\s*1fr;/);
 });
 
 test("both steps keep the same reassurance and handoff guidance", () => {

@@ -467,8 +467,42 @@ img {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.form-row-5 {
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(0, 1.2fr)
+    minmax(0, 1.08fr)
+    minmax(0, 1.18fr)
+    minmax(0, 1.05fr);
+  gap: 18px 12px;
+}
+
 .form-row-4 .debt-field {
   grid-column: 1 / span 2;
+}
+
+.form-row-5 .debt-field {
+  grid-column: 1 / span 2;
+}
+
+.form-row-5 .field {
+  gap: 6px;
+}
+
+.form-row-5 .field label {
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.form-row-5 .input,
+.form-row-5 .select {
+  padding-inline: 13px;
+  font-size: 14px;
+}
+
+.form-row-5 .select {
+  padding-right: 34px;
+  background-position: right 11px center;
 }
 
 .field {
@@ -1415,12 +1449,31 @@ img {
 
   .form-row-2,
   .form-row-3,
-  .form-row-4 {
+  .form-row-4,
+  .form-row-5 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px 20px;
   }
 
-  .form-row-4 .debt-field {
+  .form-row-4 .debt-field,
+  .form-row-5 .debt-field {
     grid-column: 1 / -1;
+  }
+
+  .form-row-5 .field label {
+    font-size: 13px;
+    white-space: normal;
+  }
+
+  .form-row-5 .input,
+  .form-row-5 .select {
+    padding-inline: 16px;
+    font-size: 15px;
+  }
+
+  .form-row-5 .select {
+    padding-right: 44px;
+    background-position: right 16px center;
   }
 
   .simulacao-intro {
@@ -1574,6 +1627,7 @@ img {
   .form-row-2,
   .form-row-3,
   .form-row-4,
+  .form-row-5,
   .result-grid {
     grid-template-columns: 1fr;
   }
