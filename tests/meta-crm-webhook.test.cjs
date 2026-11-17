@@ -40,6 +40,26 @@ const backend = vm.createContext({
   URL,
   Response,
   fetch: async (url, options) => {
+    if (String(url).includes("crm.rdstation.com/api/v1/custom_fields?for=deal")) {
+      const request = { url: String(url), options: options || {}, body: null };
+      capturedRdRequest = request;
+      capturedRdRequests.push(request);
+      return {
+        ok: true,
+        status: 200,
+        async json() { return { custom_fields: [] }; },
+      };
+    }
+    if (String(url).includes("crm.rdstation.com/api/v1/custom_fields?token=") && options && options.method === "POST") {
+      const request = { url: String(url), options, body: JSON.parse(options.body) };
+      capturedRdRequest = request;
+      capturedRdRequests.push(request);
+      return {
+        ok: true,
+        status: 201,
+        async json() { return { id: "field-saldo-devedor", label: "Saldo Devedor", type: "text", for: "deal", visible: true }; },
+      };
+    }
     if (String(url).includes("crm.rdstation.com/api/v1/custom_fields/")) {
       const request = { url: String(url), options: options || {}, body: options && options.body ? JSON.parse(options.body) : null };
       capturedRdRequest = request;
@@ -134,6 +154,7 @@ test("maps every captured form field to the real Projeto Piloto deal fields", ()
     credit_value: 600000,
     situacao_imovel: "Financiado",
     documentacao_ok: "Sim",
+    saldo_devedor: 250000,
     utm_source: "meta_ads",
     utm_medium: "facebook_feed",
     utm_campaign: "campanha-rural",
@@ -172,6 +193,7 @@ test("syncs missing CRM fields, credit amount and enables new property options",
     credit_value: 500000,
     imovel_quitado: "Sim",
     documentacao_ok: "Não",
+    saldo_devedor: 123000,
     utm_source: "meta_ads",
     utm_medium: "paid_social",
     utm_campaign: "campanha-qa",
@@ -186,7 +208,12 @@ test("syncs missing CRM fields, credit amount and enables new property options",
     }],
   }, { RD_CRM_API_TOKEN: "rd-token" });
 
-  assert.deepEqual({ ...result }, { ok: true, status: "synced", changed: 10 });
+  assert.deepEqual({ ...result }, { ok: true, status: "synced", changed: 11 });
+  const debtFieldCreate = capturedRdRequests.find((request) => request.url.includes("/custom_fields?token=") && request.options.method === "POST");
+  assert.ok(debtFieldCreate);
+  assert.deepEqual(debtFieldCreate.body.custom_field, {
+    label: "Saldo Devedor", type: "text", for: "deal", required: false, unique: false, visible: true,
+  });
   const optionUpdate = capturedRdRequests.find((request) => request.url.includes("/custom_fields/") && request.options.method === "PUT");
   assert.ok(optionUpdate);
   assert.equal(optionUpdate.body.custom_field.allow_new, true);
@@ -199,6 +226,7 @@ test("syncs missing CRM fields, credit amount and enables new property options",
   assert.equal(fields["6a8d90147e10a60025ff55d8"], "Sim");
   assert.equal(fields["667bf189c5b6ed0022d683b9"], "Não");
   assert.equal(fields["6a6041507c7cc3001d5b93fd"], "meta_ads");
+  assert.equal(fields["field-saldo-devedor"], "123000");
 });
 
 test("CRM sender emits Purchase without financial or classification data", async () => {

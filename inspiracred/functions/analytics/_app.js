@@ -1526,6 +1526,8 @@ const RD_DEAL_SYNC_FIELDS = Object.freeze({
   utmSource: "6a6041507c7cc3001d5b93fd",          // UTM Source (text)
   utmTerm: "6a604164a24ea200300c3e5c",            // UTM Term (text)
 });
+const RD_DEAL_DEBT_FIELD_LABEL = "Saldo Devedor";
+let rdDealDebtFieldCache = null;
 
 function isRdProjectPilot(pipeline, pipelineId) {
   const pipelineName = normalizeCrmLabel(pipeline);
@@ -1645,6 +1647,105 @@ function rdDealValuesFromLead(lead) {
   };
 }
 
+function rdDealCustomFieldsFromResponse(body) {
+  if (Array.isArray(body)) return body;
+  if (body && Array.isArray(body.custom_fields)) return body.custom_fields;
+  if (body && body.data) return rdDealCustomFieldsFromResponse(body.data);
+  return [];
+}
+
+async function ensureRdDealDebtFieldVisible(field, env) {
+  if (field && field.visible !== false) return { ok: true, field };
+  if (!field || !field.id) return { ok: false, status: "debt_field_id_missing" };
+  try {
+    const endpoint = `https://crm.rdstation.com/api/v1/custom_fields/${encodeURIComponent(field.id)}?token=${encodeURIComponent(env.RD_CRM_API_TOKEN)}`;
+    const response = await fetch(endpoint, {
+      method: "PUT",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        custom_field: {
+          label: RD_DEAL_DEBT_FIELD_LABEL,
+          type: "text",
+          for: "deal",
+          required: false,
+          unique: false,
+          visible: true,
+        },
+      }),
+    });
+    if (!response.ok) return { ok: false, status: `debt_field_visibility_http_${response.status}` };
+    const payload = await response.json();
+    const updated = payload && (payload.custom_field || payload);
+    return updated && updated.id
+      ? { ok: true, field: updated }
+      : { ok: false, status: "debt_field_visibility_unverified" };
+  } catch (e) {
+    return { ok: false, status: "debt_field_visibility_network_error" };
+  }
+}
+
+async function resolveOrCreateRdDealDebtField(env) {
+  const now = Date.now();
+  if (rdDealDebtFieldCache && rdDealDebtFieldCache.expiresAt > now) {
+    return { ok: true, field: rdDealDebtFieldCache.field };
+  }
+  const token = encodeURIComponent(env.RD_CRM_API_TOKEN);
+  const listEndpoint = `https://crm.rdstation.com/api/v1/custom_fields?for=deal&token=${token}`;
+  const exactMatches = (items) => items.filter((field) =>
+    normalizeCrmLabel(field && (field.label || field.name)) === normalizeCrmLabel(RD_DEAL_DEBT_FIELD_LABEL)
+  );
+  const cache = (field) => {
+    rdDealDebtFieldCache = { field, expiresAt: now + 5 * 60 * 1000 };
+    return { ok: true, field };
+  };
+
+  try {
+    const listedResponse = await fetch(listEndpoint, { headers: { Accept: "application/json" } });
+    if (!listedResponse.ok) return { ok: false, status: `debt_fields_http_${listedResponse.status}` };
+    const listed = rdDealCustomFieldsFromResponse(await listedResponse.json());
+    const matches = exactMatches(listed);
+    if (matches.length > 1) return { ok: false, status: "debt_field_ambiguous" };
+    if (matches.length === 1 && matches[0].id) {
+      const visible = await ensureRdDealDebtFieldVisible(matches[0], env);
+      return visible.ok ? cache(visible.field) : visible;
+    }
+
+    const createEndpoint = `https://crm.rdstation.com/api/v1/custom_fields?token=${token}`;
+    const createdResponse = await fetch(createEndpoint, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        custom_field: {
+          label: RD_DEAL_DEBT_FIELD_LABEL,
+          type: "text",
+          for: "deal",
+          required: false,
+          unique: false,
+          visible: true,
+        },
+      }),
+    });
+    if (createdResponse.ok) {
+      const payload = await createdResponse.json();
+      const created = payload && (payload.custom_field || payload);
+      if (created && created.id) return cache(created);
+      return { ok: false, status: "debt_field_create_unverified" };
+    }
+
+    // Corrida entre webhooks: relista uma vez e só aceita um campo de nome exato.
+    const relistedResponse = await fetch(listEndpoint, { headers: { Accept: "application/json" } });
+    if (!relistedResponse.ok) return { ok: false, status: `debt_field_create_http_${createdResponse.status}` };
+    const relistedMatches = exactMatches(rdDealCustomFieldsFromResponse(await relistedResponse.json()));
+    if (relistedMatches.length !== 1 || !relistedMatches[0].id) {
+      return { ok: false, status: `debt_field_create_http_${createdResponse.status}` };
+    }
+    const visible = await ensureRdDealDebtFieldVisible(relistedMatches[0], env);
+    return visible.ok ? cache(visible.field) : visible;
+  } catch (e) {
+    return { ok: false, status: "debt_field_network_error" };
+  }
+}
+
 async function ensureRdDealOptionValue(fieldId, optionValue, env) {
   if (!fieldId || !optionValue || !env.RD_CRM_API_TOKEN) return { ok: true, status: "not_needed" };
   const token = encodeURIComponent(env.RD_CRM_API_TOKEN);
@@ -1685,6 +1786,12 @@ async function syncLeadToRdDeal(dealId, lead, document, env) {
   if (!env.RD_CRM_API_TOKEN) return { ok: false, status: "missing_crm_token" };
 
   const desired = rdDealValuesFromLead(lead);
+  const debtValue = lead.saldo_devedor == null ? "" : String(lead.saldo_devedor).trim();
+  if (debtValue) {
+    const debtField = await resolveOrCreateRdDealDebtField(env);
+    if (!debtField.ok) return { ok: false, status: debtField.status, changed: 0 };
+    desired[String(debtField.field.id)] = debtValue;
+  }
   const current = new Map(rdCustomFieldEntries(document).map((entry) => [entry.id, entry.value]));
   const changes = Object.entries(desired)
     .filter(([, fieldValue]) => fieldValue !== "")
@@ -1734,7 +1841,7 @@ async function findRdMatchedLead(email, phone, env) {
   const select = `SELECT l.id, l.name, l.email, l.phone, l.session_id, l.krob_sid,
       l.fbp, l.fbc, l.fbclid, l.meta_status, l.lead_kind, l.source,
       l.property_type, l.property_value, l.credit_value, l.imovel_quitado,
-      l.documentacao_ok, l.situacao_imovel, l.possui_matricula,
+      l.documentacao_ok, l.situacao_imovel, l.possui_matricula, l.saldo_devedor,
       l.utm_source, l.utm_medium, l.utm_campaign, l.utm_content, l.utm_term,
       s.external_id, s.fbp session_fbp, s.fbc session_fbc, s.fbclid session_fbclid,
       s.created_at click_ts, s.ip_address, s.user_agent
