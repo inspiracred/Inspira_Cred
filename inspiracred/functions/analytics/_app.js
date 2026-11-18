@@ -3201,47 +3201,23 @@ const DASHBOARD_HTML = `<!doctype html>
   .aud-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px}
   .aud-card{border:1px solid var(--border);border-radius:15px;padding:13px;background:var(--surface)}
   .aud-card h3{margin:0 0 10px;font-family:"Instrument Sans","Inter",sans-serif;font-size:12px;font-weight:850;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
-  /* ---- Mapa de calor: modos ---- */
-  .hm-steps{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 11px}
-  .hm-step-btn{padding:6px 11px;border:1px solid var(--border);border-radius:99px;background:#fff;color:var(--muted);font-size:12px;font-weight:750;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .hm-step-btn:hover{border-color:var(--orange);color:var(--orange)}
-  .hm-step-btn.active{background:var(--blue);border-color:var(--blue);color:#fff}
-  .hm-badges{position:absolute;inset:0;overflow:hidden;pointer-events:none}
-  .hm-badge{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;padding:3px 9px;border-radius:99px;background:var(--orange);color:#fff;font-family:"Instrument Sans","Inter",sans-serif;font-size:11px;font-weight:850;line-height:1.5;box-shadow:0 4px 12px rgba(249,115,22,.42);border:2px solid #fff;cursor:pointer;white-space:nowrap}
-  .hm-badge.cool{background:var(--blue);box-shadow:0 4px 12px rgba(11,45,114,.34)}
-  .hm-badge:hover{filter:brightness(1.08)}
-  .hm-pop{position:absolute;z-index:6;pointer-events:auto;min-width:172px;max-width:240px;padding:12px 13px 12px;border-radius:14px;background:#fff;border:1px solid var(--border);box-shadow:0 16px 36px rgba(6,26,66,.24);font-size:12px;color:var(--muted)}
-  .hm-pop b{display:block;font-size:12.5px;color:var(--text);margin:0 14px 6px 0;line-height:1.35}
-  .hm-pop .n{font-family:"Instrument Sans","Inter",sans-serif;font-size:23px;font-weight:850;color:var(--orange);line-height:1}
-  .hm-pop .x{position:absolute;top:5px;right:9px;color:var(--muted);cursor:pointer;font-weight:800;font-size:14px}
-  .hm-legend{display:flex;align-items:center;gap:11px;margin-top:12px;font-size:11.5px;font-weight:750;color:var(--muted)}
-  .hm-legend .ramp{flex:1;height:9px;border-radius:99px}
-  .hm-modes{display:flex;gap:6px;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:14px;flex-wrap:wrap}
-  .hm-mode{padding:8px 13px;border:0;border-radius:11px;background:transparent;color:var(--muted);font-size:13px;font-weight:750}
-  .hm-mode:hover{color:var(--blue)}
-  .hm-mode.active{background:var(--orange);color:#fff;box-shadow:0 6px 16px rgba(249,115,22,.26)}
-  .hm-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,340px);gap:18px;align-items:start}
-  .depth-scale{display:flex;flex-direction:column;gap:8px}
-  .depth-band{position:relative;border:1px solid var(--border);border-radius:13px;padding:11px 13px;overflow:hidden;background:#fff}
-  .depth-band .bg{position:absolute;inset:0;opacity:.16}
-  .depth-band .row{position:relative;display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-  .depth-band .who{font-size:12.5px;font-weight:800;color:var(--text)}
-  .depth-band .pc{font-family:"Instrument Sans","Inter",sans-serif;font-size:20px;font-weight:850;color:var(--blue)}
-  .depth-band .sub{position:relative;margin-top:4px;font-size:11.5px;color:var(--muted)}
-  .fold-note{margin-top:12px;padding:11px 13px;border-radius:13px;background:var(--orange-soft);color:#9a3412;font-size:12px;line-height:1.45}
-  .step-row{display:grid;grid-template-columns:30px minmax(0,1fr) 74px;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)}
-  .step-row:last-child{border-bottom:0}
-  .step-n{width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:var(--blue);color:#fff;font-family:"Instrument Sans","Inter",sans-serif;font-size:12px;font-weight:850}
-  .step-q{display:block;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .step-bar{display:block;height:9px;border-radius:999px;background:#eef0f3;overflow:hidden}
-  .step-bar span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--blue),#3b82f6)}
-  .step-drop{font-size:11px;font-weight:800;color:var(--red-ink);margin-top:5px}
-  .step-side{text-align:right}
-  .step-side b{display:block;font-family:"Instrument Sans","Inter",sans-serif;font-size:17px;font-weight:850;color:var(--blue)}
-  .step-side small{font-size:10.5px;color:var(--muted);font-weight:750}
-  .choice-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
-  .choice-chip{font-size:11px;font-weight:750;color:var(--blue);background:var(--surface);border:1px solid var(--border);border-radius:99px;padding:3px 9px}
-  .choice-chip b{color:var(--orange);font-weight:850}
+  /* ---- Microsoft Clarity embutido ---- */
+  .clarity-hero{margin-bottom:18px}
+  .clarity-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .clarity-open{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:var(--orange);color:#fff;border:1px solid var(--orange);border-radius:12px;padding:10px 14px;font-size:13px;font-weight:800;box-shadow:0 7px 18px rgba(249,115,22,.22)}
+  .clarity-open:hover{filter:brightness(.97);transform:translateY(-1px)}
+  .clarity-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .clarity-meta span{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:99px;background:#fff;color:var(--muted);font-size:11.5px;font-weight:750}
+  .clarity-meta b{color:var(--blue)}
+  .clarity-frame-card{padding:0;overflow:hidden}
+  .clarity-frame-wrap{position:relative;height:calc(100vh - 235px);min-height:720px;background:#f7f8fa}
+  #clarityFrame{display:block;width:100%;height:100%;border:0;background:#fff}
+  .clarity-loading{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;gap:10px;background:linear-gradient(135deg,#f8fafc,#eef3fb);color:var(--blue);font-size:13px;font-weight:800;transition:opacity .2s ease,visibility .2s ease}
+  .clarity-loading:before{content:"";width:18px;height:18px;border:2px solid rgba(11,45,114,.18);border-top-color:var(--orange);border-radius:50%;animation:clarity-spin .8s linear infinite}
+  .clarity-loading.is-ready{opacity:0;visibility:hidden;pointer-events:none}
+  .clarity-note{margin-top:12px;padding:11px 13px;border:1px solid var(--border);border-radius:13px;background:#fff;color:var(--muted);font-size:12px;line-height:1.5}
+  .clarity-note b{color:var(--text)}
+  @keyframes clarity-spin{to{transform:rotate(360deg)}}
   /* ---- Saúde do tracking: medidores ---- */
   .gauge-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
   .gauge{border:1px solid var(--border);border-radius:17px;padding:15px;background:#fff;box-shadow:var(--shadow);text-align:center}
@@ -3320,19 +3296,8 @@ const DASHBOARD_HTML = `<!doctype html>
   .tl-main{font-size:13px;font-weight:600;color:var(--text);margin-top:1px}
   .tl-sub{font-size:12px;color:var(--muted);word-break:break-word}
   .tl-kind{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--blue);margin-right:6px}
-  /* Mapa de calor */
-  .hm-note{font-size:12.5px;color:var(--muted);margin-bottom:14px}
-  .hm-stage{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;overflow-x:auto}
-  /* viewport fixo (vh estável dentro do iframe) + scroll externo controlando o slice */
-  .hm-viewport{position:relative;overflow-y:auto;overflow-x:hidden;margin:0 auto;box-shadow:var(--shadow);background:#fff}
-  .hm-inner{position:relative}
-  .hm-sticky{position:sticky;top:0;line-height:0}
-  /* pointer-events:none → a roda do mouse vai pro .hm-viewport (scroll real), não pro iframe;
-     assim o drawSlice sincroniza calor + página. scrollTo programático segue funcionando. */
-  #hmFrame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
-  #hmCanvas{position:absolute;inset:0;pointer-events:none}
   @media(max-width:1180px){.overview-modules{grid-template-columns:repeat(3,minmax(0,1fr))}}
-  @media(max-width:980px){body{padding-left:76px}.tabs{width:76px;padding:12px 9px}.side-mark{padding:6px 4px 12px}.side-mark .brand{font-size:0}.side-mark .brand:before{content:"IC";font-size:18px}.side-mark small,.side-help,.tab .txt{display:none}.tab{justify-content:center;padding:12px 8px}.tab .ico{width:28px;height:28px}.overview-grid,.lead-visual-grid,.camp-grid,.hm-split{grid-template-columns:1fr}.metric-strip{grid-template-columns:repeat(2,minmax(0,1fr))}.dash-hero{align-items:flex-start;flex-direction:column}.hero-meta{justify-content:flex-start}}
+  @media(max-width:980px){body{padding-left:76px}.tabs{width:76px;padding:12px 9px}.side-mark{padding:6px 4px 12px}.side-mark .brand{font-size:0}.side-mark .brand:before{content:"IC";font-size:18px}.side-mark small,.side-help,.tab .txt{display:none}.tab{justify-content:center;padding:12px 8px}.tab .ico{width:28px;height:28px}.overview-grid,.lead-visual-grid,.camp-grid{grid-template-columns:1fr}.metric-strip{grid-template-columns:repeat(2,minmax(0,1fr))}.dash-hero{align-items:flex-start;flex-direction:column}.hero-meta{justify-content:flex-start}.clarity-frame-wrap{height:calc(100vh - 210px);min-height:650px}}
   @media(max-width:760px){.grid,.traffic-top,.signal-grid{grid-template-columns:1fr}.overview-modules{grid-template-columns:1fr}.wrap{padding:18px 16px}header{padding:12px 16px}.controls{width:100%}.controls select{max-width:100%}
     .am-head{display:none}.am-row{grid-template-columns:28px minmax(0,1fr) repeat(2,minmax(56px,1fr));row-gap:9px}.am-row .am-go{display:none}.am-row .am-main{grid-column:2/-1}.am-levels{width:100%}.am-level{flex:1;justify-content:center}}
 </style>
@@ -3518,50 +3483,34 @@ const DASHBOARD_HTML = `<!doctype html>
   </section>
 
   <section class="tab-section" id="tab-heatmap">
-    <div class="am-bar">
-      <div class="hm-modes">
-        <button class="hm-mode" id="hmmode-clicks" onclick="setHmMode('clicks')">Mapa de cliques</button>
-        <button class="hm-mode" id="hmmode-depth" onclick="setHmMode('depth')">Profundidade de rolagem</button>
-        <button class="hm-mode" id="hmmode-elements" onclick="setHmMode('elements')">Elementos clicados</button>
-        <button class="hm-mode" id="hmmode-steps" onclick="setHmMode('steps')">Etapas do formulário</button>
+    <div class="dash-hero clarity-hero">
+      <div>
+        <span class="dash-eyebrow">Microsoft Clarity</span>
+        <h1>Mapa de calor e comportamento</h1>
+        <p>Dashboard, gravações, mapas de calor e insights do projeto oficial da InspiraCred.</p>
       </div>
-      <div class="controls">
-        <select id="hmPageSel">
-          <option value="link_bio">Link na bio</option>
-          <option value="landing_page">Simulação</option>
-          <option value="home_equity_lp">Home Equity</option>
-          <option value="home_equity_form">Typeform</option>
-          <option value="home_institucional">Site institucional</option>
-        </select>
-        <select id="hmDevice"><option value="mobile" selected>Mobile</option><option value="tablet">Tablet</option><option value="desktop">Desktop</option></select>
-        <button id="hmLoad" class="primary">Carregar</button>
+      <div class="clarity-actions">
+        <a class="clarity-open" href="https://clarity.microsoft.com/projects/view/zf3gn4v6p5/heatmaps" target="_blank" rel="noopener noreferrer">Abrir no Microsoft Clarity ↗</a>
       </div>
     </div>
-    <div class="kpis metric-strip" id="hmKpis"></div>
-
-    <div class="hm-split">
-      <div class="card">
-        <div class="h2row"><h2 id="hmStageTitle">Onde as pessoas clicam</h2><span class="hint" id="hmStageHint">quanto mais quente, mais toques</span></div>
-        <div class="hm-steps" id="hmSteps"></div>
-        <div class="hm-note" id="hmNote">Escolha a página e clique em <b>Carregar</b>. Tudo é desenhado por cima da própria página. Role para ver o resto.</div>
-        <div class="hm-stage" id="hmStage">
-          <div class="hm-viewport" id="hmViewport">
-            <div class="hm-inner" id="hmInner">
-              <div class="hm-sticky" id="hmSticky">
-                <iframe id="hmFrame" title="Página"></iframe>
-                <canvas id="hmCanvas"></canvas>
-                <div class="hm-badges" id="hmBadges"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="hm-legend" id="hmLegend"></div>
-      </div>
-      <div class="card">
-        <div class="h2row"><h2 id="hmPanelTitle">Elementos mais clicados</h2><span class="hint" id="hmPanelHint"></span></div>
-        <div id="hmPanel"></div>
+    <div class="clarity-meta" aria-label="Projeto conectado">
+      <span><b>Projeto</b> InspiraCred</span>
+      <span><b>ID</b> zf3gn4v6p5</span>
+      <span><b>Domínio principal</b> nova.inspiracred.com.br</span>
+    </div>
+    <div class="card clarity-frame-card">
+      <div class="clarity-frame-wrap">
+        <div class="clarity-loading" id="clarityLoading">Carregando o Microsoft Clarity…</div>
+        <iframe id="clarityFrame"
+          title="Microsoft Clarity — projeto InspiraCred"
+          data-src="https://clarity.microsoft.com/embed?project=zf3gn4v6p5&amp;lang=pt-br&amp;iframeRedirect=heatmaps"
+          sandbox="allow-modals allow-forms allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-storage-access-by-user-activation"
+          referrerpolicy="strict-origin-when-cross-origin"
+          allow="clipboard-read; clipboard-write"
+          loading="eager"></iframe>
       </div>
     </div>
+    <div class="clarity-note"><b>Acesso seguro:</b> o conteúdo acima é servido pela Microsoft e exige login de uma conta com acesso ao projeto. A sessão não é copiada nem compartilhada pelo dashboard da InspiraCred. Se o navegador bloquear cookies de terceiros, use “Abrir no Microsoft Clarity”.</div>
   </section>
 
   <section class="tab-section" id="tab-health">
@@ -3731,7 +3680,16 @@ function showTab(name){
     document.getElementById("tab-"+t).style.display=(t===name)?"block":"none";
     document.getElementById("tabbtn-"+t).classList.toggle("active",t===name);
   });
+  if(name==="heatmap")loadClarityEmbed();
   setTimeout(function(){if(dailyChart){try{dailyChart.resize()}catch(e){}}},30);
+}
+
+function loadClarityEmbed(){
+  var frame=document.getElementById("clarityFrame");
+  if(!frame||frame.getAttribute("src"))return;
+  var loading=document.getElementById("clarityLoading");
+  frame.addEventListener("load",function(){if(loading)loading.classList.add("is-ready");},{once:true});
+  frame.setAttribute("src",frame.getAttribute("data-src"));
 }
 
 function setLoading(on){var b=document.getElementById("refresh");b.disabled=on;b.textContent=on?"Atualizando…":"Atualizar";}
@@ -5368,21 +5326,6 @@ document.querySelectorAll("[data-msel-apply]").forEach(function(btn){
 // clicar fora (ou Esc) fecha os painéis — é ao fechar que o filtro é aplicado
 document.addEventListener("click",mselCloseAll);
 document.addEventListener("keydown",function(e){if(e.key==="Escape")mselCloseAll();});
-document.getElementById("hmLoad").addEventListener("click",function(){loadHeatmap();loadPageMap();});
-document.getElementById("hmDevice").addEventListener("change",function(){if(hmMode==="clicks")loadHeatmap();});
-document.getElementById("hmPageSel").addEventListener("change",function(){
-  hmPageLoaded="";
-  if(hmMode==="clicks")loadHeatmap(); else loadPageMap();
-});
-document.getElementById("hmViewport").addEventListener("scroll",function(){if(!hmTick){hmTick=true;requestAnimationFrame(drawSlice);}},{passive:true});
-// Roda do mouse controla EXPLICITAMENTE o scroll do viewport (não depende do iframe
-// deixar o evento passar). Só "prende" o scroll enquanto ainda dá pra rolar o mapa;
-// nas pontas deixa a página rolar normalmente.
-document.getElementById("hmViewport").addEventListener("wheel",function(e){
-  var m=this.scrollHeight-this.clientHeight;
-  if(m<=0)return;
-  if((e.deltaY<0&&this.scrollTop>0)||(e.deltaY>0&&this.scrollTop<m-1)){e.preventDefault();this.scrollTop+=e.deltaY;}
-},{passive:false});
 /* ---- Filtro padrão salvo (por navegador, via localStorage) ----
    Guarda página + origem + período. Ao abrir o dashboard, se houver algo salvo, os
    seletores já vêm preenchidos com ele antes do 1º loadAll(). É por navegador porque é
@@ -5456,7 +5399,6 @@ document.getElementById("modalClose").addEventListener("click",closeModal);
 document.getElementById("leadModal").addEventListener("click",function(e){if(e.target.id==="leadModal")closeModal()});
 applySavedFilter();
 syncSaveBtn();
-setHmMode("clicks");
 showTab("overview");
 loadAll();
 </script>

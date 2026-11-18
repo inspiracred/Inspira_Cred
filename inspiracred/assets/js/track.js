@@ -18,6 +18,33 @@
   var LOW_PRIORITY_BATCH_MAX = 20;
   var LOW_PRIORITY_BATCH_WAIT_MS = 5000;
 
+  /* Microsoft Clarity — coleta oficial do projeto InspiraCred.
+   * O ID do projeto e público por natureza (faz parte da URL da tag). Não há token,
+   * credencial ou chamada à Data Export API no navegador. Limitamos a carga aos
+   * dois domínios públicos da InspiraCred para não contaminar os dados com preview,
+   * localhost ou URLs pages.dev. A sentinela e a busca pelo src evitam tag duplicada. */
+  var CLARITY_PROJECT_ID = "zf3gn4v6p5";
+  var CLARITY_HOSTS = {
+    "nova.inspiracred.com.br": true,
+    "links.inspiracred.com.br": true
+  };
+  function initClarity() {
+    var host = String(window.location.hostname || "").toLowerCase();
+    if (!CLARITY_PROJECT_ID || !CLARITY_HOSTS[host] || window.__inspiraClarityLoaded) return;
+    var tagSrc = "https://www.clarity.ms/tag/" + CLARITY_PROJECT_ID;
+    if (document.querySelector('script[src="' + tagSrc + '"]')) {
+      window.__inspiraClarityLoaded = true;
+      return;
+    }
+    window.__inspiraClarityLoaded = true;
+    (function (c, l, a, r, i, t, y) {
+      c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
+      t = l.createElement(r); t.async = 1; t.src = "https://www.clarity.ms/tag/" + i;
+      y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+    })(window, document, "clarity", "script", CLARITY_PROJECT_ID);
+  }
+  initClarity();
+
   var sid = null;
   try { sid = localStorage.getItem(KEY); } catch (e) {}
   if (!sid) {
