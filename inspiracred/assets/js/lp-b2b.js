@@ -341,6 +341,7 @@
 
   var partnersForm = qs('[data-form="parceiros"]');
   if (partnersForm) {
+    var partnerSubmissionId = "";
     var role = partnersForm.elements.partner_role;
     var otherField = qs("[data-other-role]", partnersForm);
     function updateOtherRole() {
@@ -384,6 +385,11 @@
         partner_role: roleValue
       }, collectUtm());
 
+      // Se a resposta se perder, a nova tentativa usa o mesmo ID de transporte.
+      if (!partnerSubmissionId && window.crypto && typeof window.crypto.randomUUID === "function") {
+        partnerSubmissionId = window.crypto.randomUUID();
+      }
+      if (partnerSubmissionId) payload.event_id = partnerSubmissionId;
       setSubmitting(partnersForm, true);
       sendLead(payload).then(function (ok) {
         setSubmitting(partnersForm, false);
@@ -391,6 +397,7 @@
           formStatus(partnersForm, "Não foi possível registrar agora. Tente novamente em instantes.");
           return;
         }
+        partnerSubmissionId = "";
         track("partner_signup_complete", { source: "parceiros_lp", partner_role: roleValue });
         var partnerSuccessLink = qs("[data-partner-whatsapp-success]", partnersForm.parentNode);
         if (partnerSuccessLink) {

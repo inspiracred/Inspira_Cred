@@ -332,8 +332,16 @@ async function handleTrack(request, env, cors, context) {
           event.success === false ? 0 : 1, event.completion_time_ms || null, event.page_name || "other").run();
         break;
       case "lead": {
-        const contactError = validateSimulationContact(event);
+        const isPartner = event.source === "parceiros_lp";
+        const contactError = validateLeadContact(event);
         if (contactError) return json({ error: contactError }, 422, cors);
+        if (isPartner && (typeof event.partner_role !== "string" || !event.partner_role.trim())) {
+          return json({ error: "Informe sua área de atuação." }, 422, cors);
+        }
+        const partnerSubmissionId = isPartner ? normalizePartnerSubmissionId(event.event_id) : "";
+        const partnerMetaEnabled = !!partnerSubmissionId && env.META_PARTNER_LEAD_ENABLED === "true" &&
+          new URL(request.url).origin === "https://nova.inspiracred.com.br" &&
+          request.headers.get("Sec-GPC") !== "1" && request.headers.get("DNT") !== "1";
 
         const valueLimitError = validateLeadValueLimits(event);
         if (valueLimitError) return json({ error: valueLimitError }, 422, cors);
@@ -383,24 +391,41 @@ async function handleTrack(request, env, cors, context) {
         // O servidor é a fronteira autoritativa: clientes antigos ou manipulados não
         // escolhem o evento Meta. A classificação completa fica no D1/RD e decide apenas
         // quais nomes de evento saem; valores, faixas e motivos nunca entram no payload.
-        event.meta_events = normalizeLeadMetaEvents(event);
-        event.event_id = event.meta_events.length ? event.meta_events[0].event_id : null;
+        // O UUID do navegador identifica a tentativa apenas no D1. A CAPI recebe
+        // outro UUID, criado pelo servidor e reservado junto com o cadastro.
+        event.event_id = partnerSubmissionId ? normalizeMetaEventId() : null;
+        event.meta_events = normalizeLeadMetaEvents(event, partnerMetaEnabled);
+        const metaEventId = event.meta_events[0] && event.meta_events[0].event_id;
+        event.event_id = event.event_id || metaEventId || null;
 
-        const insertLead = () => env.DB.prepare(
-          `INSERT INTO leads (session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, meta_campaign_id, meta_adset_id, meta_ad_id, fbp, fbc, fbclid, gclid, event_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-        ).bind(event.session_id || null, event.name || null, event.phone || null, event.email || null,
+        const leadValues = [event.session_id || null, event.name || null, event.phone || null, event.email || null,
           event.property_type || null, event.property_value || null, event.credit_value || null,
           event.source || null, event.utm_source || null, event.utm_medium || null,
           event.utm_campaign || null, event.utm_content || null, event.utm_term || null,
           event.meta_campaign_id || null, event.meta_adset_id || null, event.meta_ad_id || null,
-          event.fbp || null, event.fbc || null, event.fbclid || null, event.gclid || null,
-          event.event_id || null).run();
-        // 2ª tentativa: uma falha momentânea do D1 não pode custar o lead (o navegador
-        // manda por beacon, uma vez só — não existe reenvio do lado do cliente).
+          event.fbp || null, event.fbc || null, event.fbclid || null, event.gclid || null, event.event_id];
+        const insertLead = () => env.DB.prepare(
+          `INSERT INTO leads (session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, meta_campaign_id, meta_adset_id, meta_ad_id, fbp, fbc, fbclid, gclid, event_id${partnerSubmissionId ? ", partner_submission_id" : ""})
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?${partnerSubmissionId ? ",?" : ""})
+           ${partnerSubmissionId ? "ON CONFLICT(partner_submission_id) WHERE partner_submission_id IS NOT NULL DO NOTHING" : ""}`
+        ).bind(...(partnerSubmissionId ? [...leadValues, partnerSubmissionId] : leadValues)).run();
+        // Uma segunda tentativa cobre falhas momentâneas do D1. A chave de Parceiros
+        // protege tanto essa tentativa quanto a repetição do envio pelo formulário.
         let leadInsert;
         try { leadInsert = await insertLead(); }
         catch (e) { leadInsert = await insertLead(); }
-        const leadId = leadInsert.meta && leadInsert.meta.last_row_id;
+        let leadId = leadInsert.meta && leadInsert.meta.last_row_id;
+        if (isPartner && leadInsert.success === false) throw new Error("Falha ao gravar cadastro");
+        if (partnerSubmissionId && leadInsert.meta?.changes === 0) {
+          const saved = await env.DB.prepare("SELECT id, event_id FROM leads WHERE partner_submission_id = ?")
+            .bind(partnerSubmissionId).first();
+          if (!saved) throw new Error("Cadastro deduplicado não confirmado");
+          // Se a primeira escrita deste request persistiu e perdeu a resposta do D1,
+          // o UUID reservado ainda identifica esta execução como dona do fan-out.
+          if (saved.event_id !== event.event_id) return json({ success: true }, 200, cors);
+          leadId = saved.id;
+        }
+        if (isPartner && !leadId) throw new Error("Cadastro sem confirmação de persistência");
         // Campos qualificadores no NOSSO D1 (pra o dado bater com o que vai pro RD).
         // UPDATE separado + try/catch: se a migration 0003 ainda não tiver criado as
         // colunas, ignora sem quebrar a captura do lead (o INSERT core acima já gravou).
@@ -420,8 +445,8 @@ async function handleTrack(request, env, cors, context) {
             await env.DB.prepare(`UPDATE leads SET lead_kind=? WHERE id=?`)
               .bind(event.lead_kind || null, leadId).run();
           } catch (e) { /* coluna lead_kind ainda não existe (migration 0004 pendente) — ok */ }
-          // Cadastro do programa de parceiros (migration 0014). O campo fica no D1;
-          // envio ao RD segue desativado até existir identificador/fluxo e campo reais.
+          // A migration 0014 mantém a atuação no D1. O envio ao RD usa o payload
+          // validado mesmo onde essa coluna ainda não existe.
           try {
             await env.DB.prepare(`UPDATE leads SET partner_role=? WHERE id=?`)
               .bind(event.source === "parceiros_lp" ? (event.partner_role || null) : null, leadId).run();
@@ -466,6 +491,7 @@ async function handleTrack(request, env, cors, context) {
               clientIp: request.headers.get("CF-Connecting-IP") || "",
               userAgent: leadUA,
               sourceUrl: event.url || request.headers.get("Referer") || "",
+              partnerMetaEnabled,
             }));
           } else {
             try { await env.DB.prepare(`UPDATE leads SET meta_status=? WHERE id=?`).bind("bot_skip", leadId).run(); } catch (e) {}
@@ -548,15 +574,15 @@ function isRuralPropertyType(value) {
 const MAX_PROPERTY_VALUE = 20000000;
 const MAX_CREDIT_VALUE = 12000000;
 
-function validateSimulationContact(event) {
-  if (!event || event.source !== "landing_page") return "";
+function validateLeadContact(event) {
+  if (!event || (event.source !== "landing_page" && event.source !== "parceiros_lp")) return "";
 
   const name = String(event.name || "").trim();
   const email = String(event.email || "").trim();
   let phone = String(event.phone || "").replace(/\D/g, "");
   while (phone.length > 11 && phone.startsWith("55")) phone = phone.slice(2);
 
-  if (name.length < 3) return "Informe seu nome completo.";
+  if (!name || (event.source === "landing_page" && name.length < 3)) return "Informe seu nome completo.";
   if (!/^[0-9]{10,11}$/.test(phone)) return "Informe um celular com DDD.";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Informe um e-mail válido.";
   return "";
@@ -602,7 +628,13 @@ function normalizeLeadKind(event) {
   return "home_equity";
 }
 
-function normalizeMetaEventId(value) {
+function normalizePartnerSubmissionId(value) {
+  return typeof value === "string" && /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i.test(value)
+    ? value.toLowerCase()
+    : "";
+}
+
+function normalizeMetaEventId() {
   // Nunca repassar IDs controlados pelo cliente: um identificador textual poderia
   // codificar valor, faixa, documentação ou classificação. Sem Pixel no navegador,
   // não há deduplicação client/server a preservar; o servidor gera um UUID opaco.
@@ -610,17 +642,21 @@ function normalizeMetaEventId(value) {
   catch (_) { return `srv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`; }
 }
 
-function normalizeLeadMetaEvents(event) {
-  return metaEventNamesForLeadKind(event.lead_kind || normalizeLeadKind(event))
-    .map((name) => ({ name, event_id: normalizeMetaEventId() }));
+function normalizeLeadMetaEvents(event, partnerMetaEnabled = false) {
+  const kind = event.lead_kind || normalizeLeadKind(event);
+  if (event.source === "parceiros_lp" || kind === "parceiro") {
+    return partnerMetaEnabled && event.source === "parceiros_lp" && kind === "parceiro" && event.event_id
+      ? [{ name: "Lead", event_id: event.event_id }]
+      : [];
+  }
+  return metaEventNamesForLeadKind(kind).map((name) => ({ name, event_id: normalizeMetaEventId() }));
 }
 
 function metaEventNamesForLeadKind(kind) {
-  // O formulário concluído é só o momento do processamento. A classificação financeira
-  // server-side é o gate: faixa mínima recebe Lead; faixa superior recebe ambos.
-  // Demais classificações ficam completas no D1/RD, mas não geram evento Meta.
+  // O servidor seleciona o evento pela classificação financeira. A elegibilidade
+  // da conversão de Parceiros é verificada separadamente em normalizeLeadMetaEvents.
   if (kind === "home_equity_mql") return ["Lead", "LeadQualificado"];
-  if (kind === "home_equity") return ["Lead"];
+  if (kind === "home_equity" || kind === "parceiro") return ["Lead"];
   return [];
 }
 
@@ -1016,6 +1052,9 @@ async function createPartnerDealInRD(event, env, leadId, phoneDigits) {
   }
   if (roleFields.status) return roleFields.status;
 
+  const utmFields = Object.entries(rdDealUtmValues(event))
+    .filter(([, value]) => value !== "")
+    .map(([custom_field_id, value]) => ({ custom_field_id, value }));
   const contact = {
     name: event.name || "Novo parceiro",
     contact_custom_fields: [{ custom_field_id: roleFields.contactFieldId, value: partnerRole }],
@@ -1026,7 +1065,7 @@ async function createPartnerDealInRD(event, env, leadId, phoneDigits) {
     deal: {
       name: `Parceria | ${event.name || "Novo cadastro"} | Lead ${leadId}`,
       deal_stage_id: destination.stageId,
-      deal_custom_fields: [{ custom_field_id: roleFields.dealFieldId, value: partnerRole }],
+      deal_custom_fields: [{ custom_field_id: roleFields.dealFieldId, value: partnerRole }, ...utmFields],
     },
     contacts: [contact],
   };
@@ -1069,6 +1108,10 @@ async function createPartnerDealInRD(event, env, leadId, phoneDigits) {
   if (!rdCustomFieldHasValue(verifiedDeal && verifiedDeal.deal_custom_fields, roleFields.dealFieldId, partnerRole)) {
     return "deal_role_unverified";
   }
+  if (!utmFields.every(({ custom_field_id, value }) =>
+    rdCustomFieldHasValue(verifiedDeal && verifiedDeal.deal_custom_fields, custom_field_id, value)
+  )) return "deal_utm_unverified";
+
   const verifiedContacts = rdListFromResponse(persistedContacts.body, ["contacts"]);
   const contactVerified = verifiedContacts.some((item) =>
     rdCustomFieldHasValue(item && item.contact_custom_fields, roleFields.contactFieldId, partnerRole)
@@ -1354,7 +1397,7 @@ async function sendLeadToMeta(event, env, leadId, ctx) {
   if (!env.META_PIXEL_ID || !env.META_ACCESS_TOKEN) return; // dormindo até ter os secrets
 
   // Só as classificações elegíveis recebem evento; o payload continua sem dado financeiro.
-  const metaEvents = normalizeLeadMetaEvents(event);
+  const metaEvents = normalizeLeadMetaEvents(event, ctx.partnerMetaEnabled);
   if (!metaEvents.length) {
     await markLeadStatus(env, leadId, "meta_status", "nao_aplicavel");
     return;
@@ -1365,7 +1408,13 @@ async function sendLeadToMeta(event, env, leadId, ctx) {
   const fbc = buildFbc({ fbc: event.fbc, fbclid: event.fbclid, clickTs: event.click_ts });
   // O e-mail passou a ser coletado na Simulação para D1/RD. Isso não autoriza ampliar
   // o Advanced Matching da Meta nessa origem: telefone/nome/cookies continuam iguais.
-  const matchingEvent = event.source === "landing_page" ? { ...event, email: "" } : event;
+  let matchingEvent = event;
+  if (event.source === "parceiros_lp") {
+    // Mesmos sinais técnicos do PageView. Os dados de contato ficam no D1/RD.
+    matchingEvent = { ...event, name: "", email: "", phone: "", city: "" };
+  } else if (event.source === "landing_page") {
+    matchingEvent = { ...event, email: "" };
+  }
   const userData = await buildUserData(matchingEvent, ctx, fbc);
 
   const eventTime = Math.floor(Date.now() / 1000);
@@ -1627,6 +1676,17 @@ function rdDealFormOrigin(source) {
   })[String(source || "")] || "";
 }
 
+function rdDealUtmValues(lead) {
+  const text = (value) => value == null ? "" : String(value).trim();
+  return {
+    [RD_DEAL_SYNC_FIELDS.utmCampaign]: text(lead.utm_campaign),
+    [RD_DEAL_SYNC_FIELDS.utmContent]: text(lead.utm_content),
+    [RD_DEAL_SYNC_FIELDS.utmMedium]: text(lead.utm_medium),
+    [RD_DEAL_SYNC_FIELDS.utmSource]: text(lead.utm_source),
+    [RD_DEAL_SYNC_FIELDS.utmTerm]: text(lead.utm_term),
+  };
+}
+
 function rdDealValuesFromLead(lead) {
   if (!lead) return {};
   const value = (input) => input == null ? "" : String(input).trim();
@@ -1639,11 +1699,7 @@ function rdDealValuesFromLead(lead) {
     [RD_DEAL_SYNC_FIELDS.propertyPaid]: paid,
     [RD_DEAL_SYNC_FIELDS.documentation]: documentation,
     [RD_DEAL_SYNC_FIELDS.formOrigin]: rdDealFormOrigin(lead.source),
-    [RD_DEAL_SYNC_FIELDS.utmCampaign]: value(lead.utm_campaign),
-    [RD_DEAL_SYNC_FIELDS.utmContent]: value(lead.utm_content),
-    [RD_DEAL_SYNC_FIELDS.utmMedium]: value(lead.utm_medium),
-    [RD_DEAL_SYNC_FIELDS.utmSource]: value(lead.utm_source),
-    [RD_DEAL_SYNC_FIELDS.utmTerm]: value(lead.utm_term),
+    ...rdDealUtmValues(lead),
   };
 }
 
@@ -4500,7 +4556,8 @@ function leadEventDot(l,type){
     return statusDot("RD",l.rd_status,true);
   }
   if(type==="lead"){
-    var leadApplies=kind==="home_equity"||kind==="home_equity_mql";
+    var leadApplies=kind==="home_equity"||kind==="home_equity_mql"||
+      (kind==="parceiro"&&l.source==="parceiros_lp"&&l.meta_status!=null&&l.meta_status!=="nao_aplicavel");
     return statusDot("Lead",l.meta_status,leadApplies,"Não atingiu a faixa mínima ou não se aplica à régua financeira");
   }
   if(type==="qualified"){

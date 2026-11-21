@@ -55,7 +55,7 @@ test("partner page preserves eligibility and commission conditions", () => {
   assert.match(server, /RD_PARTNER_STAGE_NAME = "Novo lead"/);
   assert.match(server, /RD_PARTNER_ROLE_FIELD_LABEL = "Área de atuação"/);
   assert.match(server, /contact_custom_fields: \[\{ custom_field_id: roleFields\.contactFieldId, value: partnerRole \}\]/);
-  assert.match(server, /deal_custom_fields: \[\{ custom_field_id: roleFields\.dealFieldId, value: partnerRole \}\]/);
+  assert.match(server, /deal_custom_fields: \[\{ custom_field_id: roleFields\.dealFieldId, value: partnerRole \}, \.\.\.utmFields\]/);
   assert.match(server, /createPartnerDealInRD\(event, env, leadId, phoneDigits\)/);
 });
 
@@ -305,4 +305,55 @@ test("contador form collects and forwards the real email", () => {
 
   assert.match(counters, /id="contador-email"[^>]+name="email"[^>]+type="email"[^>]+required/);
   assert.match(script, /email:\s*countersForm\.elements\.email\.value\.trim\(\)/);
+});
+
+test("Parceiros mantém o mesmo ID do envio ao tentar novamente após falha de transporte", async () => {
+  const script = read("assets", "js", "lp-b2b.js");
+  const branch = script.slice(script.indexOf("  var partnersForm ="), script.lastIndexOf("})();"));
+  const ids = [];
+  let generated = 0;
+  let busy = false;
+  let submit;
+  let complete;
+  let successes = 0;
+  const form = {
+    elements: {
+      name: { value: "Pessoa Sintética" },
+      email: { value: "qa@example.invalid", validity: { valid: true } },
+      phone: { value: "21999990000" },
+      partner_role: { value: "Contador", addEventListener() {} },
+      partner_role_other: { value: "" },
+    },
+    addEventListener(name, fn) { if (name === "submit") submit = fn; },
+    getAttribute() { return String(busy); },
+  };
+  vm.runInNewContext(branch, {
+    window: { crypto: { randomUUID() { return "attempt-" + ++generated; } } },
+    qs(selector) {
+      if (selector === '[data-form="parceiros"]') return form;
+      if (selector === "[data-other-role]") return {};
+      return null;
+    },
+    qsa: () => [],
+    requireField: () => true, phoneIsValid: () => true, collectUtm: () => ({}),
+    formStatus() {}, track() {},
+    setSubmitting(_, nowBusy) { busy = nowBusy; },
+    sendLead(payload) {
+      ids.push(payload.event_id);
+      return new Promise((resolve) => { complete = resolve; });
+    },
+    showSuccess() { successes++; },
+  });
+  const click = { preventDefault() {} };
+  submit(click);
+  submit(click);
+  assert.deepEqual(ids, ["attempt-1"]);
+  complete(false);
+  await Promise.resolve();
+  assert.equal(successes, 0);
+  submit(click);
+  assert.deepEqual(ids, ["attempt-1", "attempt-1"]);
+  complete(true);
+  await Promise.resolve();
+  assert.equal(successes, 1);
 });

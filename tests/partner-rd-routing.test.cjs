@@ -8,10 +8,7 @@ const server = fs.readFileSync(
   path.resolve(__dirname, "../inspiracred/functions/analytics/_app.js"),
   "utf8"
 );
-const rdCode = server.slice(
-  server.indexOf("const RD_PAGE_CONFIG"),
-  server.indexOf("/* ---- META CAPI")
-);
+const rdCode = server.replace("export async function onRequest", "async function onRequest");
 
 function response(body, status = 200) {
   return {
@@ -38,6 +35,8 @@ function database(updates) {
 test("novos parceiros usam conversão própria e entram em Parceiros / Novo lead", async () => {
   const requests = [];
   const updates = [];
+  let dealFields;
+  let omitUtm = false;
   const context = vm.createContext({
     Date,
     encodeURIComponent,
@@ -71,9 +70,10 @@ test("novos parceiros usam conversão própria e entram em Parceiros / Novo lead
             id: "deal-created",
             deal_stage_id: "stage-novo",
             deal_pipeline_id: "pipeline-parceiros",
-            deal_custom_fields: [{ custom_field_id: "field-deal", value: "Contador" }],
+            deal_custom_fields: omitUtm ? dealFields.slice(0, 1) : dealFields,
           });
         }
+        dealFields = request.body.deal.deal_custom_fields;
         return response({ deal: {
           id: "deal-created",
           deal_stage_id: "stage-novo",
@@ -92,6 +92,11 @@ test("novos parceiros usam conversão própria e entram em Parceiros / Novo lead
     email: "qa@example.com",
     phone: "(21) 99999-0000",
     partner_role: "Contador",
+    utm_source: "facebook",
+    utm_medium: "social",
+    utm_campaign: "parceiros",
+    utm_content: "criativo",
+    utm_term: "profissionais",
   }, {
     RD_STATION_TOKEN: "marketing-token",
     RD_CRM_API_TOKEN: "crm-token",
@@ -102,6 +107,11 @@ test("novos parceiros usam conversão própria e entram em Parceiros / Novo lead
   assert.equal(requests[0].body.identificador, "Parceiros LP");
   assert.deepEqual(Array.from(requests[0].body.tags), ["parceiro"]);
   assert.equal(requests[0].body.cf_formulario_de_origem, "Parceiros");
+  assert.equal(requests[0].body.cf_utm_source, "facebook");
+  assert.equal(requests[0].body.cf_utm_medium, "social");
+  assert.equal(requests[0].body.cf_utm_campaign, "parceiros");
+  assert.equal(requests[0].body.cf_utm_content, "criativo");
+  assert.equal(requests[0].body.cf_utm_term, "profissionais");
   assert.match(requests[1].url, /deal_pipelines\?limit=200&token=/);
   assert.match(requests[2].url, /deal_stages\?deal_pipeline_id=pipeline-parceiros&limit=12&token=/);
   assert.match(requests[3].url, /custom_fields\?for=contact&token=/);
@@ -117,6 +127,14 @@ test("novos parceiros usam conversão própria e entram em Parceiros / Novo lead
   assert.deepEqual(requests[7].body.deal.deal_custom_fields[0], {
     custom_field_id: "field-deal", value: "Contador",
   });
+  assert.deepEqual(Object.fromEntries(dealFields.slice(1).map((field) => [field.custom_field_id, field.value])), {
+    "6a6041507c7cc3001d5b93fd": "facebook",
+    "6a60411e5de92300329f858d": "social",
+    "6a60410bb3c062002464c426": "parceiros",
+    "6a604133b867c804a2095955": "criativo",
+    "6a604164a24ea200300c3e5c": "profissionais",
+  });
+  assert.equal(requests[7].body.contacts[0].contact_custom_fields.length, 1);
   assert.equal(requests[7].body.contacts[0].emails[0].email, "qa@example.com");
   assert.equal(requests[7].body.contacts[0].phones[0].phone, "+5521999990000");
   assert.deepEqual(requests[7].body.contacts[0].contact_custom_fields[0], {
@@ -125,6 +143,20 @@ test("novos parceiros usam conversão própria e entram em Parceiros / Novo lead
   assert.match(requests[8].url, /\/deals\/deal-created\?token=/);
   assert.match(requests[9].url, /\/deals\/deal-created\/contacts\?limit=200&token=/);
   assert.deepEqual(updates[0].values, ["ok", 4321]);
+
+  const fields = { name: "QA", partner_role: "Contador" };
+  const env = { RD_CRM_API_TOKEN: "crm-token" };
+  assert.equal(await context.createPartnerDealInRD(fields, env, 4322, ""), "ok");
+  assert.equal(dealFields.length, 1, "UTMs ausentes não são gravadas");
+  assert.equal(await context.createPartnerDealInRD({
+    ...fields, utm_medium: " mídia paga ", utm_content: "  ", utm_term: null,
+  }, env, 4323, ""), "ok");
+  assert.deepEqual(dealFields.slice(1), [{ custom_field_id: "6a60411e5de92300329f858d", value: "mídia paga" }]);
+
+  omitUtm = true;
+  assert.equal(await context.createPartnerDealInRD({
+    ...fields, utm_source: "meta",
+  }, env, 4324, ""), "deal_utm_unverified");
 });
 
 test("não marca sucesso quando o RD omite Área de atuação após criar a negociação", async () => {
