@@ -311,6 +311,7 @@ test("Parceiros mantém o mesmo ID do envio ao tentar novamente após falha de t
   const script = read("assets", "js", "lp-b2b.js");
   const branch = script.slice(script.indexOf("  var partnersForm ="), script.lastIndexOf("})();"));
   const ids = [];
+  const pixelLeadIds = [];
   let generated = 0;
   let busy = false;
   let submit;
@@ -328,7 +329,10 @@ test("Parceiros mantém o mesmo ID do envio ao tentar novamente após falha de t
     getAttribute() { return String(busy); },
   };
   vm.runInNewContext(branch, {
-    window: { crypto: { randomUUID() { return "attempt-" + ++generated; } } },
+    window: {
+      crypto: { randomUUID() { return "attempt-" + ++generated; } },
+      inspiraPartnerLead(id) { pixelLeadIds.push(id); },
+    },
     qs(selector) {
       if (selector === '[data-form="parceiros"]') return form;
       if (selector === "[data-other-role]") return {};
@@ -338,9 +342,14 @@ test("Parceiros mantém o mesmo ID do envio ao tentar novamente após falha de t
     requireField: () => true, phoneIsValid: () => true, collectUtm: () => ({}),
     formStatus() {}, track() {},
     setSubmitting(_, nowBusy) { busy = nowBusy; },
-    sendLead(payload) {
+    sendLead(payload, onConfirmed) {
       ids.push(payload.event_id);
-      return new Promise((resolve) => { complete = resolve; });
+      return new Promise((resolve) => {
+        complete = (ok, body) => {
+          if (ok) onConfirmed({ async json() { return body; } });
+          resolve(ok);
+        };
+      });
     },
     showSuccess() { successes++; },
   });
@@ -351,9 +360,11 @@ test("Parceiros mantém o mesmo ID do envio ao tentar novamente após falha de t
   complete(false);
   await Promise.resolve();
   assert.equal(successes, 0);
+  assert.deepEqual(pixelLeadIds, []);
   submit(click);
   assert.deepEqual(ids, ["attempt-1", "attempt-1"]);
-  complete(true);
+  complete(true, { success: true, meta_lead_event_id: "server-event-id" });
   await Promise.resolve();
   assert.equal(successes, 1);
+  assert.deepEqual(pixelLeadIds, ["server-event-id"]);
 });

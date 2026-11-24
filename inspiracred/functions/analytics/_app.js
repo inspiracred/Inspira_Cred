@@ -340,6 +340,7 @@ async function handleTrack(request, env, cors, context) {
         }
         const partnerSubmissionId = isPartner ? normalizePartnerSubmissionId(event.event_id) : "";
         const partnerMetaEnabled = !!partnerSubmissionId && env.META_PARTNER_LEAD_ENABLED === "true" &&
+          String(env.META_PIXEL_ID) === "3021870508000260" && !!env.META_ACCESS_TOKEN &&
           new URL(request.url).origin === "https://nova.inspiracred.com.br" &&
           request.headers.get("Sec-GPC") !== "1" && request.headers.get("DNT") !== "1";
 
@@ -391,7 +392,7 @@ async function handleTrack(request, env, cors, context) {
         // O servidor é a fronteira autoritativa: clientes antigos ou manipulados não
         // escolhem o evento Meta. A classificação completa fica no D1/RD e decide apenas
         // quais nomes de evento saem; valores, faixas e motivos nunca entram no payload.
-        // O UUID do navegador identifica a tentativa apenas no D1. A CAPI recebe
+        // O UUID do navegador identifica a tentativa apenas no D1. A Meta recebe
         // outro UUID, criado pelo servidor e reservado junto com o cadastro.
         event.event_id = partnerSubmissionId ? normalizeMetaEventId() : null;
         event.meta_events = normalizeLeadMetaEvents(event, partnerMetaEnabled);
@@ -405,10 +406,12 @@ async function handleTrack(request, env, cors, context) {
           event.meta_campaign_id || null, event.meta_adset_id || null, event.meta_ad_id || null,
           event.fbp || null, event.fbc || null, event.fbclid || null, event.gclid || null, event.event_id];
         const insertLead = () => env.DB.prepare(
-          `INSERT INTO leads (session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, meta_campaign_id, meta_adset_id, meta_ad_id, fbp, fbc, fbclid, gclid, event_id${partnerSubmissionId ? ", partner_submission_id" : ""})
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?${partnerSubmissionId ? ",?" : ""})
+          `INSERT INTO leads (session_id, name, phone, email, property_type, property_value, credit_value, source, utm_source, utm_medium, utm_campaign, utm_content, utm_term, meta_campaign_id, meta_adset_id, meta_ad_id, fbp, fbc, fbclid, gclid, event_id${partnerSubmissionId ? ", partner_submission_id, partner_role, lead_kind" : ""})
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?${partnerSubmissionId ? ",?,?,?" : ""})
            ${partnerSubmissionId ? "ON CONFLICT(partner_submission_id) WHERE partner_submission_id IS NOT NULL DO NOTHING" : ""}`
-        ).bind(...(partnerSubmissionId ? [...leadValues, partnerSubmissionId] : leadValues)).run();
+        ).bind(...(partnerSubmissionId
+          ? [...leadValues, partnerSubmissionId, event.partner_role.trim(), event.lead_kind]
+          : leadValues)).run();
         // Uma segunda tentativa cobre falhas momentâneas do D1. A chave de Parceiros
         // protege tanto essa tentativa quanto a repetição do envio pelo formulário.
         let leadInsert;
@@ -445,12 +448,13 @@ async function handleTrack(request, env, cors, context) {
             await env.DB.prepare(`UPDATE leads SET lead_kind=? WHERE id=?`)
               .bind(event.lead_kind || null, leadId).run();
           } catch (e) { /* coluna lead_kind ainda não existe (migration 0004 pendente) — ok */ }
-          // A migration 0014 mantém a atuação no D1. O envio ao RD usa o payload
-          // validado mesmo onde essa coluna ainda não existe.
-          try {
-            await env.DB.prepare(`UPDATE leads SET partner_role=? WHERE id=?`)
-              .bind(event.source === "parceiros_lp" ? (event.partner_role || null) : null, leadId).run();
-          } catch (e) { /* coluna partner_role ainda não existe — lead core já está salvo */ }
+          // Cadastros legados sem UUID conservam a escrita de atuacao em separado.
+          if (isPartner && !partnerSubmissionId) {
+            try {
+              await env.DB.prepare(`UPDATE leads SET partner_role=? WHERE id=?`)
+                .bind(event.partner_role.trim(), leadId).run();
+            } catch (e) { /* migration 0014 ainda nao aplicada neste ambiente */ }
+          }
           // Saúde do tracking (migration 0005): de onde vieram fbp/fbc usados na CAPI.
           try {
             await env.DB.prepare(`UPDATE leads SET fbp_source=?, fbc_source=? WHERE id=?`)
@@ -493,6 +497,9 @@ async function handleTrack(request, env, cors, context) {
               sourceUrl: event.url || request.headers.get("Referer") || "",
               partnerMetaEnabled,
             }));
+            if (isPartner && partnerMetaEnabled) {
+              return json({ success: true, meta_lead_event_id: event.event_id }, 200, cors);
+            }
           } else {
             try { await env.DB.prepare(`UPDATE leads SET meta_status=? WHERE id=?`).bind("bot_skip", leadId).run(); } catch (e) {}
           }
@@ -2379,15 +2386,21 @@ async function handleLeads(request, env) {
   const where = conds.length ? ` WHERE ${conds.join(" AND ")}` : ``;
   const tail = ` ORDER BY created_at DESC LIMIT ?`;
   binds.push(limit);
+  async function readLeads(fields) {
+    return (await env.DB.prepare(`SELECT ${fields} FROM leads${where}${tail}`)
+      .bind(...binds).all()).results || [];
+  }
+
   let rows;
   try {
-    rows = (await env.DB.prepare(`SELECT ${BASE}${QUAL} FROM leads${where}${tail}`).bind(...binds).all()).results || [];
+    rows = await readLeads(BASE + QUAL + ", partner_role");
   } catch (e) {
-    // fallback sem QUAL (colunas da migration 0003 pendente) — mas se o filtro pedir
-    // lead_kind (migration 0004), não tem como cair pro fallback sem quebrar o filtro;
-    // nesse caso devolve vazio em vez de ignorar o filtro (evita misturar qualificados).
-    if (kind) { rows = []; }
-    else rows = (await env.DB.prepare(`SELECT ${BASE} FROM leads${where}${tail}`).bind(...binds).all()).results || [];
+    try {
+      rows = await readLeads(BASE + QUAL);
+    } catch (e) {
+      // Sem a coluna de classificacao, omitir resultados quando o filtro foi pedido.
+      rows = kind ? [] : await readLeads(BASE);
+    }
   }
 
   // A Meta só fornece recibo agregado por lote. Não persistimos IDs individuais nem
@@ -4703,6 +4716,7 @@ function showLead(i,list){
   function sec(t){h+='<div class="sec">'+t+'</div>';}
   sec("Contato");
   row("Telefone",pretty(l.phone)); row("E-mail",pretty(l.email)); opt("Cidade",l.city);
+  if(l.source==="parceiros_lp")opt("Área de atuação",l.partner_role);
   opt("Classificação",l.lead_kind?(LEAD_KIND_LABELS[l.lead_kind]||l.lead_kind):null);
   var isAutoLead=l.lead_kind==="auto";
   sec("Bem & simulação");

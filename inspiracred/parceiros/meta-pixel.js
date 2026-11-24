@@ -25,8 +25,16 @@
   window.fbq("set", "autoConfig", false, pixelId);
   window.fbq("init", pixelId);
 
+  const uuid = /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i;
+  const sentLeads = new Set();
+  window.inspiraPartnerLead = function (eventId) {
+    if (typeof eventId !== "string" || !uuid.test(eventId) || sentLeads.has(eventId)) return;
+    sentLeads.add(eventId);
+    window.fbq("trackSingle", pixelId, "Lead", {}, { eventID: eventId });
+  };
+
   window.inspiraPartnerPageView = async function (eventId) {
-    if (!/^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i.test(eventId)) return;
+    if (typeof eventId !== "string" || !uuid.test(eventId)) return;
     try {
       const key = "parceiros-pageview:" + eventId.toLowerCase();
       const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));

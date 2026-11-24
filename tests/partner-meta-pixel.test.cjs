@@ -126,3 +126,17 @@ test("Pixel fica fora de outras páginas, previews e navegadores com preferênci
     assert.match(request.body.data[0].event_id, /^[0-9a-f-]{36}$/);
   }
 });
+
+test("Pixel de Parceiros manda Lead apenas com o ID opaco confirmado, uma vez", () => {
+  const h = browser();
+  h.window.inspiraPartnerLead(undefined);
+  h.window.inspiraPartnerLead("invalid-marker");
+  assert.equal(h.window.fbq.queue.length, 2);
+  h.window.inspiraPartnerLead(uuid);
+  h.window.inspiraPartnerLead(uuid);
+  assert.equal(h.window.fbq.queue.length, 3);
+  const command = Array.from(h.window.fbq.queue[2]);
+  assert.deepEqual(command.slice(0, 3), ["trackSingle", pixelId, "Lead"]);
+  assert.deepEqual(Object.keys(command[3]), []);
+  assert.equal(command[4].eventID, uuid);
+});

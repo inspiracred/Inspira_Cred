@@ -63,7 +63,7 @@ test("tracker agrupa somente eventos analíticos de baixa prioridade", () => {
   assert.match(tracker, /sendLowPriority\(\{ type: "event", event_name: "section_view"/);
   assert.match(tracker, /sendLowPriority\(\{\s*type: "tap"/);
   assert.match(tracker, /return send\(leadPayload\(data\)\)/, "lead continua imediato");
-  assert.match(tracker, /return sendConfirmed\(leadPayload\(data\)\)/, "lead confirmado continua aguardando HTTP 200");
+  assert.match(tracker, /return sendConfirmed\(leadPayload\(data\), onConfirmed\)/, "lead confirmado continua aguardando HTTP 200");
 });
 
 test("endpoint aceita lote seguro e preserva cada evento no D1", async () => {

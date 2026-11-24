@@ -70,8 +70,8 @@ test("rural and below-minimum leads keep the non-eligible route", () => {
 
 test("shared tracker exposes a confirmed lead transport without changing ordinary beacon events", () => {
   const tracker = read("inspiracred", "assets", "js", "track.js");
-  assert.match(tracker, /function sendConfirmed\(payload\)/);
-  assert.match(tracker, /leadConfirmed: function \(data\)/);
-  assert.match(tracker, /return sendConfirmed\(leadPayload\(data\)\)/);
+  assert.match(tracker, /function sendConfirmed\(payload, onConfirmed\)/);
+  assert.match(tracker, /leadConfirmed: function \(data, onConfirmed\)/);
+  assert.match(tracker, /return sendConfirmed\(leadPayload\(data\), onConfirmed\)/);
   assert.match(tracker, /navigator\.sendBeacon/);
 });

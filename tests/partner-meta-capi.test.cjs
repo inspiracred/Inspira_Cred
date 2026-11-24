@@ -46,7 +46,7 @@ function harness(t, { enabled = true, writeError } = {}) {
   let lostResponse = false;
   const env = {
     META_PARTNER_LEAD_ENABLED: enabled ? "true" : undefined,
-    META_PIXEL_ID: "synthetic-dataset", META_ACCESS_TOKEN: "synthetic-token",
+    META_PIXEL_ID: "3021870508000260", META_ACCESS_TOKEN: "synthetic-token",
     RD_STATION_TOKEN: "synthetic-rd",
     DB: {
       prepare(sql) {
@@ -54,6 +54,7 @@ function harness(t, { enabled = true, writeError } = {}) {
         return {
           bind(...values) { params = values; return this; },
           async first() { return db.prepare(sql).get(...params) || null; },
+          async all() { return { results: db.prepare(sql).all(...params) }; },
           async run() {
             const isInsert = sql.startsWith("INSERT INTO leads ");
             if (isInsert && writeError === "failure") throw Error("D1 indisponível");
@@ -86,7 +87,13 @@ function harness(t, { enabled = true, writeError } = {}) {
     await Promise.all(pending);
     return response;
   }
-  return { submit, leads, meta, marketing };
+  async function dashboardLeads(query) {
+    const response = await context.handleLeads(
+      new Request("https://nova.inspiracred.com.br/analytics/api/leads?" + query), env
+    );
+    return response.json();
+  }
+  return { submit, leads, meta, marketing, dashboardLeads };
 }
 
 test("Parceiros persiste antes da CAPI e envia um Lead por tentativa concorrente ou repetida", async (t) => {
@@ -96,20 +103,26 @@ test("Parceiros persiste antes da CAPI e envia um Lead por tentativa concorrente
     city: "Cidade Sintética", credit_value: 900000, property_value: 2000000 };
   const firstPair = await Promise.all([h.submit(event), h.submit(event)]);
   const retry = await h.submit({ ...event, event_id: event.event_id.toUpperCase() });
-  for (const response of [...firstPair, retry]) {
+  const receipts = await Promise.all([...firstPair, retry].map(async (response) => {
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { success: true });
-  }
+    const data = await response.json();
+    assert.equal(data.success, true);
+    return data;
+  }));
+  const browserIds = receipts.flatMap((receipt) => receipt.meta_lead_event_id || []);
   assert.equal(h.leads().length, 1);
   assert.equal(h.leads()[0].meta_status, "ok");
   assert.equal(h.marketing.length, 1);
   assert.equal(h.meta.length, 1);
   const [{ url, body, stored }] = h.meta;
-  assert.equal(new URL(url).pathname, "/v21.0/synthetic-dataset/events");
+  assert.equal(new URL(url).pathname, "/v21.0/3021870508000260/events");
   assert.equal(body.data.length, 1);
   const [conversion] = body.data;
   assert.equal(stored[0].event_id, conversion.event_id);
   assert.equal(stored[0].lead_kind, "parceiro");
+  assert.equal(stored[0].partner_role, "Contador");
+  assert.equal(stored[0].utm_source, "synthetic-utm");
+  assert.deepEqual(browserIds, [conversion.event_id]);
   assert.equal(conversion.event_name, "Lead");
   assert.notEqual(conversion.event_id, partner.event_id);
   assert.equal(conversion.event_source_url, "https://nova.inspiracred.com.br/");
@@ -151,7 +164,9 @@ test("Parceiros bloqueia fan-out com contato inválido ou cadastro não persisti
 test("Parceiros mantém D1 e RD com CAPI desligada, sinais de privacidade, robô ou cliente legado", async (t) => {
   const disabled = harness(t, { enabled: false });
   const eligible = harness(t);
-  assert.equal((await disabled.submit(partner)).status, 200);
+  const disabledResponse = await disabled.submit(partner);
+  assert.equal(disabledResponse.status, 200);
+  assert.deepEqual(await disabledResponse.json(), { success: true });
   assert.equal(disabled.leads()[0].meta_status, "nao_aplicavel");
   assert.equal(disabled.marketing.length, 1);
   assert.equal(disabled.meta.length, 0);
@@ -191,4 +206,26 @@ test("O sinal habilitado de Parceiros mantém as regras das outras LPs", async (
       expected, source);
   }
   assert.ok(h.leads().every((lead) => lead.partner_submission_id == null));
+});
+
+test("dashboard lista o cadastro de Parceiros com contato, atuacao e cinco UTMs", async (t) => {
+  const h = harness(t, { enabled: false });
+  const attribution = {
+    utm_source: "meta", utm_medium: "social", utm_campaign: "parceria",
+    utm_content: "anuncio", utm_term: "advogados",
+  };
+  const response = await h.submit({ ...partner, ...attribution, partner_role: " Advogado " });
+  assert.equal(response.status, 200);
+  const today = new Date().toISOString().slice(0, 10);
+  const data = await h.dashboardLeads("page=parceiros_lp&kind=parceiro&start=" + today + "&end=" + today);
+  assert.equal(data.count, 1);
+  const [record] = data.leads;
+  assert.equal(record.source, "parceiros_lp");
+  assert.equal(record.lead_kind, "parceiro");
+  assert.equal(record.name, partner.name);
+  assert.equal(record.email, partner.email);
+  assert.equal(record.phone, partner.phone);
+  assert.equal(record.partner_role, "Advogado");
+  for (const [field, value] of Object.entries(attribution)) assert.equal(record[field], value);
+  assert.equal(h.marketing.length, 1);
 });

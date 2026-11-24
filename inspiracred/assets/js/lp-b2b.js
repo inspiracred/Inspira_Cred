@@ -181,9 +181,9 @@
     return false;
   }
 
-  function sendLead(payload) {
+  function sendLead(payload, onConfirmed) {
     if (window.inspiraTrack && typeof window.inspiraTrack.leadConfirmed === "function") {
-      try { return window.inspiraTrack.leadConfirmed(payload); } catch (_) {}
+      try { return window.inspiraTrack.leadConfirmed(payload, onConfirmed); } catch (_) {}
     }
     var body = Object.assign({
       type: "lead",
@@ -197,7 +197,10 @@
       headers: { "Content-Type": "text/plain;charset=UTF-8" },
       body: JSON.stringify(body),
       keepalive: true
-    }).then(function (response) { return response.ok; }, function () { return false; });
+    }).then(function (response) {
+      if (response.ok && typeof onConfirmed === "function") onConfirmed(response);
+      return response.ok;
+    }, function () { return false; });
   }
 
   function track(name, properties) {
@@ -391,7 +394,14 @@
       }
       if (partnerSubmissionId) payload.event_id = partnerSubmissionId;
       setSubmitting(partnersForm, true);
-      sendLead(payload).then(function (ok) {
+      sendLead(payload, function (response) {
+        if (typeof window.inspiraPartnerLead !== "function") return;
+        response.json().then(function (result) {
+          if (result && result.success === true && typeof result.meta_lead_event_id === "string") {
+            window.inspiraPartnerLead(result.meta_lead_event_id);
+          }
+        }).catch(function () {});
+      }).then(function (ok) {
         setSubmitting(partnersForm, false);
         if (!ok) {
           formStatus(partnersForm, "Não foi possível registrar agora. Tente novamente em instantes.");

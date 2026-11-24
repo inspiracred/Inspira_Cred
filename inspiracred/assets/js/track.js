@@ -187,7 +187,7 @@
   // Formulários que encaminham direto ao WhatsApp precisam saber se a Cloudflare
   // realmente recebeu o lead antes de sair da página. Diferente de `send`, este
   // caminho não usa sendBeacon: aguarda o HTTP 200 e só então libera a navegação.
-  function sendConfirmed(payload) {
+  function sendConfirmed(payload, onConfirmed) {
     payload.session_id = sid;
     if (!payload.page_name) payload.page_name = PAGE;
     try {
@@ -198,7 +198,10 @@
         body: body,
         keepalive: true,
         mode: "cors"
-      }).then(function (response) { return response.ok; }, function () { return false; });
+      }).then(function (response) {
+        if (response.ok && typeof onConfirmed === "function") onConfirmed(response);
+        return response.ok;
+      }, function () { return false; });
     } catch (e) { return Promise.resolve(false); }
   }
 
@@ -345,8 +348,8 @@
       // sem isso o lead perde a origem se a URL "limpou" as UTMs antes do envio (→ "direto").
       return send(leadPayload(data));
     },
-    leadConfirmed: function (data) {
-      return sendConfirmed(leadPayload(data));
+    leadConfirmed: function (data, onConfirmed) {
+      return sendConfirmed(leadPayload(data), onConfirmed);
     },
   };
 })();
