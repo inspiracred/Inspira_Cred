@@ -45,7 +45,7 @@ function harness(t, { enabled = true, writeError } = {}) {
   vm.runInContext(server.replace("export async function onRequest", "async function onRequest"), context);
   let lostResponse = false;
   const env = {
-    META_PARTNER_LEAD_ENABLED: enabled ? "true" : undefined,
+    META_PARTNER_LEAD_ENABLED: enabled ? undefined : "false",
     META_PIXEL_ID: "3021870508000260", META_ACCESS_TOKEN: "synthetic-token",
     RD_STATION_TOKEN: "synthetic-rd",
     DB: {

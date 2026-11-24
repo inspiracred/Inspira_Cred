@@ -199,8 +199,9 @@
         keepalive: true,
         mode: "cors"
       }).then(function (response) {
-        if (response.ok && typeof onConfirmed === "function") onConfirmed(response);
-        return response.ok;
+        if (!response.ok || typeof onConfirmed !== "function") return response.ok;
+        return Promise.resolve().then(function () { return onConfirmed(response); })
+          .then(function () { return true; }, function () { return true; });
       }, function () { return false; });
     } catch (e) { return Promise.resolve(false); }
   }

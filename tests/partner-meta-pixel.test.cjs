@@ -15,7 +15,7 @@ const host = "https://nova.inspiracred.com.br";
 const pixelId = "3021870508000260";
 const uuid = "12345678-1234-4234-9234-123456789abc";
 
-function browser({ origin = host, pathname = "/parceiros/", navigator = {}, doNotTrack, tracker = false } = {}) {
+function browser({ origin = host, pathname = "/parceiros/", navigator = {}, doNotTrack, tracker = false, fetch } = {}) {
   const scripts = [];
   const beacons = [];
   const location = { origin, pathname, search: "?utm_source=meta", href: origin + pathname + "?utm_source=meta" };
@@ -29,7 +29,7 @@ function browser({ origin = host, pathname = "/parceiros/", navigator = {}, doNo
     addEventListener() {},
   };
   const context = vm.createContext({
-    window, document, location, URLSearchParams, TextEncoder, Uint8Array, Blob,
+    window, document, location, URLSearchParams, TextEncoder, Uint8Array, Blob, fetch,
     crypto: { randomUUID: () => uuid, subtle: webcrypto.subtle },
     localStorage: { getItem: () => "synthetic-session", setItem() {} },
     navigator: { sendBeacon(url, blob) { beacons.push(blob); return true; }, ...navigator },
@@ -139,4 +139,30 @@ test("Pixel de Parceiros manda Lead apenas com o ID opaco confirmado, uma vez", 
   assert.deepEqual(command.slice(0, 3), ["trackSingle", pixelId, "Lead"]);
   assert.deepEqual(Object.keys(command[3]), []);
   assert.equal(command[4].eventID, uuid);
+});
+
+test("formulário aguarda enfileirar o Lead confirmado antes de concluir o envio", async () => {
+  let allowBody;
+  let callbackStarted;
+  let submitted = false;
+  const body = new Promise((resolve) => { allowBody = resolve; });
+  const started = new Promise((resolve) => { callbackStarted = resolve; });
+  const h = browser({ tracker: true, fetch: async () => ({ ok: true, json: () => body }) });
+  await h.pending;
+  const sending = h.window.inspiraTrack.leadConfirmed({ source: "parceiros_lp" }, async (response) => {
+    callbackStarted();
+    const result = await response.json();
+    h.window.inspiraPartnerLead(result.meta_lead_event_id);
+  }).then((ok) => { submitted = ok; });
+  await started;
+  assert.equal(submitted, false);
+  assert.equal(h.window.fbq.queue.some((args) => args[2] === "Lead"), false);
+  allowBody({ success: true, meta_lead_event_id: uuid });
+  await sending;
+  assert.equal(submitted, true);
+  assert.equal(h.window.fbq.queue.find((args) => args[2] === "Lead")[4].eventID, uuid);
+
+  const fail = browser({ tracker: true, fetch: async () => ({ ok: false }) });
+  assert.equal(await fail.window.inspiraTrack.leadConfirmed({ source: "parceiros_lp" },
+    () => assert.fail("Envio inválido não deve chamar o Pixel")), false);
 });

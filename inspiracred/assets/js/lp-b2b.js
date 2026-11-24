@@ -198,8 +198,9 @@
       body: JSON.stringify(body),
       keepalive: true
     }).then(function (response) {
-      if (response.ok && typeof onConfirmed === "function") onConfirmed(response);
-      return response.ok;
+      if (!response.ok || typeof onConfirmed !== "function") return response.ok;
+      return Promise.resolve().then(function () { return onConfirmed(response); })
+        .then(function () { return true; }, function () { return true; });
     }, function () { return false; });
   }
 
@@ -396,11 +397,11 @@
       setSubmitting(partnersForm, true);
       sendLead(payload, function (response) {
         if (typeof window.inspiraPartnerLead !== "function") return;
-        response.json().then(function (result) {
+        return response.json().then(function (result) {
           if (result && result.success === true && typeof result.meta_lead_event_id === "string") {
             window.inspiraPartnerLead(result.meta_lead_event_id);
           }
-        }).catch(function () {});
+        });
       }).then(function (ok) {
         setSubmitting(partnersForm, false);
         if (!ok) {

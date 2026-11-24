@@ -339,7 +339,7 @@ async function handleTrack(request, env, cors, context) {
           return json({ error: "Informe sua área de atuação." }, 422, cors);
         }
         const partnerSubmissionId = isPartner ? normalizePartnerSubmissionId(event.event_id) : "";
-        const partnerMetaEnabled = !!partnerSubmissionId && env.META_PARTNER_LEAD_ENABLED === "true" &&
+        const partnerMetaEnabled = !!partnerSubmissionId && env.META_PARTNER_LEAD_ENABLED !== "false" &&
           String(env.META_PIXEL_ID) === "3021870508000260" && !!env.META_ACCESS_TOKEN &&
           new URL(request.url).origin === "https://nova.inspiracred.com.br" &&
           request.headers.get("Sec-GPC") !== "1" && request.headers.get("DNT") !== "1";
