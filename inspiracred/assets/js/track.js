@@ -5,11 +5,9 @@
  *   <script>window.IC_PAGE="landing_page";</script>
  *   <script src="assets/js/track.js" defer></script>
  *
- * META: PageView, Lead e LeadQualificado são encaminhados apenas pelo servidor (CAPI). A restrição
- * básica aplicada pela Meta a este dataset proíbe parâmetros personalizados e
- * conteúdo de URL após o domínio; por isso este arquivo não carrega nem chama o
- * Pixel no navegador. O servidor usa a qualificação apenas para selecionar o evento;
- * valores, faixas e motivos permanecem no tracking interno.
+ * META: o coletor usa CAPI, com URL reduzida ao domínio e sem dados de qualificação.
+ * A página de Parceiros tem um Pixel próprio para PageView e compartilha o ID
+ * da visita com este coletor para deduplicação na Meta.
  */
 (function () {
   var ENDPOINT = "https://nova.inspiracred.com.br/analytics/track";
@@ -206,9 +204,13 @@
 
   // Page view. O servidor grava a navegação completa no D1 e envia à Meta somente
   // PageView com a URL reduzida ao domínio, sem caminho, query ou classificação.
+  var pageViewId = uuid();
+  if (PAGE === "parceiros_lp" && typeof window.inspiraPartnerPageView === "function") {
+    window.inspiraPartnerPageView(pageViewId);
+  }
   send(withUtm({
     type: "page_view",
-    event_id: uuid(),
+    event_id: pageViewId,
     url: location.pathname + location.search,
     title: document.title,
     referrer: document.referrer,

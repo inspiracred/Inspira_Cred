@@ -1468,6 +1468,11 @@ async function queueStandardMetaEvent(event, eventName, request, env, context) {
   const allowedMetaEvent = normalizeFunnelMetaEvent(eventName);
   if (!allowedMetaEvent || !context) return;
 
+  const isPartnerPageView = event.type === "page_view" && event.page_name === "parceiros_lp" &&
+    new URL(request.url).origin === "https://nova.inspiracred.com.br" &&
+    typeof event.url === "string" && event.url.split("?")[0] === "/parceiros/";
+  if (isPartnerPageView && (request.headers.get("Sec-GPC") === "1" || request.headers.get("DNT") === "1")) return;
+
   const eventCookies = parseCookies(request.headers.get("Cookie") || "");
   const eventUA = request.headers.get("User-Agent") || "";
   if (detectBot(eventUA).isBot) return;
@@ -1481,7 +1486,9 @@ async function queueStandardMetaEvent(event, eventName, request, env, context) {
   event.fbc = evId.fbc;
   event.fbclid = evId.fbclid;
   event.click_ts = evId.clickTs;
+  const partnerPageViewId = isPartnerPageView ? normalizePartnerSubmissionId(event.event_id) : "";
   context.waitUntil(sendCustomEventToMeta(event, env, {
+    partnerPageViewId,
     clientIp: request.headers.get("CF-Connecting-IP") || "",
     userAgent: eventUA,
     sourceUrl: eventSourceUrl,
@@ -1500,12 +1507,16 @@ async function sendCustomEventToMeta(event, env, ctx) {
   event.phone = "";
   event.city = "";
   const userData = await buildUserData(event, ctx, fbc);
+  // Mesmo identificador opaco derivado pelo Pixel exclusivo de Parceiros.
+  const eventId = ctx.partnerPageViewId
+    ? await sha256Hex("parceiros-pageview:" + ctx.partnerPageViewId)
+    : normalizeMetaEventId();
 
   const payload = {
     data: [{
       event_name: allowedEvent,
       event_time: Math.floor(Date.now() / 1000),
-      event_id: normalizeMetaEventId(),
+      event_id: eventId,
       event_source_url: sanitizeMetaSourceUrl(ctx.sourceUrl),
       action_source: "website",
       user_data: userData,

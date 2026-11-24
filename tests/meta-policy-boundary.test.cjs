@@ -105,7 +105,7 @@ test("browser exposes no arbitrary Meta API or direct Pixel fallback", () => {
   assert.doesNotMatch(trackerSource, /connect\.facebook\.net|window\.fbq\(/);
 });
 
-test("all published HTML routes are free of Meta browser Pixel code", () => {
+test("the legacy WordPress export remains free of Meta browser Pixel code", () => {
   const htmlFiles = [
     path.join(root, "docs/fe3ad243-8f41-4056-939b-fe087b3244cc~/index.html"),
     path.join(root, "docs/fe3ad243-8f41-4056-939b-fe087b3244cc~/pages/termos-de-uso.html"),
